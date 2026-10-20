@@ -129,6 +129,21 @@ function decorate(candidate, ctx, deps) {
   return out
 }
 
+// Ranker.mightMatch before decorate(): the alias lives in the settings, not
+// on the stored candidate, so it is checked here.
+function couldMatch(candidate, lq, tq, ctx, deps) {
+  var settings = ctx.commands && ctx.commands[candidate.id]
+  if (settings && settings.alias && deps.Ranker.aliasMatch(String(settings.alias).toLowerCase(), lq) !== "unmatched") return true
+  return deps.Ranker.mightMatch(candidate, lq, tq)
+}
+
+// Stores Ranker.searchChars on each candidate so the per-keystroke
+// prefilter does not recompute it. Call once when candidates are built.
+function indexCandidates(list, deps) {
+  for (var i = 0; i < list.length; i++) list[i].searchChars = deps.Ranker.searchChars(list[i])
+  return list
+}
+
 function isEnabled(candidate, ctx) {
   var settings = ctx.commands && ctx.commands[candidate.id]
   return !(settings && settings.enabled === false)
@@ -155,9 +170,13 @@ function fallbackRows(query) {
 //   query:       Results, Use "<q>" with…
 function rootSections(candidates, query, ctx, deps) {
   var q = String(query || "").trim()
+  var lq = q.toLowerCase()
+  var tq = q ? deps.Ranker.transliterate(lq) : ""
   var decorated = []
   for (var i = 0; i < candidates.length; i++) {
     if (!isEnabled(candidates[i], ctx)) continue
+    // Skip the copy for candidates that cannot match; rank() would drop them.
+    if (q && !couldMatch(candidates[i], lq, tq, ctx, deps)) continue
     decorated.push(decorate(candidates[i], ctx, deps))
   }
   var opts = rankOptions(ctx)
@@ -281,6 +300,7 @@ if (typeof module !== "undefined") {
     menuCandidates: menuCandidates,
     builtinCandidate: builtinCandidate,
     decorate: decorate,
+    indexCandidates: indexCandidates,
     rootSections: rootSections,
     submenuSections: submenuSections,
     actionsFor: actionsFor,
