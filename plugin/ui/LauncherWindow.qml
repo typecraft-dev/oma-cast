@@ -11,15 +11,26 @@ import qs.Ui
 //
 // Views form a navigation stack: root search, a pushed Omarchy submenu, or
 // the alias editor. Each view keeps its own query.
-OverlayWindow {
+//
+// A full-screen transparent overlay layer with exclusive keyboard focus, set
+// up like the shell's own Menu.qml (qs.Ui.OverlayWindow was removed in
+// Omarchy 4.0.4).
+PanelWindow {
   id: window
 
   required property var backend
   property var appLibrary: null
+  property bool shown: false
 
   signal dismissRequested()
 
+  visible: window.shown
+  anchors { top: true; bottom: true; left: true; right: true }
+  color: "transparent"
+  exclusionMode: ExclusionMode.Ignore
   WlrLayershell.namespace: "oma-cast"
+  WlrLayershell.layer: WlrLayer.Overlay
+  WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
   // ------------------------------------------------------------ settings
   readonly property var general: {

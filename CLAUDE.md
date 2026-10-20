@@ -106,6 +106,8 @@ Renamed **raylinux → oma-launcher → oma-cast** on 2026-10-19 (plugin `typecr
 
 **Phase 1 (Quickshell build): done**, with the gaps listed below. **Phase 0: done.** Omarchy 4.0.0.alpha, Quickshell 0.3.2, Hyprland 0.56.2.
 
+Ported to **Omarchy 4.0.5** on 2026-10-20: `ShellIpc` is gone (use Quickshell's `IpcHandler` from `Quickshell.Io`; `omarchy-shell` now goes straight to `qs ipc`), and `qs.Ui.OverlayWindow` is gone (`LauncherWindow` is a `PanelWindow` set up like `plugins/menu/Menu.qml`). On 4.0.5 the scoped shell's `appLibrary` reaches the plugin as `null` even though the kind is `menu`, so apps come from the `DesktopEntries` fallback and launch through `uwsm-app -- gtk-launch` (no launch OSD, no TUI routing). Cause not found yet.
+
 Works:
 - **Root search** ported from ref 02 §4.2–4.6 (`core/Ranker.js`, `core/Frecency.js`, golden tests). Sections (`core/RootSearch.js`):
   - empty root: Favorites, Suggestions (frecency > 1, top 6), Commands, Applications
