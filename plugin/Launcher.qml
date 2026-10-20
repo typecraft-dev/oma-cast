@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Io
 import qs.Commons
 import "ui"
 
@@ -31,9 +32,9 @@ Item {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
     var wasOpen = root.opened
+    launcher.prepare(payload)
     root.opened = true
     root.openedAt = Date.now()
-    launcher.prepare(payload)
     if (!wasOpen) backend.emit("window.visibilityChanged", { visible: true })
   }
 
@@ -108,7 +109,7 @@ Item {
     onPressed: root.toggle()
   }
 
-  ShellIpc {
+  IpcHandler {
     target: "oma-cast"
 
     function toggle(): string {

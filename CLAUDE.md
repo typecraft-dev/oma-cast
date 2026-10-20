@@ -14,6 +14,7 @@ This repo is a clean-room rebuild of **Raycast for Linux**. The first target is 
 | `reference/05-data-config.md` | On-disk layout, DB encryption, reconstructed schema, `.rayconfig` format (§5), XDG mapping (§8). | Phase 0 (paths, DB), Phase 8 (import) |
 | `reference/schema-nonai.sql` | Raycast's non-AI DDL, reconstructed. **Reference only.** The clone uses the simpler schema in `SPEC.md §6.4`. | When you need a field Raycast stores |
 | `reference/backend-methods-nonai.txt` | Every non-AI backend RPC method name. **Do not implement all of them.** Reuse the names for what each phase needs. | When naming an IPC method |
+| `docs/omarchy-4.0.5.md` | Running on released Omarchy 4.0.5: the two shell types that exist only on `quattro`, the port to the Quickshell built-ins, the QML path cache, and the measured latency. | When the plugin will not load, or when touching IPC or the launcher surface |
 
 Spec legend: **[O]** observed in Raycast, **[I]** inferred, **[D]** design decision for this clone. [O] is ground truth for behaviour. [D] may be changed if you have a reason; note the change in `SPEC.md`.
 
@@ -41,7 +42,7 @@ To learn the host, read the shell's own code in `$OMARCHY_PATH/shell/` (`/usr/sh
 - `plugins/menu/Menu.qml`: the Omarchy launcher/menu
 - `plugins/emojis/Emojis.qml`: a small overlay plugin
 - `services/AppLibrary.qml` + `AppSearch.js`: desktop entries, icons, `uwsm-app -- gtk-launch` launching
-- `Ui/OverlayWindow.qml`, `Commons/{Style,Color,Util}.qml`
+- `Ui/BorderSurface.qml`, `Commons/{Style,Color,Util}.qml`
 - `default/agents/skills/omarchy/plugins.md`: plugin safety rules. Use `textFormat: Text.PlainText` for any dynamic text.
 
 ## Repo layout
@@ -50,7 +51,7 @@ To learn the host, read the shell's own code in `$OMARCHY_PATH/shell/` (`/usr/sh
 SPEC.md, reference/      # the spec
 plugin/                  # the Omarchy shell plugin (what gets linked into ~/.config/omarchy/plugins/)
   manifest.json          #   id typecraft.oma-cast, kind "menu" (so the shell passes shell.appLibrary), keepLoaded
-  Launcher.qml           #   entry point: open()/close() from the shell, ShellIpc "oma-cast", GlobalShortcut oma-cast:toggle
+  Launcher.qml           #   entry point: open()/close() from the shell, IpcHandler "oma-cast", GlobalShortcut oma-cast:toggle
   Backend.qml            #   in-process backend: paths, config.json, stores, method registry, notifications
   ui/                    #   launcher surface and (later) views
   services/              #   QML services that do I/O (JsonStore, OmarchyMenuSource; later clipboard, …)
@@ -86,13 +87,18 @@ qs log -n -p "$OMARCHY_PATH/shell" -t 50    # shell log; our lines start with [o
 
 **Reloading.** Quickshell keeps every QML/JS file it has read, keyed by path, for the life of the process, and the shell's inotify watch doesn't follow the symlink into this repo. So editing files under `plugin/` changes nothing until `oma-cast reload` re-links the plugin under a fresh `typecraft.oma-cast.dev-<ns>` path. Always reload, then check `qs log` for QML errors, before concluding a change works. A QML error shows up as "Type X unavailable" plus the real cause on the next line. Names that clash with JS globals (such as `escape`) are "Illegal method name".
 
+`oma-cast install` links under a fresh `typecraft.oma-cast.dev-<ns>` path too, for the same reason: re-linking the path the shell already read would keep serving the cached file, so an upgrade would run the old code. The plugin id comes from `manifest.json`, not the directory name, so the shell still registers it as `typecraft.oma-cast`.
+
+**Reading a load failure.** The shell logs QML errors, so a plugin that fails to load is indistinguishable from one that was never installed, over IPC. `oma-cast doctor` and `oma-cast install` read the shell log for errors in the *current* link and print them, which is what turns "plugin did not answer" into the actual cause.
+
 ## Running on Omarchy
 
 Check each of these on the machine instead of assuming it; Omarchy changes often.
 
 - **Hyprland config is Lua** (Hyprland 0.56). `~/.config/hypr/hyprland.lua` `require`s `default.hypr.omarchy` and the user's `hypr.bindings` etc. Bindings use `o.bind("ALT + SPACE", "desc", dispatcher)`. `oma-cast setup hyprland` writes only `~/.config/hypr/oma-cast.lua` and appends one `require("hypr.oma-cast")`. Never edit Omarchy's files.
 - **Hotkey.** Super+Space is the Omarchy menu and Super+Alt+Space is the dock's app grid. oma-cast defaults to **Alt+Space** through `hl.dsp.global("oma-cast:toggle")`, so the plugin's GlobalShortcut fires with no process spawn. Offer the Super+Space swap (commented in `oma-cast.lua`); never force it.
-- **IPC.** `omarchy-shell <target> <fn> args…` answers over the shell's socket (needs `socat`), falling back to `qs ipc`. Our target is `oma-cast`. `ShellIpc` functions must have typed params and return a string.
+- **IPC.** `omarchy-shell <target> <fn> args…` answers over the shell's socket (needs `socat`), falling back to `qs ipc`. Our target is `oma-cast`. `IpcHandler` functions must have typed params and return a string.
+- **Shell types.** Use the Quickshell built-ins, not Omarchy's shell modules: `IpcHandler` (`Quickshell.Io`) and `PanelWindow` + `WlrLayershell` (`Quickshell` / `Quickshell.Wayland`). Omarchy's `ShellIpc` and `OverlayWindow` exist only on the unreleased `quattro` branch; on released 4.0.x they are undefined types and the plugin silently fails to load.
 - **Theme.** Bind colours to `Commons.Color.menu.*` and sizes to `Style.*`. They follow `omarchy theme set` live; no theme parsing.
 - **App launching.** Use `shell.appLibrary.launch(id, name)`. It goes through `uwsm-app -- gtk-launch`, sends terminal apps to `omarchy-launch-tui`, and shows Omarchy's launch OSD. The shell only provides `appLibrary` to `menu`-kind plugins.
 - **Terminals and paste.** Alacritty/Ghostty/Kitty need Ctrl+Shift+V (SPEC §5.3). Read the class from `hyprctl activewindow -j`.
@@ -104,7 +110,7 @@ Check each of these on the machine instead of assuming it; Omarchy changes often
 
 Renamed **raylinux → oma-launcher → oma-cast** on 2026-10-19 (plugin `typecraft.oma-cast`, CLI `oma-cast`, IPC target and global shortcut `oma-cast:toggle`, XDG dirs `oma-cast`). The app icon is Omarchy's logo: glyph `\ue900` in the `omarchy` font, the same one the bar's menu button uses.
 
-**Phase 1 (Quickshell build): done**, with the gaps listed below. **Phase 0: done.** Omarchy 4.0.0.alpha, Quickshell 0.3.2, Hyprland 0.56.2.
+**Phase 1 (Quickshell build): done**, with the gaps listed below. **Phase 0: done.** Omarchy 4.0.5-1, Quickshell 0.3.2, Hyprland 0.56.2.
 
 Works:
 - **Root search** ported from ref 02 §4.2–4.6 (`core/Ranker.js`, `core/Frecency.js`, golden tests). Sections (`core/RootSearch.js`):
@@ -121,7 +127,7 @@ Works:
   - Compact mode shows only the header until you type.
   - A launch from root clears the query [I].
   - A row is selected on hover only after a real pointer move (Omarchy's PointerMoveGate).
-- **Latency:** show → mapped in 37–44 ms, hide in 9–25 ms (`tests/smoke.sh`).
+- **Latency:** show → mapped in 37–44 ms, hide in 9–25 ms (`tests/smoke.sh`). On released 4.0.5 the CLI leg alone costs ~50 ms, because `omarchy-shell` there has no socket fast path and spawns a `qs ipc` client per call, so the end-to-end number is higher than the map time (~40 ms, the same range as the shell's own overlays). The hotkey path skips that leg: Alt+Space → mapped is 70–100 ms.
 - **Tests:** 65 unit tests (`node --test tests/`).
 
 Stubbed / not yet:
@@ -135,5 +141,7 @@ Deviations from the original spec (SPEC §2.0 and the Phase 1 note in §12):
 - JSON documents instead of SQLite; no DB encryption or libsecret key.
 - Logs go to the shell log; `config.json` instead of `config.toml`; no D-Bus name.
 - The Omarchy theme replaces Raycast's 8 themes; the HUD is Omarchy's OSD.
+- The launcher surface is a Quickshell `PanelWindow` + `WlrLayershell`, not Omarchy's `OverlayWindow`, and IPC uses Quickshell's `IpcHandler`, not Omarchy's `ShellIpc`. Omarchy's two exist only on the unreleased `quattro` branch; the Quickshell built-ins work on released 4.0.5+.
+- `open()` prepares the rows *before* flipping `opened`. Omarchy's `OverlayWindow` deferred `visible` until a target monitor resolved, so the rebuild finished before the surface mapped; with a plain `PanelWindow` the surface would map first and the rebuild would block its first frame.
 
 Testing lesson: the query survives hide/show until pop-to-root. A live test must clear it first (Ctrl+U), or typed text gets appended to the old query. Pressing ↵ on a stale query once opened real browser tabs.

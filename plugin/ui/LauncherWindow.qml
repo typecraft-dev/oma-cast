@@ -11,15 +11,26 @@ import qs.Ui
 //
 // Views form a navigation stack: root search, a pushed Omarchy submenu, or
 // the alias editor. Each view keeps its own query.
-OverlayWindow {
+//
+// Omarchy's own OverlayWindow is not in released 4.0.x; this is the same
+// full-screen layer surface built from Quickshell's PanelWindow, the way the
+// shell's own overlays (plugins/emojis, plugins/clipboard) build theirs.
+PanelWindow {
   id: window
 
   required property var backend
   property var appLibrary: null
+  property bool shown: false
 
   signal dismissRequested()
 
+  visible: window.shown
+  anchors { top: true; bottom: true; left: true; right: true }
+  color: "transparent"
+  exclusionMode: ExclusionMode.Ignore
   WlrLayershell.namespace: "oma-cast"
+  WlrLayershell.layer: WlrLayer.Overlay
+  WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
   // ------------------------------------------------------------ settings
   readonly property var general: {

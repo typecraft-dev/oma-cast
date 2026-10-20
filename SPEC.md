@@ -81,8 +81,8 @@ Consequences for Linux:
 ```
 omarchy-shell (Quickshell, one process)
  └─ plugin typecraft.oma-cast   (~/.config/omarchy/plugins/<link> → repo/plugin)
-     ├─ Launcher.qml        lifecycle open()/close(), ShellIpc target "oma-cast", GlobalShortcut oma-cast:toggle
-     ├─ ui/                 launcher surface on Omarchy's OverlayWindow (wlr-layer-shell, namespace "oma-cast")
+     ├─ Launcher.qml        lifecycle open()/close(), IpcHandler target "oma-cast", GlobalShortcut oma-cast:toggle
+     ├─ ui/                 launcher surface on a Quickshell PanelWindow (wlr-layer-shell, namespace "oma-cast")
      ├─ Backend.qml         the "backend": paths, config.json, stores, method registry
      ├─ services/           QML services with I/O (JsonStore = FileView + migrations; later clipboard, apps…)
      └─ core/*.js           pure logic, no Qt: Rpc, Paths, Migrate, Log, Schema. Unit-tested with `node --test`
@@ -90,9 +90,9 @@ bin/oma-cast                bash CLI → omarchy-shell oma-cast <fn> (socket), p
 ```
 
 How the rest of this spec maps onto it:
-- **§3 IPC.** There is no wire protocol between UI and backend; both live in one QML engine. The *method surface* stays: services register `namespace.method` handlers in one registry (`core/Rpc.js`), using Raycast's names (§3.4). `call()` returns a Promise and `callSync()` returns `{ok,data|error}`. Notifications (`window.visibilityChanged`, `settings.generalSettingsChanged`) go through `subscribe()`/`emit()`. External callers use `ShellIpc` (`oma-cast call <method> <json>`). The NDJSON host↔backend contract and supervisor (§3.3) are **deferred to Phase 5**: only Raycast extensions need Node, and they will run as a supervised child `Process` that speaks §3.3/§9.2.
+- **§3 IPC.** There is no wire protocol between UI and backend; both live in one QML engine. The *method surface* stays: services register `namespace.method` handlers in one registry (`core/Rpc.js`), using Raycast's names (§3.4). `call()` returns a Promise and `callSync()` returns `{ok,data|error}`. Notifications (`window.visibilityChanged`, `settings.generalSettingsChanged`) go through `subscribe()`/`emit()`. External callers use `IpcHandler` (`oma-cast call <method> <json>`). The NDJSON host↔backend contract and supervisor (§3.3) are **deferred to Phase 5**: only Raycast extensions need Node, and they will run as a supervised child `Process` that speaks §3.3/§9.2.
 - **§4 platform.** Omarchy = Hyprland, so Phase 0 targets Hyprland only. Its config is **Lua** (`hyprland.lua`, `o.bind(...)`, `hl.dsp.global(...)`), not `.conf`.
-- **§5.1 window.** It uses Omarchy's `OverlayWindow`: a fullscreen transparent layer surface with exclusive keyboard focus, and the 750×475 card drawn inside it. Clicking outside the card counts as focus loss. The surface is mapped fresh on every open, which is how Omarchy avoids stale surfaces when monitors change.
+- **§5.1 window.** It uses a Quickshell `PanelWindow` with `WlrLayershell`: a fullscreen transparent layer surface with exclusive keyboard focus, and the 750×475 card drawn inside it. Clicking outside the card counts as focus loss. The surface is mapped fresh on every open, which is how stale surfaces are avoided when monitors change. (Omarchy's own `OverlayWindow` does the same, but it ships only on the unreleased `quattro` branch; the Quickshell built-in works on every released Omarchy 4.)
 - **§6 data.** Persisted state is one versioned JSON document per store under `$XDG_DATA_HOME/oma-cast/db/` (`core/Migrate.js`: numbered migrations, history, atomic writes, never overwrite an unreadable or newer file). There is **no encryption at rest** and no libsecret key: Qt's FileView has no cipher, and full-disk encryption is the Omarchy default. If a store outgrows JSON (clipboard history, file index), revisit with Qt's built-in `QtQuick.LocalStorage` (SQLite) before adding a native dependency.
 - **§10 frontend.** QML instead of React, with themes from Omarchy's tokens. The 8 Raycast themes (§10.4) become optional palettes over the same tokens.
 - **Logging** goes to the shell's log (`qs log -n -p "$OMARCHY_PATH/shell"`, lines prefixed `[oma-cast]`), with the level from `config.json`. There are no separate log files.

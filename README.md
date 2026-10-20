@@ -47,7 +47,9 @@ There's no theme config. oma-cast binds to Omarchy's own colours, so it changes 
 
 ## Install
 
-Requires Omarchy 4 (Hyprland 0.56+, `omarchy-shell`) and `socat`, which Omarchy already ships.
+Requires **Omarchy 4.0.5 or newer** (Hyprland 0.56+, `omarchy-shell`, Quickshell 0.3.2+) and `socat`, which Omarchy already ships.
+
+oma-cast is a plain Quickshell plugin: it uses `Quickshell.Io`'s `IpcHandler` and a `PanelWindow` layer surface, both of which ship with every Omarchy 4 release. It does not need anything from Omarchy's unreleased `quattro` branch.
 
 ```sh
 git clone https://github.com/typecraft-dev/oma-cast.git

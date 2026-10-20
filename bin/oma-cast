@@ -51,6 +51,36 @@ die() { echo "oma-cast: $*" >&2; exit 1; }
 
 ipc() { omarchy-shell "$IPC_TARGET" "$@"; }
 
+# The shell reports a QML error in its own log, so a plugin that fails to
+# load looks identical to one that was never installed. Pull the QML errors
+# for our plugin out of the log so the message names the real cause.
+#
+# Only the current link counts: `oma-cast reload` links the plugin under a new
+# path each time, and the log keeps the errors of the paths before it, which
+# would otherwise report a failure that has already been fixed.
+plugin_qml_errors() {
+  command -v qs >/dev/null || return 0
+  [[ -n ${OMARCHY_PATH:-} ]] || return 0
+  local link name
+  link=$(current_link)
+  [[ -n $link ]] || return 0
+  name=$(basename "$link")
+  qs log -n --no-color -p "$OMARCHY_PATH/shell" -t 400 2>/dev/null \
+    | grep -E "plugins/${name}/.*\.(qml|js).*(is not a type|is not a module|ReferenceError|TypeError|Unable to assign|Cannot )" \
+    | tail -n 5
+}
+
+report_load_failure() {
+  local errors
+  errors=$(plugin_qml_errors)
+  if [[ -n $errors ]]; then
+    echo "oma-cast: the plugin did not load; the shell log says:" >&2
+    printf '%s\n' "$errors" | sed 's/^/  /' >&2
+  else
+    echo "oma-cast: plugin did not answer; check the shell log with: qs log -n -p \"\$OMARCHY_PATH/shell\"" >&2
+  fi
+}
+
 need_shell() {
   command -v omarchy-shell >/dev/null || die "omarchy-shell not found; oma-cast runs inside the Omarchy shell"
 }
@@ -62,8 +92,20 @@ cmd_install() {
   if [[ -e $plugin_link && ! -L $plugin_link ]]; then
     die "$plugin_link exists and is not a symlink; move it away first"
   fi
-  ln -sfn "$plugin_src" "$plugin_link"
-  echo "linked $plugin_link -> $plugin_src"
+
+  # Quickshell keeps every QML/JS file it has read, keyed by path, for the
+  # life of the process. Re-linking the same path therefore serves the file
+  # the shell cached earlier, so an upgrade over a path it already read
+  # would keep running the old code (or keep failing on a type the new code
+  # no longer uses). Link under a path the shell has not read, and drop the
+  # old links; the plugin id comes from the manifest, not the directory name.
+  local old link
+  while IFS= read -r old; do
+    [[ -n $old ]] && rm "$old" && echo "removed stale link $old"
+  done < <(installed_links)
+  link="$plugin_link.dev-$(date +%s%N)"
+  ln -s "$plugin_src" "$link"
+  echo "linked $link -> $plugin_src"
 
   mkdir -p "$HOME/.local/bin"
   if [[ ! -e $HOME/.local/bin/oma-cast || -L $HOME/.local/bin/oma-cast ]]; then
@@ -85,7 +127,8 @@ cmd_install() {
     [[ $(omarchy-shell "$IPC_TARGET" ping 2>/dev/null) == "ok" ]] && { echo "oma-cast is running"; return 0; }
     sleep 0.1
   done
-  die "plugin did not answer; check the shell log with: qs log -n -p \"\$OMARCHY_PATH/shell\""
+  report_load_failure
+  exit 1
 }
 
 cmd_uninstall() {
@@ -172,6 +215,15 @@ cmd_doctor() {
   check "plugin is enabled" bash -c "omarchy plugin list --json 2>/dev/null | grep -q '\"id\":\"$PLUGIN_ID\"[^}]*\"enabled\":true'"
   check "plugin answers IPC" bash -c "[[ \$(omarchy-shell $IPC_TARGET ping) == ok ]]"
   check "backend answers system.healthPing" bash -c "omarchy-shell $IPC_TARGET call system.healthPing '{}' | grep -q '\"ok\":true'"
+  # A plugin that failed to load answers nothing, so name the QML error that
+  # stopped it instead of leaving "plugin answers IPC" as the whole story.
+  local errors
+  errors=$(plugin_qml_errors)
+  if [[ -n $errors ]]; then
+    printf '  FAIL  plugin loaded without QML errors\n'
+    printf '%s\n' "$errors" | sed 's/^/        /'
+    bad=1
+  fi
   if [[ -f $hypr_dir/oma-cast.lua ]]; then
     printf '  ok    hotkey file %s\n' "$hypr_dir/oma-cast.lua"
   else
