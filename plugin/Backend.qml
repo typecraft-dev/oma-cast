@@ -265,21 +265,25 @@ Item {
     Rpc.register(backend.registry, "settings", {
       getGeneralSettings: function() {
         if (!settingsStore.loaded) throw new Error("settings not loaded")
-        return settingsStore.doc.general
+        return Schema.withGeneralDefaults(settingsStore.doc.general)
       },
-      // Partial update; only known keys with a matching type are accepted.
+      // Partial update; only known keys with a matching type (and, for
+      // ranged numbers, an allowed value) are accepted.
       updateGeneralSettings: function(data) {
         if (!settingsStore.loaded) throw new Error("settings not loaded")
         if (settingsStore.readOnly) throw new Error("settings are read-only: " + (settingsStore.lastError || "written by a newer build"))
         var patch = data && typeof data === "object" ? data : {}
-        var current = settingsStore.doc.general
+        var current = Schema.withGeneralDefaults(settingsStore.doc.general)
         for (var key in patch) {
           if (current[key] === undefined) throw new Error("Unknown general setting " + key)
           if (typeof patch[key] !== typeof current[key]) throw new Error("Setting " + key + " must be a " + typeof current[key])
+          var problem = Schema.checkGeneralValue(key, patch[key])
+          if (problem) throw new Error(problem)
         }
         settingsStore.update(function(doc) { for (var k in patch) doc.general[k] = patch[k] })
-        backend.emit("settings.generalSettingsChanged", settingsStore.doc.general)
-        return settingsStore.doc.general
+        var general = Schema.withGeneralDefaults(settingsStore.doc.general)
+        backend.emit("settings.generalSettingsChanged", general)
+        return general
       },
       getAllCommandSettings: function() { return settingsStore.doc.commands },
       getCommandSettings: function(data) { return settingsStore.doc.commands[String(data && data.commandId || "")] || {} },

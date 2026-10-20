@@ -79,6 +79,30 @@ test("shipped settings migrations are valid and use Raycast defaults", () => {
   assert.deepEqual(r.doc.commands, {})
 })
 
+test("general settings fill in the window size without a migration", () => {
+  const v1 = Migrate.migrate(null, Schema.settingsMigrations, 1).doc.general
+  const g = Schema.withGeneralDefaults(v1)
+  assert.equal(g.windowWidth, 750)
+  assert.equal(g.windowHeight, 475)
+  assert.equal(g.popToRootTimeout, 90)               // stored keys pass through
+  assert.equal(v1.windowWidth, undefined)            // the stored document is not touched
+  const custom = Schema.withGeneralDefaults({ uiZoom: 1, windowWidth: 1000, windowHeight: "big" })
+  assert.equal(custom.windowWidth, 1000)
+  assert.equal(custom.windowHeight, 475)             // a wrong type falls back to the default
+  assert.deepEqual(Schema.withGeneralDefaults(null), Schema.generalAdditions)
+})
+
+test("window size settings accept whole numbers in range only", () => {
+  assert.equal(Schema.checkGeneralValue("windowWidth", 1000), null)
+  assert.equal(Schema.checkGeneralValue("windowWidth", 500), null)
+  assert.equal(Schema.checkGeneralValue("windowHeight", 2000), null)
+  assert.match(Schema.checkGeneralValue("windowWidth", 499), /between 500 and 3000/)
+  assert.match(Schema.checkGeneralValue("windowHeight", 2001), /between 300 and 2000/)
+  assert.match(Schema.checkGeneralValue("windowWidth", 800.5), /whole number/)
+  assert.match(Schema.checkGeneralValue("windowWidth", NaN), /whole number/)
+  assert.equal(Schema.checkGeneralValue("uiZoom", 1.3), null)   // unranged keys are not checked here
+})
+
 test("config keeps known keys of the right type and drops the rest", () => {
   assert.deepEqual(Schema.withConfigDefaults(null), Schema.configDefaults)
   const c = Schema.withConfigDefaults({ logLevel: "debug", keepVisibleOnFocusLoss: "yes", extra: 1 })

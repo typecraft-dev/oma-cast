@@ -121,6 +121,7 @@ Works:
   - Compact mode shows only the header until you type.
   - A launch from root clears the query [I].
   - A row is selected on hover only after a real pointer move (Omarchy's PointerMoveGate).
+  - Card size is configurable: the `windowWidth`/`windowHeight` general settings (default 750×475 px at uiZoom 1, ranges 500–3000 × 300–2000) set it, for example `oma-cast call settings.updateGeneralSettings '{"windowWidth":1000,"windowHeight":650}'`. Unlike `uiZoom`, they don't scale the text. Settings added after migration v1 are filled in on read by `Schema.withGeneralDefaults`, so they need no migration [D].
 - **Latency:** show → mapped in 37–44 ms, hide in 9–25 ms (`tests/smoke.sh`).
 - **Tests:** 65 unit tests (`node --test tests/`).
 

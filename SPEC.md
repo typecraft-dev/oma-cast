@@ -232,7 +232,7 @@ Common to all DEs: logind (lock/suspend/hibernate/poweroff/reboot), PipeWire `wp
 ## 5. Host responsibilities in detail
 
 ### 5.1 Launcher window [O behaviour]
-- Size **750 × 475** logical px at `uiZoom` 1. Header 66, footer 42. Corner radius 8 (Raycast uses 26 on macOS 26). Transparent window; the page paints `--color-window-bg` = theme background at **40 % alpha**, over compositor blur.
+- Size **750 × 475** logical px at `uiZoom` 1 (the clone makes this the default of the `windowWidth`/`windowHeight` general settings [D]). Header 66, footer 42. Corner radius 8 (Raycast uses 26 on macOS 26). Transparent window; the page paints `--color-window-bg` = theme background at **40 % alpha**, over compositor blur.
 - **Compact mode** (`windowMode: compact`): only the 66 px search bar shows until the user types, then the window grows to full height. Optionally a row of favourite icons.
 - **Show:** pick the monitor (`windowPresentationMode`: `mouse-screen` default / `active-screen` / `primary-screen`), place the window horizontally centred about 1/4 down from the top [I], focus the search field.
   - **Buffer keystrokes** typed between the hotkey and webview focus, then replay them. Raycast does this explicitly [O], and it matters on Wayland where focus is slow.

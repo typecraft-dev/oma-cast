@@ -5,9 +5,10 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// Launcher surface (SPEC §5.1, §10.2): 750×475 at uiZoom 1, 66 px search
-// header, 42 px footer, centred horizontally about a quarter down the
-// screen, coloured by the active Omarchy theme's [menu] tokens.
+// Launcher surface (SPEC §5.1, §10.2): 750×475 at uiZoom 1 unless the
+// windowWidth/windowHeight settings say otherwise, 66 px search header,
+// 42 px footer, centred horizontally about a quarter down the screen,
+// coloured by the active Omarchy theme's [menu] tokens.
 //
 // Views form a navigation stack: root search, a pushed Omarchy submenu, or
 // the alias editor. Each view keeps its own query.
@@ -25,7 +26,7 @@ OverlayWindow {
   readonly property var general: {
     window.backend.storeRevision
     var r = window.backend.ready ? window.backend.callSync("settings.getGeneralSettings", null) : null
-    return r && r.ok ? r.data : ({ uiZoom: 1, windowMode: "expanded", escapeKeyBehavior: "pop-back-or-close", popToRootTimeout: 90 })
+    return r && r.ok ? r.data : ({ uiZoom: 1, windowMode: "expanded", escapeKeyBehavior: "pop-back-or-close", popToRootTimeout: 90, windowWidth: 750, windowHeight: 475 })
   }
   readonly property real zoom: window.general.uiZoom > 0 ? window.general.uiZoom : 1
   function px(value) { return Math.round(Style.space(value) * window.zoom) }
@@ -55,8 +56,10 @@ OverlayWindow {
   readonly property string placeholder: window.view.kind === "alias" ? "Type an alias, then press ↵"
     : (window.view.kind === "menu" ? "Search " + window.view.title + "…" : "Search for apps and commands…")
 
-  readonly property int cardWidth: Math.min(px(750), width - Style.gapsOut * 2)
-  readonly property int fullHeight: Math.min(px(475), height - Style.gapsOut * 2)
+  // Card size in px at uiZoom 1; zoom scales it with the text, and it never
+  // grows past the screen.
+  readonly property int cardWidth: Math.min(px(window.general.windowWidth > 0 ? window.general.windowWidth : 750), width - Style.gapsOut * 2)
+  readonly property int fullHeight: Math.min(px(window.general.windowHeight > 0 ? window.general.windowHeight : 475), height - Style.gapsOut * 2)
   readonly property int headerHeight: px(66)
   readonly property int footerHeight: px(42)
 

@@ -57,6 +57,43 @@ var documents = {
   frecency: { file: "frecency.json", migrations: frecencyMigrations }
 }
 
+// General settings added after the v1 migration. They are filled in on read
+// (withGeneralDefaults), so an additive setting needs no migration and cannot
+// collide with another branch's migration number. [D]
+var generalAdditions = {
+  windowWidth: 750,                           // launcher card at uiZoom 1, px [O 750×475, SPEC §5.1]
+  windowHeight: 475
+}
+
+// Inclusive bounds for numeric general settings. The card is also clamped to
+// the screen when drawn, so these only reject nonsense. [D]
+var generalRanges = {
+  windowWidth: [500, 3000],
+  windowHeight: [300, 2000]
+}
+
+function withGeneralDefaults(general) {
+  var out = {}
+  if (general && typeof general === "object" && !Array.isArray(general)) {
+    for (var k in general) out[k] = general[k]
+  }
+  for (var key in generalAdditions) {
+    if (typeof out[key] !== typeof generalAdditions[key]) out[key] = generalAdditions[key]
+  }
+  return out
+}
+
+// null when `value` is acceptable for general setting `key`, else the reason.
+function checkGeneralValue(key, value) {
+  var range = generalRanges[key]
+  if (!range) return null
+  if (typeof value !== "number" || !isFinite(value) || Math.round(value) !== value)
+    return "Setting " + key + " must be a whole number"
+  if (value < range[0] || value > range[1])
+    return "Setting " + key + " must be between " + range[0] + " and " + range[1]
+  return null
+}
+
 // Host flags in $XDG_CONFIG_HOME/oma-cast/config.json: user-editable and
 // non-secret (SPEC §6.3). Not migrated; unknown keys are kept and ignored,
 // missing ones fall back to these defaults.
@@ -83,6 +120,10 @@ if (typeof module !== "undefined") {
     pushSearchHistory: pushSearchHistory,
     SEARCH_HISTORY_LIMIT: SEARCH_HISTORY_LIMIT,
     documents: documents,
+    generalAdditions: generalAdditions,
+    generalRanges: generalRanges,
+    withGeneralDefaults: withGeneralDefaults,
+    checkGeneralValue: checkGeneralValue,
     configDefaults: configDefaults,
     withConfigDefaults: withConfigDefaults
   }
