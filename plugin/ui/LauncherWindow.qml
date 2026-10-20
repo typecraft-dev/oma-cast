@@ -49,11 +49,21 @@ OverlayWindow {
   property var actions: []
   property var toast: null
   property int historyIndex: -1
+  // A file row is being dragged out: hide the card and let the pointer pass
+  // through the fullscreen surface, so the app underneath receives the drop.
+  property bool draggingOut: false
+
+  mask: window.draggingOut ? passThrough : null
+  // Hyprland keeps pointer focus on a layer with exclusive keyboard focus,
+  // so the drop would never reach the window underneath; let go while dragging.
+  shownKeyboardFocus: window.draggingOut ? WlrKeyboardFocus.None : WlrKeyboardFocus.Exclusive
+  Region { id: passThrough }
 
   readonly property bool atRoot: window.stack.length === 1
   readonly property bool compact: window.general.windowMode === "compact" && window.atRoot && !window.query
   readonly property string placeholder: window.view.kind === "alias" ? "Type an alias, then press ↵"
-    : (window.view.kind === "menu" ? "Search " + window.view.title + "…" : "Search for apps and commands…")
+    : (window.view.kind === "menu" ? "Search " + window.view.title + "…"
+    : (window.view.kind === "files" ? "Search files and folders…" : "Search for apps, commands and files…"))
 
   readonly property int cardWidth: Math.min(px(750), width - Style.gapsOut * 2)
   readonly property int fullHeight: Math.min(px(475), height - Style.gapsOut * 2)
@@ -72,6 +82,7 @@ OverlayWindow {
   // Called on every open, before the surface maps.
   function prepare(payload) {
     popTimer.stop()
+    window.draggingOut = false
     if (typeof payload.query === "string") window.query = payload.query
     window.actionPanelOpen = false
     window.historyIndex = -1
@@ -81,6 +92,9 @@ OverlayWindow {
 
   // The shell hid us: start the pop-to-root clock (SPEC §5.1).
   onShownChanged: {
+    // A drag whose row was destroyed mid-flight never reports its end; never
+    // let that leave the next open invisible and click-through.
+    window.draggingOut = false
     if (window.shown) return
     window.actionPanelOpen = false
     var seconds = Number(window.general.popToRootTimeout)
@@ -123,7 +137,10 @@ OverlayWindow {
 
   function rebuild(resetSelection) {
     pointerGate.reset()
-    var keepId = !resetSelection && window.selectedRow ? window.selectedRow.itemId : ""
+    // A selection still on the top row follows the top row, so rows that
+    // arrive late (file search) take the top instead of pushing it down.
+    var onTop = window.selectedIndex >= 0 && window.selectedIndex === window.nextSelectable(-1, 1)
+    var keepId = !resetSelection && !onTop && window.selectedRow ? window.selectedRow.itemId : ""
     rows.clear()
     if (window.view.kind === "alias") { window.select(-1); return }
     var result = window.backend.callSync("rootSearch.search", { query: window.query, view: window.view })
@@ -158,7 +175,8 @@ OverlayWindow {
       alias: String(c.alias || ""),
       checked: !!c.checked,
       disabled: !!c.disabled,
-      favorite: typeof c.favoriteOrder === "number"
+      favorite: typeof c.favoriteOrder === "number",
+      path: String(c.path || "")
     }
   }
 
@@ -372,7 +390,7 @@ OverlayWindow {
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id"]); return true }
+      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-path"]); return true }
       if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }
       if (ctrl && key >= Qt.Key_1 && key <= Qt.Key_9) {
         var target = window.nthItem(key - Qt.Key_0)
@@ -417,6 +435,7 @@ OverlayWindow {
     color: window.look.background
     borderSpec: window.borderSpec
     clip: true
+    opacity: window.draggingOut ? 0 : 1
 
     MouseArea { anchors.fill: parent; onClicked: { window.actionPanelOpen = false; keyCatcher.forceActiveFocus() } }
 
@@ -557,6 +576,12 @@ OverlayWindow {
           // pointer (open, typing, scrolling) must not steal the cursor.
           onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i) }
           onClicked: function(i) { window.perform("open", i) }
+          onDragStarted: function(i) { window.select(i); window.actionPanelOpen = false; window.draggingOut = true }
+          // A drop somewhere else is done with the launcher; a cancelled drag brings it back.
+          onDragEnded: function(dropped) {
+            window.draggingOut = false
+            if (dropped) window.dismissRequested()
+          }
         }
       }
 
@@ -578,7 +603,9 @@ OverlayWindow {
           anchors.horizontalCenter: parent.horizontalCenter
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? window.view.title
-            : (window.backend.ready ? "No results" : "Loading…")
+            : (!window.backend.ready ? "Loading…"
+            : (window.view.kind !== "files" ? "No results"
+            : (window.query.trim().length < 2 ? "Search your home folder" : (window.backend.loading ? "Searching…" : "No files found"))))
           color: window.look.foreground
           font.family: window.look.fontFamily
           font.pixelSize: Math.round(Style.font.title * window.zoom)

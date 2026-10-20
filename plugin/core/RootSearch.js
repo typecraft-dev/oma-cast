@@ -20,6 +20,15 @@ var BUILTINS = [
     keywords: ["menu", "omarchy"],
     run: { summon: "omarchy.menu", payload: "{\"menu\":\"root\"}" },
     rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:search-files",
+    title: "Search Files",
+    subtitle: "Find files and folders in your home folder",
+    keywords: ["files", "folders", "find", "spotlight", "arquivos", "pastas"],
+    glyph: "\uf002",                 // Nerd Font magnifier, drawn in the menu font
+    run: { push: { kind: "files", title: "Search Files" } },
+    rootSearch: { when: "always" }
   }
 ]
 
@@ -85,8 +94,8 @@ function builtinCandidate(def) {
     subtitle: def.subtitle || "",
     keywords: def.keywords || [],
     typeLabel: "Command",
-    glyph: "",
-    glyphFont: "omarchy",
+    glyph: def.glyph || "",
+    glyphFont: def.glyph ? "" : "omarchy",
     run: def.run,
     rootSearch: def.rootSearch || { when: "always" }
   }
@@ -152,7 +161,8 @@ function fallbackRows(query) {
 
 // Sections for the root view (SPEC §7.2):
 //   empty query: Favorites, Suggestions, Commands, Applications
-//   query:       Results, Use "<q>" with…
+//   query:       Results, Files [D], Use "<q>" with…
+// ctx.files holds the file rows for the query (core/FileSearch.js), already ranked.
 function rootSections(candidates, query, ctx, deps) {
   var q = String(query || "").trim()
   var decorated = []
@@ -167,6 +177,8 @@ function rootSections(candidates, query, ctx, deps) {
     var results = deps.Ranker.rank(searchable, q, opts)
     var sections = []
     if (results.length > 0) sections.push({ id: "results", title: "Results", rows: results })
+    var files = ctx.files || []
+    if (files.length > 0) sections.push({ id: "files", title: "Files", rows: files.map(function(c) { return { candidate: c, record: null } }) })
     sections.push({ id: "fallback-commands", title: "Use “" + q + "” with…", rows: fallbackRows(q) })
     return sections
   }
@@ -215,6 +227,7 @@ function submenuSections(candidates, menuId, query, ctx, deps) {
 // Actions for a row (SPEC §10.2 action panel, §10.3 shortcuts). The first is
 // primary (↵), the second secondary (Ctrl ↵).
 function actionsFor(candidate) {
+  if (candidate.kind === "file" || candidate.kind === "folder") return fileActions(candidate)
   var primary
   var list = []
   switch (candidate.kind) {
@@ -248,6 +261,18 @@ function actionsFor(candidate) {
   if (candidate.frecency > 1) list.push({ id: "reset-ranking", title: "Reset Ranking", shortcut: "", section: "configure", icon: "" })
   list.push({ id: "disable", title: "Disable Command", shortcut: "Alt Shift D", section: "delete", icon: "" })
   return list
+}
+
+// Files and folders [D]: no favourites, aliases or disabling, since a row
+// lives only as long as the query that found it.
+function fileActions(candidate) {
+  var folder = candidate.kind === "folder"
+  return [
+    { id: "open", title: folder ? "Open Folder" : "Open File", shortcut: "↵", section: "primary", icon: "" },
+    { id: "reveal", title: "Show in Files", shortcut: "Ctrl ↵", section: "primary", icon: "" },
+    { id: "open-terminal", title: folder ? "Open in Terminal" : "Open Folder in Terminal", shortcut: "Ctrl Shift ↵", section: "primary", icon: "" },
+    { id: "copy-path", title: "Copy Path", shortcut: "Ctrl Shift C", section: "copy", icon: "" }
+  ]
 }
 
 // Favourite ordering: returns the new {id: order} map for an action.
@@ -284,6 +309,7 @@ if (typeof module !== "undefined") {
     rootSections: rootSections,
     submenuSections: submenuSections,
     actionsFor: actionsFor,
+    fileActions: fileActions,
     reorderFavorites: reorderFavorites,
     fallbackUrl: fallbackUrl
   }

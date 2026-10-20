@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.Commons
+import "../core/FileSearch.js" as FileSearch
 
 // One list row (SPEC §10.2): 22 px icon, title, secondary subtitle, and right
 // accessories in Raycast's order: alias badge, ✓ state, type label. Section
@@ -21,6 +22,7 @@ Item {
   required property bool checked
   required property bool disabled
   required property bool favorite
+  required property string path         // file rows only; makes the row draggable
 
   property bool selected: false
   property var look: null
@@ -29,6 +31,8 @@ Item {
 
   signal hovered(int index, var item, var mouse)
   signal clicked(int index)
+  signal dragStarted(int index)
+  signal dragEnded(bool dropped)
 
   readonly property bool isSection: row.rowKind === "section"
   function px(v) { return Math.round(Style.space(v) * row.zoom) }
@@ -182,12 +186,33 @@ Item {
     }
   }
 
+  // Drag a file row out to another app (terminal, browser upload, chat)
+  // as text/uri-list, the same payload a file manager sends. [D]
+  Item {
+    id: dragProxy
+    width: 1
+    height: 1
+    Drag.dragType: Drag.Automatic
+    Drag.supportedActions: Qt.CopyAction
+    Drag.mimeData: row.path ? ({ "text/uri-list": FileSearch.fileUri(row.path) + "\r\n", "text/plain": row.path }) : ({})
+    Drag.active: rowMouse.drag.active
+    Drag.onDragStarted: row.dragStarted(row.index)
+    Drag.onDragFinished: function(dropAction) {
+      dragProxy.x = 0
+      dragProxy.y = 0
+      row.dragEnded(dropAction !== Qt.IgnoreAction)
+    }
+  }
+
   MouseArea {
+    id: rowMouse
     anchors.fill: parent
     enabled: !row.isSection
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
-    onPositionChanged: function(mouse) { row.hovered(row.index, row, mouse) }
+    drag.target: row.path ? dragProxy : null
+    drag.threshold: row.px(8)
+    onPositionChanged: function(mouse) { if (!drag.active) row.hovered(row.index, row, mouse) }
     onClicked: row.clicked(row.index)
   }
 }

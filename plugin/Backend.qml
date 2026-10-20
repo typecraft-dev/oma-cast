@@ -10,6 +10,7 @@ import "core/Ranker.js" as Ranker
 import "core/Frecency.js" as Frecency
 import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
+import "core/FileSearch.js" as FileSearch
 import "services"
 
 // The clone's backend, in-process (SPEC §2.0). It owns the paths, the host
@@ -39,7 +40,7 @@ Item {
   property var candidates: []
   property var candidatesById: ({})
   property int candidatesRevision: 0
-  readonly property bool loading: menuSource.loading
+  readonly property bool loading: menuSource.loading || fileSource.loading
 
   signal notification(string method, var data)
 
@@ -182,6 +183,7 @@ Item {
           return { push: { kind: "menu", menuId: target.id, title: target.label } }
         case "builtin":
           backend.recordVisit(id, query)
+          if (candidate.run.push) return { push: candidate.run.push }
           if (candidate.run.summon) backend.summonPlugin(candidate.run.summon, candidate.run.payload || "{}")
           return { close: true }
         case "fallback":
@@ -226,6 +228,30 @@ Item {
       case "disable":
         backend.updateCommand(id, function(s) { s.enabled = false; return s })
         return { toast: { style: "success", title: candidate.title + " disabled" } }
+    }
+    throw new Error("Unknown action " + action)
+  }
+
+  // A file or folder row (core/FileSearch.js); see RootSearch.fileActions.
+  function performFileAction(candidate, action) {
+    var path = candidate.path
+    var folder = candidate.kind === "folder" ? path : path.slice(0, path.lastIndexOf("/")) || "/"
+    switch (action) {
+      case "open":
+        Util.execArgv(["uwsm-app", "--", "xdg-open", path])
+        return { close: true }
+      case "reveal":
+        // FileManager1 selects the item in Nautilus (or whichever file manager owns the name).
+        Util.execArgv(["gdbus", "call", "--session", "--dest", "org.freedesktop.FileManager1",
+          "--object-path", "/org/freedesktop/FileManager1", "--method", "org.freedesktop.FileManager1.ShowItems",
+          "['" + FileSearch.fileUri(path).replace(/'/g, "%27") + "']", ""])
+        return { close: true }
+      case "open-terminal":
+        Util.execArgv(["uwsm-app", "--", "xdg-terminal-exec", "--dir=" + folder])
+        return { close: true }
+      case "copy-path":
+        Util.execArgv(["wl-copy", "--", path])
+        return { close: true, hud: "Copied Path" }
     }
     throw new Error("Unknown action " + action)
   }
@@ -310,6 +336,15 @@ Item {
         var query = String(data && data.query || "")
         var view = data && data.view
         var ctx = backend.searchContext()
+        if (view && view.kind === "files") {
+          fileSource.request(query)
+          var found = fileSource.rowsFor(query, FileSearch.VIEW_LIMIT)
+          return found.length ? [{ id: "files", title: "", rows: found }] : []
+        }
+        if (!view || view.kind === "root") {
+          fileSource.request(query)
+          ctx.files = fileSource.rowsFor(query, FileSearch.ROOT_LIMIT)
+        }
         var sections = view && view.kind === "menu"
           ? RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
           : RootSearch.rootSections(backend.candidates, query, ctx, backend.deps)
@@ -318,6 +353,8 @@ Item {
         })
       },
       getActions: function(data) {
+        var file = fileSource.lookup(String(data && data.id || ""))
+        if (file) return RootSearch.actionsFor(file)
         var candidate = backend.decorated(String(data && data.id || ""))
         if (!candidate) {
           var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === data.id })[0]
@@ -333,6 +370,8 @@ Item {
           Util.execArgv(["omarchy-launch-browser", RootSearch.fallbackUrl(fallback, data.query)])
           return { close: true }
         }
+        var file = fileSource.lookup(String(data && data.id || ""))
+        if (file) return backend.performFileAction(file, String(data.action || "open"))
         return backend.performAction(data)
       },
       getSearchHistory: function() { return frecencyStore.loaded ? frecencyStore.doc.searchHistory : [] }
@@ -387,6 +426,12 @@ Item {
     id: menuSource
     onRevisionChanged: rebuildTimer.restart()
     onMessage: function(level, text, metadata) { backend.log(level, "omarchy-menu", text, metadata) }
+  }
+
+  FileSearchSource {
+    id: fileSource
+    onRevisionChanged: backend.candidatesRevision++
+    onMessage: function(level, text, metadata) { backend.log(level, "files", text, metadata) }
   }
 
   JsonStore {

@@ -55,7 +55,7 @@ plugin/                  # the Omarchy shell plugin (what gets linked into ~/.co
   ui/                    #   launcher surface and (later) views
   services/              #   QML services that do I/O (JsonStore, OmarchyMenuSource; later clipboard, …)
   core/*.js              #   pure logic, no Qt imports: shared by QML and node tests (module.exports guard)
-                         #   Ranker, Frecency (ref 02 §4, port exactly), OmarchyMenu, RootSearch, Schema, Migrate, Rpc, Paths, Log
+                         #   Ranker, Frecency (ref 02 §4, port exactly), OmarchyMenu, RootSearch, FileSearch, Schema, Migrate, Rpc, Paths, Log
 bin/oma-cast             # bash CLI
 tests/*.test.js          # node --test unit tests for plugin/core (ranker, frecency, Omarchy menu, root search, …)
 tests/smoke.sh           # live acceptance check against the running shell
@@ -109,8 +109,9 @@ Renamed **raylinux → oma-launcher → oma-cast** on 2026-10-19 (plugin `typecr
 Works:
 - **Root search** ported from ref 02 §4.2–4.6 (`core/Ranker.js`, `core/Frecency.js`, golden tests). Sections (`core/RootSearch.js`):
   - empty root: Favorites, Suggestions (frecency > 1, top 6), Commands, Applications
-  - query: Results, then `Use "<q>" with…` (Google, DuckDuckGo fallbacks)
-- **Providers:** apps from `shell.appLibrary`, the whole Omarchy menu (about 400 items, with breadcrumbs, guards, ✓ state and font/power-profile provider rows), and the built-in "Omarchy Menu".
+  - query: Results, Files, then `Use "<q>" with…` (Google, DuckDuckGo fallbacks)
+- **Providers:** apps from `shell.appLibrary`, the whole Omarchy menu (about 400 items, with breadcrumbs, guards, ✓ state and font/power-profile provider rows), and the built-ins "Omarchy Menu" and "Search Files".
+- **File search** [D] (`core/FileSearch.js`, `services/FileSearchSource.qml`): `fd` walks `$HOME` live per query (~30 ms, honours .gitignore, skips hidden paths, node_modules, __pycache__), debounced 60 ms. The last term matches basenames; earlier terms filter the path. Own scorer, not Ranker.js. Root shows the top 5 under "Files"; "Search Files" pushes a view with up to 60. Actions: open (xdg-open), Show in Files (FileManager1.ShowItems), Open in Terminal (xdg-terminal-exec), Copy Path. File rows drag out to other apps as text/uri-list (Qt Drag.Automatic); while dragging, the card hides and an empty input mask lets the drop reach the window underneath, and keyboard focus drops from Exclusive to None (Hyprland pins pointer focus to an exclusive-keyboard layer, so drops never reached other windows). A drop closes the launcher, a cancel brings it back; drag state resets on every open/close. Verified dropping into foot. No favourites/aliases/frecency on file rows. Needs Omarchy's `fd`.
 - **Ranking state:** frecency (+100 per launch, 10-day half-life) and learned search terms in `db/frecency.json`. Aliases (exact → top; duplicates rejected), favourites (Ctrl+Shift+F, reorder Ctrl+Alt+↑↓) and disabled commands live in `db/settings.json` `commands`.
 - **Navigation:** pushed Omarchy submenus (search within them), the alias editor, back with Esc / Ctrl+[ / Backspace on an empty query / the header arrow, and Shift+Esc to pop to root.
 - **Keyboard:** Ctrl+K action panel (filterable, per-row shortcuts), ↵ / Ctrl+↵ / Ctrl+Shift+↵ for the first three actions, Ctrl+1–9, Ctrl+↑↓ to jump sections, PageUp/PageDown, Ctrl+N/P (emacs), ↑ on an empty root for search history, Ctrl+Shift+C copy, Alt+Shift+D disable, Ctrl + / − / 0 zoom.
@@ -122,7 +123,7 @@ Works:
   - A launch from root clears the query [I].
   - A row is selected on hover only after a real pointer move (Omarchy's PointerMoveGate).
 - **Latency:** show → mapped in 37–44 ms, hide in 9–25 ms (`tests/smoke.sh`).
-- **Tests:** 65 unit tests (`node --test tests/`).
+- **Tests:** 73 unit tests (`node --test tests/`).
 
 Stubbed / not yet:
 - Keystroke buffering before the surface maps. Keys sent within ~40 ms of the hotkey go to the window underneath.
