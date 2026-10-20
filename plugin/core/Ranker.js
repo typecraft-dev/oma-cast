@@ -91,6 +91,17 @@ function fuzzyMatch(target, query, options) {
   var u = q.length - sepCount
   if (u > t.length) return "unmatched"
 
+  // Every non-separator query row must match a target cell or the DP below
+  // returns unmatched, so a query character missing from the target settles
+  // it. [D] Not in the port; it only skips DP runs that end unmatched, which
+  // most fields do on one- and two-character queries.
+  if (u <= 2) {
+    for (var mi = 0; mi < q.length; mi++) {
+      var mc = q.charAt(mi)
+      if (!querySep(mc) && t.indexOf(mc) === -1) return "unmatched"
+    }
+  }
+
   // Subsequence precheck.
   if (u > 2) {
     var ti = 0
