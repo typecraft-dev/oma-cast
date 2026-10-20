@@ -121,12 +121,13 @@ Works:
   - Compact mode shows only the header until you type.
   - A launch from root clears the query [I].
   - A row is selected on hover only after a real pointer move (Omarchy's PointerMoveGate).
+- **Quicklinks** (SPEC §8.4): Create / Search / Import / Export Quicklinks, Create Quicklink or Open in Browser for a typed web address, inline argument fields (Tab into them, ↵ opens), Create Quicklink filled from a URL or path on the clipboard, Open With from installed apps, and Edit (Ctrl+E), Copy Link (Ctrl+Shift+C) and Delete (Ctrl+D, the Linux key in SPEC §10.3) actions. Placeholders follow SPEC §8.3 except clipboard history, snippets and the calculator.
 - **Latency:** show → mapped in 37–44 ms, hide in 9–25 ms (`tests/smoke.sh`).
-- **Tests:** 65 unit tests (`node --test tests/`).
+- **Tests:** 81 unit tests (`node --test tests/`).
 
 Stubbed / not yet:
 - Keystroke buffering before the surface maps. Keys sent within ~40 ms of the hotkey go to the window underneath.
-- Vim navigation bindings, Ctrl+P dropdown, Ctrl+T, Ctrl+Shift+K, inline argument pills, alerts.
+- Vim navigation bindings, Ctrl+P dropdown, Ctrl+T, Ctrl+Shift+K, alerts.
 - No settings window, so you can't re-enable a disabled command except by editing `~/.local/share/oma-cast/db/settings.json` (delete its `enabled: false`). That's Phase 2.
 - No deep links (`oma-cast://`); Phase 2 or 9.
 

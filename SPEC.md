@@ -495,6 +495,7 @@ Grammar: `{keyword opt="v" opt2='v' | modifier | modifier}`. Quotes accepted: `"
 - Shown in root search with inline argument pills. Can be a fallback command.
 - Settings: Show Link Previews, Pass Selected Text as Argument.
 - **Import/Export** JSON: `[{name, link, openWith?}]` [I, keep compatible with Raycast's documented format].
+- Quickshell build [D, 2026-10-20]: `db/quicklinks.json`, `core/Quicklinks.js`. Arguments are inline fields after the search text; an option argument steps through its options with ↑/↓ [D]. Web links open through `omarchy-launch-browser`, other links through `xdg-open`, a chosen app through `gtk-launch`. Create Quicklink fills an untouched form from a URL or path on the clipboard. localhost, loopback and private IPv4 hosts open as http. Values in a file-path link (`/…`, `~/…`) are not encoded. `{selection}` is the primary selection. `{clipboard offset=N}` waits for clipboard history; `{browser-tab}` is refused. No favicons, tags or link previews yet. Export writes `~/Downloads/oma-cast-quicklinks-<date>.json` and copies it; import reads a file path or the clipboard.
 
 ### 8.5 Window management maths [O command list, I geometry]
 - Work area = monitor geometry minus reserved space (Hyprland `monitors -j` `reserved`; KDE/X11 `_NET_WORKAREA`).
@@ -768,7 +769,7 @@ Repo layout [D]:
   - **Themes.** The 8 Raycast themes and the CSS variables are replaced by the live Omarchy theme tokens (§2.0).
   - **HUD.** The HUD is Omarchy's OSD (`omarchy-shell osd show`).
   - **Settings.** There is no settings window yet (Phase 2); aliases are set from the action panel.
-  - **Not done:** vim navigation bindings (Ctrl+K would clash with the action panel), Ctrl+P dropdown, Ctrl+T toast focus, Ctrl+Shift+K about panel, inline argument pills (no command declares arguments yet), alerts (no destructive action needs one yet), and keystroke buffering (see the note above).
+  - **Not done:** vim navigation bindings (Ctrl+K would clash with the action panel), Ctrl+P dropdown, Ctrl+T toast focus, Ctrl+Shift+K about panel, alerts (no destructive action needs one yet), and keystroke buffering (see the note above).
   - **"fir" → Firefox:** on a list where another title starts with "Fire", the literal port ties at score 8 and the collator decides until Firefox has been launched once (`tests/ranker.test.js`).
 
 ### Phase 2: Core built-ins

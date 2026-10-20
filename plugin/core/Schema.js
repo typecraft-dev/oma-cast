@@ -41,6 +41,19 @@ var frecencyMigrations = [
   }
 ]
 
+// Saved quicklinks (SPEC §8.4), in the shape Quicklinks.js reads:
+// items [{id, name, link, iconName, openWith, createdAt, updatedAt}].
+var quicklinksMigrations = [
+  {
+    version: 1,
+    name: "quicklinks",
+    up: function(doc) {
+      doc.items = Array.isArray(doc.items) ? doc.items : []
+      return doc
+    }
+  }
+]
+
 var SEARCH_HISTORY_LIMIT = 20   // [I]
 
 function pushSearchHistory(history, query) {
@@ -54,7 +67,8 @@ function pushSearchHistory(history, query) {
 
 var documents = {
   settings: { file: "settings.json", migrations: settingsMigrations },
-  frecency: { file: "frecency.json", migrations: frecencyMigrations }
+  frecency: { file: "frecency.json", migrations: frecencyMigrations },
+  quicklinks: { file: "quicklinks.json", migrations: quicklinksMigrations }
 }
 
 // Host flags in $XDG_CONFIG_HOME/oma-cast/config.json: user-editable and
@@ -80,6 +94,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     settingsMigrations: settingsMigrations,
     frecencyMigrations: frecencyMigrations,
+    quicklinksMigrations: quicklinksMigrations,
     pushSearchHistory: pushSearchHistory,
     SEARCH_HISTORY_LIMIT: SEARCH_HISTORY_LIMIT,
     documents: documents,
