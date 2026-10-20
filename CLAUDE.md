@@ -66,7 +66,7 @@ Rules for `plugin/core/*.js`: one self-contained file per module (QML `import "x
 ## Commands
 
 ```sh
-node --test tests/           # unit tests (node's built-in runner; no npm install)
+node --test tests/*.test.js  # unit tests (node's built-in runner; no npm install)
 tests/smoke.sh               # live checks: doctor, IPC, toggle latency (<100 ms). Shows/hides the launcher, never types.
 omarchy plugin validate plugin
 
@@ -122,7 +122,8 @@ Works:
   - A launch from root clears the query [I].
   - A row is selected on hover only after a real pointer move (Omarchy's PointerMoveGate).
 - **Latency:** show → mapped in 37–44 ms, hide in 9–25 ms (`tests/smoke.sh`).
-- **Tests:** 65 unit tests (`node --test tests/`).
+- **Search cost:** about 11–16 ms per keystroke inside Quickshell's V4 for 438 candidates (was 27–30 ms). `Ranker.normalize`/`transliterate` are memoized per string, which leaves the ranking identical. Measure with `node --jitless tests/bench-rootsearch.js`; V4 runs about 3× slower than that. V4 has no `Intl`, so `collate` keeps `localeCompare` there.
+- **Tests:** 67 unit tests (`node --test tests/*.test.js`; on Node 24 `node --test tests/` fails because it treats the directory as a module).
 
 Stubbed / not yet:
 - Keystroke buffering before the surface maps. Keys sent within ~40 ms of the hotkey go to the window underneath.

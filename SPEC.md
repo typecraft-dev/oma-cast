@@ -745,7 +745,7 @@ Repo layout [D]:
 - Launcher surface (750×475, 66 header, 42 footer) on the active Omarchy theme. It starts hidden and is toggled by `oma-cast toggle`, `omarchy-shell oma-cast toggle` or the global shortcut `oma-cast:toggle` (`oma-cast setup hyprland` binds Alt+Space).
 - In-process backend: method registry with Raycast names, `system.healthPing`, `system.healthDatabase`, `system.info`, `system.getPaths`, `settings.getGeneralSettings` / `updateGeneralSettings`, and notifications. The footer shows a live `system.healthPing` round trip.
 - XDG paths (§6.3), `config.json` (hot reload), logging to the shell log, and versioned JSON stores with a migrations framework.
-- **Accept:** `oma-cast toggle` shows and hides in under 100 ms warm, measured from the CLI call to Hyprland's `openlayer`/`closelayer` event (`tests/smoke.sh`). A backend error or an unreadable store never takes the launcher down: calls answer `{ok:false,error}`, and the store goes read-only without overwriting the file, then recovers when the file is fixed. `node --test tests/` covers the registry, paths, migrations and logging.
+- **Accept:** `oma-cast toggle` shows and hides in under 100 ms warm, measured from the CLI call to Hyprland's `openlayer`/`closelayer` event (`tests/smoke.sh`). A backend error or an unreadable store never takes the launcher down: calls answer `{ok:false,error}`, and the store goes read-only without overwriting the file, then recovers when the file is fixed. `node --test tests/*.test.js` covers the registry, paths, migrations and logging.
 
 ### Phase 0 (original Tauri plan, superseded for Omarchy)
 - Tauri app with a main window. Hidden at start, toggled by `<app> toggle` (D-Bus single instance).

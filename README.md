@@ -102,7 +102,7 @@ The full plan is in [`SPEC.md`](SPEC.md).
 ## Development
 
 ```sh
-node --test tests/        # unit tests, no npm install needed
+node --test tests/*.test.js   # unit tests, no npm install needed
 tests/smoke.sh            # live checks against the running shell
 oma-cast dev          # reload on every save
 ```

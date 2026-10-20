@@ -32,21 +32,72 @@ var TYPE_PRIORITY = {
   contact: 0
 }
 
+// SEPARATORS as a lookup table: isSeparator runs per cell of the fuzzy match.
+var SEPARATOR_SET = (function() {
+  var set = Object.create(null)
+  for (var i = 0; i < SEPARATORS.length; i++) set[SEPARATORS.charAt(i)] = true
+  return set
+})()
+
 function isSeparator(ch) {
-  return ch !== "" && SEPARATORS.indexOf(ch) !== -1
+  return SEPARATOR_SET[ch] === true
 }
 
 // ---------------------------------------------------------- normalisation
+
+// normalize() and transliterate() depend only on their input, and root
+// search feeds them the same titles, subtitles and keywords on every
+// keystroke, so their results are memoized by string. Callers must treat
+// the returned values as read-only. [D] Each cache is dropped whole once it
+// holds CACHE_LIMIT entries, which bounds memory without LRU bookkeeping.
+var CACHE_LIMIT = 8192
+
+function createCache() {
+  return { entries: Object.create(null), size: 0 }
+}
+
+var normalizeCache = createCache()
+var transliterateCache = createCache()
+
+function cacheGet(cache, key) {
+  return cache.entries[key]
+}
+
+function cacheSet(cache, key, value) {
+  if (cache.size >= CACHE_LIMIT) {
+    cache.entries = Object.create(null)
+    cache.size = 0
+  }
+  cache.entries[key] = value
+  cache.size++
+  return value
+}
+
+function clearCaches() {
+  normalizeCache = createCache()
+  transliterateCache = createCache()
+}
+
+// Char-code forms of /[a-z0-9]/ and /[A-Z]/ (ASCII only, as before).
+function isLowerOrDigit(code) {
+  return (code >= 97 && code <= 122) || (code >= 48 && code <= 57)
+}
+
+function isUpper(code) {
+  return code >= 65 && code <= 90
+}
 
 // {normalizedText, wordBoundaries}: boundaries[n] is true when char n-1 is
 // [a-z0-9] and char n is [A-Z] (camelCase), from the original casing.
 function normalize(s) {
   var text = String(s === undefined || s === null ? "" : s)
+  var cached = cacheGet(normalizeCache, text)
+  if (cached !== undefined) return cached
   var boundaries = []
   for (var i = 0; i < text.length; i++) {
-    boundaries.push(i > 0 && /[a-z0-9]/.test(text.charAt(i - 1)) && /[A-Z]/.test(text.charAt(i)))
+    boundaries.push(i > 0 && isLowerOrDigit(text.charCodeAt(i - 1)) && isUpper(text.charCodeAt(i)))
   }
-  return { normalizedText: text.toLowerCase(), wordBoundaries: boundaries }
+  return cacheSet(normalizeCache, text, { normalizedText: text.toLowerCase(), wordBoundaries: boundaries })
 }
 
 var TRANSLIT = {
@@ -58,14 +109,17 @@ var TRANSLIT = {
 // ASCII transliteration. Keeps the string length stable for single-char
 // diacritic folds; the multi-char map entries may lengthen it.
 function transliterate(s) {
-  var text = String(s === undefined || s === null ? "" : s)
+  var input = String(s === undefined || s === null ? "" : s)
+  var cached = cacheGet(transliterateCache, input)
+  if (cached !== undefined) return cached
+  var text = input
   if (typeof text.normalize === "function") text = text.normalize("NFD").replace(/[̀-ͯ]/g, "")
   var out = ""
   for (var i = 0; i < text.length; i++) {
     var ch = text.charAt(i)
     out += TRANSLIT[ch] !== undefined ? TRANSLIT[ch] : ch
   }
-  return out
+  return cacheSet(transliterateCache, input, out)
 }
 
 // ------------------------------------------------------------ fuzzy match
@@ -361,8 +415,15 @@ function buildRecord(candidate, query, options) {
 
 // ------------------------------------------------------------- ordering
 
+var COLLATE_OPTIONS = { numeric: true, sensitivity: "base" }
+// ECMA-402 defines localeCompare(b, locales, options) as a new Collator's
+// compare, so one shared Collator orders the same without building one per
+// comparison. QML's engine may lack Intl; it keeps the localeCompare path.
+var collator = typeof Intl !== "undefined" && Intl.Collator ? new Intl.Collator(undefined, COLLATE_OPTIONS) : null
+
 function collate(a, b) {
-  return String(a || "").localeCompare(String(b || ""), undefined, { numeric: true, sensitivity: "base" })
+  if (collator) return collator.compare(String(a || ""), String(b || ""))
+  return String(a || "").localeCompare(String(b || ""), undefined, COLLATE_OPTIONS)
 }
 
 function heuristic(record) {
@@ -554,8 +615,10 @@ if (typeof module !== "undefined") {
   module.exports = {
     SEPARATORS: SEPARATORS,
     TYPE_PRIORITY: TYPE_PRIORITY,
+    CACHE_LIMIT: CACHE_LIMIT,
     normalize: normalize,
     transliterate: transliterate,
+    clearCaches: clearCaches,
     fuzzyMatch: fuzzyMatch,
     matchScore: matchScore,
     passesThreshold: passesThreshold,

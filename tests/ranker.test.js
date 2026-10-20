@@ -17,6 +17,27 @@ test("transliterate folds diacritics to ASCII", () => {
   assert.equal(R.transliterate("Café Ærø Straße"), "Cafe AEro Strasse")
 })
 
+test("normalize and transliterate memoize by string and stay correct", () => {
+  R.clearCaches()
+  const first = R.normalize("LibreOffice")
+  assert.equal(R.normalize("LibreOffice"), first) // same object: served from the cache
+  assert.equal(R.transliterate("Ærø"), "AEro")
+  assert.equal(R.transliterate("Ærø"), "AEro")
+  R.clearCaches()
+  assert.notEqual(R.normalize("LibreOffice"), first)
+  assert.deepEqual(R.normalize("LibreOffice"), first)
+})
+
+test("caches stay bounded and keep answering after a reset", () => {
+  R.clearCaches()
+  for (let i = 0; i <= R.CACHE_LIMIT + 10; i++) R.normalize("item" + i)
+  assert.equal(R.normalize("fooBar").normalizedText, "foobar")
+  assert.deepEqual(R.normalize("fooBar").wordBoundaries, [false, false, false, true, false, false])
+  // Keys that are Object.prototype names are plain strings to the cache.
+  assert.equal(R.normalize("__proto__").normalizedText, "__proto__")
+  assert.equal(R.transliterate("constructor"), "constructor")
+})
+
 test("fuzzyMatch golden scores", () => {
   // f@0 first row 4, i adjacent 2, r adjacent 2
   assert.deepEqual(R.fuzzyMatch("Firefox", "fir"), { score: 8, skipped: 0 })
