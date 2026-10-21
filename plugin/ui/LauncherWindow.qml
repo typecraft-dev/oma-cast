@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
@@ -20,6 +21,24 @@ OverlayWindow {
   signal dismissRequested()
 
   WlrLayershell.namespace: "oma-cast"
+
+  // Hyprland fades layer surfaces in and out, and keeps drawing one for about
+  // 150 ms after it unmaps, so a screenshot started from the launcher (Omasnap,
+  // Capture > Screenshot) caught it half faded. Omarchy turns the animation
+  // off for its own overlays (default/hypr/apps/omarchy-shell.lua); add the
+  // same rule for ours. A config reload drops runtime rules, so add it again
+  // after each one.
+  function applyLayerRule() {
+    Quickshell.execDetached(["hyprctl", "eval",
+      'hl.layer_rule({ name = "oma-cast", match = { namespace = "^oma-cast$" }, no_anim = true, animation = "none" })'])
+  }
+  Component.onCompleted: window.applyLayerRule()
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event && String(event.name) === "configreloaded") window.applyLayerRule()
+    }
+  }
 
   // ------------------------------------------------------------ settings
   readonly property var general: {

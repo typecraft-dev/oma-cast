@@ -122,6 +122,7 @@ Works:
   - Compact mode shows only the header until you type.
   - A launch from root clears the query [I].
   - A row is selected on hover only after a real pointer move (Omarchy's PointerMoveGate).
+  - No compositor fade, like Omarchy's own overlays. The plugin adds a Hyprland layer rule for the `oma-cast` namespace (`hyprctl eval`) on load and after each `configreloaded`. Without it the launcher fades out for about 150 ms after hiding, and a screenshot launched from it captures the fading launcher.
 - **Calculator** (`core/Calculator.js`, our own engine [D]; no `qalc`/fend dependency): a "Calculator" section above Results with Raycast's two-pane card (question → answer, captions below each). It handles:
   - arithmetic and functions
   - Soulver-style percentages (`$30 + 20%`, `20% off 50`, `50 as a % of 200`)
