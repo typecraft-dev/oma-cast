@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Io
 import qs.Commons
 import "ui"
 
@@ -108,7 +109,7 @@ Item {
     onPressed: root.toggle()
   }
 
-  ShellIpc {
+  IpcHandler {
     target: "oma-cast"
 
     function toggle(): string {
