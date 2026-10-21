@@ -16,6 +16,7 @@ Item {
   required property string glyph
   required property string glyphFont
   required property string iconName
+  required property string imagePath
   required property string typeLabel
   required property string alias
   required property bool checked
@@ -36,10 +37,12 @@ Item {
 
   readonly property bool isSection: row.rowKind === "section"
   readonly property bool isCalculator: row.rowKind === "calculator"
+  // Screenshot rows show a thumbnail in place of the icon, so they are taller. [D]
+  readonly property bool hasImage: row.imagePath.length > 0
   function px(v) { return Math.round(Style.space(v) * row.zoom) }
 
   width: ListView.view ? ListView.view.width : 0
-  height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(118) : px(42))
+  height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(118) : (row.hasImage ? px(58) : px(42)))
 
   // The inline calculator (ref 04 §1 Calculator): question on the left,
   // answer on the right, each with a caption, an arrow between them.
@@ -150,15 +153,26 @@ Item {
 
     Item {
       id: iconBox
-      width: row.px(22)
-      height: row.px(22)
+      width: row.hasImage ? row.px(72) : row.px(22)
+      height: row.hasImage ? row.px(44) : row.px(22)
       anchors.left: parent.left
       anchors.leftMargin: row.px(12)
       anchors.verticalCenter: parent.verticalCenter
 
       Image {
         anchors.fill: parent
-        visible: row.iconName.length > 0 && row.glyph.length === 0
+        visible: row.hasImage
+        fillMode: Image.PreserveAspectFit
+        asynchronous: true
+        cache: false                     // an edited screenshot keeps its path
+        sourceSize.width: width * Screen.devicePixelRatio
+        sourceSize.height: height * Screen.devicePixelRatio
+        source: row.hasImage ? "file://" + row.imagePath : ""
+      }
+
+      Image {
+        anchors.fill: parent
+        visible: !row.hasImage && row.iconName.length > 0 && row.glyph.length === 0
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         sourceSize.width: width * Screen.devicePixelRatio
@@ -168,7 +182,7 @@ Item {
 
       Text {
         anchors.centerIn: parent
-        visible: row.glyph.length > 0
+        visible: !row.hasImage && row.glyph.length > 0
         textFormat: Text.PlainText
         text: row.glyph
         color: row.selected ? row.look.accent : row.look.foreground

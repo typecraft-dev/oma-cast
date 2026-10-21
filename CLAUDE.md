@@ -132,8 +132,10 @@ Works:
   - bases (`255 to hex`)
 
   ↵ copies the answer (HUD), Ctrl+↵ pastes it through `omarchy-clipboard-paste-text`, Ctrl+Shift+C copies "question = answer". Each one saves to **Calculator History** (`db/calculator.json`, 4096 rows / 90 days): a built-in command and pushed view, searchable, Ctrl+D deletes an entry, Ctrl+Shift+D deletes all. RPC: `calculator.calculate|historyGetAll|historyDelete|historyDeleteAll|refreshCurrencies|getCurrencies`. A bare number, word or quantity (`42`, `firefox`, `5 kg`) never produces a row, because the section takes ↵.
+- **Clipboard History** (opens Omarchy's `omarchy.clipboard`) and **Take Screenshot** (`omarchy-capture-screenshot`, after our window has gone) as built-ins [D].
+- **Screenshots** (`services/ScreenshotSource.qml`, `RootSearch.screenshotSections`) [D]: the files in `$OMARCHY_SCREENSHOT_DIR` (else `~/Pictures`) with thumbnails, newest first, split into Today and Earlier. Each row says its type, size, and whether it's a copy made by Omarchy's Transcode (`-high`/`-medium`/`-low`). ↵ edits with `$OMARCHY_SCREENSHOT_EDITOR` (else `tensaku-edit`), Ctrl+↵ opens it with `xdg-open`, Ctrl+Shift+↵ converts it through `omarchy-transcode`, and Ctrl+C (also Omarchy's Super+C universal copy, which sends Ctrl+C or Ctrl+Insert) copies the image. Ctrl+K also has Copy File Path and Show in Files. Optional: an editor that keeps versions in `<dir>/.edits/<name>/` (`original.png`, `edit-<date>.png`) and takes `--from <version> <file>` gets Show All Versions and Edit from Original; with no `.edits` folder those actions don't appear.
 - **Latency:** show → mapped in 37–44 ms, hide in 9–25 ms (`tests/smoke.sh`).
-- **Tests:** 77 unit tests (`node --test tests/`).
+- **Tests:** 81 unit tests (`node --test tests/`).
 
 Stubbed / not yet:
 - Keystroke buffering before the surface maps. Keys sent within ~40 ms of the hotkey go to the window underneath.

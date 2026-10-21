@@ -134,3 +134,47 @@ test("favourite reordering", () => {
 test("fallback URLs encode the query", () => {
   assert.equal(RS.fallbackUrl(RS.FALLBACKS[0], " a&b c "), "https://www.google.com/search?q=a%26b%20c")
 })
+
+// Screenshots view (local addition).
+const shots = [
+  { path: "/s/screenshot-2026-10-19_09-05-07.png", name: "screenshot-2026-10-19_09-05-07.png", modifiedMs: NOW - 3600e3, versions: [
+    { path: "/s/.edits/screenshot-2026-10-19_09-05-07/original.png", name: "original.png", modifiedMs: NOW - 7200e3 },
+    { path: "/s/.edits/screenshot-2026-10-19_09-05-07/edit-2026-10-19_10-00-00.png", name: "edit-2026-10-19_10-00-00.png", modifiedMs: NOW - 3600e3 },
+    { path: "/s/.edits/screenshot-2026-10-19_09-05-07/edit-2026-10-19_10-00-00-2.png", name: "edit-2026-10-19_10-00-00-2.png", modifiedMs: NOW - 3600e3 }
+  ] },
+  { path: "/s/old.png", name: "old.png", modifiedMs: NOW - 5 * 86400e3, versions: [] }
+]
+
+test("screenshots: today and earlier, readable titles, edit count", () => {
+  const sections = RS.screenshotSections(shots, "", NOW)
+  assert.deepEqual(sections.map((s) => s.title), ["Today", "Earlier"])
+  const first = sections[0].rows[0].candidate
+  assert.equal(first.title, "2026-10-19 09:05:07")
+  assert.equal(first.subtitle, "PNG · 2 edits")
+  assert.equal(first.hasVersions, true)
+  assert.equal(first.imagePath, "/s/screenshot-2026-10-19_09-05-07.png")
+  assert.equal(sections[1].rows[0].candidate.title, "old")
+  assert.equal(RS.screenshotSections(shots, "OLD", NOW).length, 1)
+})
+
+test("screenshots: versions newest first, original last", () => {
+  const rows = RS.versionSections(shots[0], NOW)[0].rows.map((r) => r.candidate)
+  assert.deepEqual(rows.map((c) => c.title), ["Latest edit", "Edit", "Original"])
+  assert.equal(rows[0].subtitle, "2026-10-19 10:00:00")
+  assert.equal(rows[0].id, "screenshot-version:screenshot-2026-10-19_09-05-07.png/edit-2026-10-19_10-00-00-2.png")
+  assert.deepEqual(RS.versionSections(shots[1], NOW), [])
+})
+
+test("screenshots: actions", () => {
+  assert.deepEqual(RS.actionsFor({ kind: "screenshot", hasVersions: false }).map((a) => a.id), ["edit-screenshot", "view-screenshot", "convert", "copy-image", "copy-path", "show-in-files"])
+  assert.ok(RS.actionsFor({ kind: "screenshot", hasVersions: true }).some((a) => a.id === "edit-original"))
+  assert.equal(RS.actionsFor({ kind: "screenshot-version" })[0].id, "edit-version")
+})
+
+test("screenshots: a converted copy says what it is", () => {
+  const c = RS.screenshotCandidate({ path: "/s/x", name: "screenshot-2026-10-21_19-38-52-medium.jpg", modifiedMs: NOW, bytes: 377382, versions: [] }, NOW)
+  assert.equal(c.title, "2026-10-21 19:38:52")
+  assert.equal(c.subtitle, "JPG · medium-size copy · 377 KB")
+  const o = RS.screenshotCandidate({ path: "/s/y", name: "screenshot-2026-10-21_19-38-52.png", modifiedMs: NOW, bytes: 1725209, versions: [] }, NOW)
+  assert.equal(o.subtitle, "PNG · 1.7 MB")
+})

@@ -44,6 +44,8 @@ Item {
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
+  // Bumped when the screenshot folder has been listed again.
+  readonly property int screenshotsRevision: shotSource.revision
 
   signal notification(string method, var data)
 
@@ -184,6 +186,61 @@ Item {
     return null
   }
 
+  // ----------------------------------------------------------- screenshots
+
+  function screenshot(name) {
+    var shots = shotSource.shots
+    for (var i = 0; i < shots.length; i++) if (shots[i].name === name) return shots[i]
+    return null
+  }
+
+  // An action on a Screenshots row or one of its versions. [D]
+  // The editor is Omarchy's (OMARCHY_SCREENSHOT_EDITOR, else tensaku-edit);
+  // "--from <version>" is understood by editors that keep versions.
+  function screenshotAction(action, id) {
+    var version = id.indexOf("screenshot-version:") === 0
+    var rest = id.slice(version ? "screenshot-version:".length : "screenshot:".length)
+    var name = version ? rest.slice(0, rest.indexOf("/")) : rest
+    var shot = backend.screenshot(name)
+    if (!shot) throw new Error("Screenshot " + name + " is gone")
+    // A version lives in <folder>/.edits/<screenshot name without extension>/.
+    var file = !version ? shot.path
+      : shotSource.folder + "/.edits/" + name.replace(/\.[^.]+$/, "") + rest.slice(rest.indexOf("/"))
+    var editor = shotSource.editor
+    if (action === "open") action = version ? "edit-version" : "edit-screenshot"
+    switch (action) {
+      case "edit-screenshot":
+        Util.execArgv(["uwsm-app", "--", editor, shot.path])
+        return { close: true }
+      case "edit-original":
+        Util.execArgv(["uwsm-app", "--", editor, "--from", shot.versions[0].path, shot.path])
+        return { close: true }
+      case "edit-version":
+        Util.execArgv(["uwsm-app", "--", editor, "--from", file, shot.path])
+        return { close: true }
+      case "view-screenshot":
+        Util.execArgv(["uwsm-app", "--", "xdg-open", file])
+        return { close: true }
+      // Omarchy's Transcode asks JPG or PNG and a size, saves the result next
+      // to the screenshot and copies it. After our window has gone. [D]
+      case "convert":
+        Util.execArgv(["sh", "-c", 'sleep 0.25; exec omarchy-transcode "$1"', "sh", file])
+        return { close: true }
+      case "copy-image":
+        Util.execArgv(["sh", "-c", 'wl-copy --type image/png < "$1"', "sh", file])
+        return { close: true, hud: "Copied Image" }
+      case "copy-path":
+        Util.execArgv(["wl-copy", "--", file])
+        return { close: true, hud: "Copied to Clipboard" }
+      case "show-versions":
+        return { push: { kind: "screenshot-versions", title: "Versions", name: shot.name } }
+      case "show-in-files":
+        Util.execArgv(["uwsm-app", "--", "nautilus", "--select", file])
+        return { close: true }
+    }
+    throw new Error("Unknown action " + action)
+  }
+
   // ------------------------------------------------------------- execution
 
   // The shell lets a third-party plugin summon only itself in-process, so
@@ -260,6 +317,8 @@ Item {
         case "builtin":
           backend.recordVisit(id, query)
           if (candidate.run.push) return { push: candidate.run.push }
+          // [D] After our window has gone, so a screen capture doesn't catch it.
+          if (candidate.run.shell) Util.execDetached("sleep 0.25; " + candidate.run.shell)
           if (candidate.run.summon) backend.summonPlugin(candidate.run.summon, candidate.run.payload || "{}")
           return { close: true }
         case "fallback":
@@ -391,6 +450,8 @@ Item {
         var sections
         if (view && view.kind === "menu") sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
+        else if (view && view.kind === "screenshots") sections = RootSearch.screenshotSections(shotSource.shots, query, ctx.nowMs)
+        else if (view && view.kind === "screenshot-versions") sections = RootSearch.versionSections(backend.screenshot(view.name), ctx.nowMs)
         else {
           if (query.trim()) ctx.calculation = backend.calculate(query)
           sections = RootSearch.rootSections(backend.candidates, query, ctx, backend.deps)
@@ -403,6 +464,11 @@ Item {
         var rowId = String(data && data.id || "")
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
+        if (rowId.indexOf("screenshot-version:") === 0) return RootSearch.actionsFor({ kind: "screenshot-version" })
+        if (rowId.indexOf("screenshot:") === 0) {
+          var shot = backend.screenshot(rowId.slice("screenshot:".length))
+          return RootSearch.actionsFor({ kind: "screenshot", hasVersions: !!shot && shot.versions.length > 0 })
+        }
         var candidate = backend.decorated(rowId)
         if (!candidate) {
           var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === data.id })[0]
@@ -429,6 +495,7 @@ Item {
           if (!entry) throw new Error("No such history entry")
           return backend.calculatorAction(String(data.action || "open"), entry, entry.id)
         }
+        if (data && /^screenshot(-version)?:/.test(String(data.id))) return backend.screenshotAction(String(data.action || "open"), String(data.id))
         return backend.performAction(data)
       },
       getSearchHistory: function() { return frecencyStore.loaded ? frecencyStore.doc.searchHistory : [] }
@@ -492,6 +559,7 @@ Item {
     if (method === "window.visibilityChanged" && data && data.visible) {
       menuSource.refresh()
       calculatorData.refresh()
+      shotSource.refresh()
     }
   }
 
@@ -534,6 +602,11 @@ Item {
     path: backend.paths.db + "/" + Schema.documents.calculator.file
     migrations: Schema.documents.calculator.migrations
     onMessage: function(level, text, metadata) { backend.log(level, "store", text, metadata) }
+  }
+
+  ScreenshotSource {
+    id: shotSource
+    onMessage: function(level, text, metadata) { backend.log(level, "screenshots", text, metadata) }
   }
 
   CalculatorData {

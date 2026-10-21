@@ -55,6 +55,8 @@ OverlayWindow {
   readonly property string placeholder: window.view.kind === "alias" ? "Type an alias, then press ↵"
     : window.view.kind === "menu" ? "Search " + window.view.title + "…"
     : window.view.kind === "calculator-history" ? "Search calculations…"
+    : window.view.kind === "screenshots" ? "Search screenshots…"
+    : window.view.kind === "screenshot-versions" ? window.view.name
     : "Search for apps and commands…"
 
   readonly property int cardWidth: Math.min(px(750), width - Style.gapsOut * 2)
@@ -156,6 +158,7 @@ OverlayWindow {
       glyph: String(c.glyph || ""),
       glyphFont: String(c.glyphFont || ""),
       iconName: String(c.iconName || ""),
+      imagePath: String(c.imagePath || ""),
       typeLabel: String(c.typeLabel || ""),
       alias: String(c.alias || ""),
       checked: !!c.checked,
@@ -383,7 +386,11 @@ OverlayWindow {
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer"]); return true }
+      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-image"]); return true }
+      // [D] Screenshots: Ctrl+C copies the image, and so does Omarchy's universal
+      // copy (Super+C), which sends Ctrl+C, or Ctrl+Insert when a terminal is the
+      // active window underneath us.
+      if (ctrl && !shift && (key === Qt.Key_C || key === Qt.Key_Insert) && window.performIfOffered(["copy-image"])) return true
       if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries"]); return true }
       if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry"]); return true }
       if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }
@@ -412,6 +419,8 @@ OverlayWindow {
     function onCandidatesRevisionChanged() { if (window.shown && !window.actionPanelOpen) window.rebuild(false) }
     // Exchange rates or zone offsets arrived: re-evaluate a calculation on screen.
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
+    // The screenshot folder was listed again.
+    function onScreenshotsRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.view.kind.indexOf("screenshot") === 0) window.rebuild(false) }
   }
 
   // ================================================================== UI
@@ -594,6 +603,7 @@ OverlayWindow {
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? window.view.title
             : window.view.kind === "calculator-history" && !window.query ? "No Calculations Yet"
+            : window.view.kind === "screenshots" && !window.query ? "No Screenshots Yet"
             : (window.backend.ready ? "No results" : "Loading…")
           color: window.look.foreground
           font.family: window.look.fontFamily
