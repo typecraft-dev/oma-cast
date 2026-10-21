@@ -29,6 +29,33 @@ var BUILTINS = [
     keywords: ["calculator", "calc", "math", "history", "conversions"],
     run: { push: { kind: "calculator-history", title: "Calculator History" } },
     rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:clipboard-history",
+    title: "Clipboard History",
+    subtitle: "Omarchy",
+    glyph: "\uf0ea",                     // nf-fa-paste
+    keywords: ["clipboard", "paste", "copied", "history"],
+    run: { summon: "omarchy.clipboard" },
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:take-screenshot",
+    title: "Take Screenshot",
+    subtitle: "Capture",
+    glyph: "\uf030",                     // nf-fa-camera
+    keywords: ["screenshot", "capture", "snip", "grab", "screen"],
+    run: { shell: "omarchy-capture-screenshot" },
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:screenshots",
+    title: "Screenshots",
+    subtitle: "Browse and edit again",
+    glyph: "\uf03e",                     // nf-fa-image
+    keywords: ["screenshots", "images", "edit", "annotate", "pictures"],
+    run: { push: { kind: "screenshots", title: "Screenshots" } },
+    rootSearch: { when: "always" }
   }
 ]
 
@@ -206,6 +233,71 @@ function historySections(history, query, nowMs, filter) {
   return out
 }
 
+// Screenshots view [D]: one row per screenshot in Omarchy's screenshot
+// folder, newest first, with its thumbnail. shots: ScreenshotSource.shots.
+// Decimal units, as Files shows them.
+function fileSize(bytes) {
+  if (!(bytes > 0)) return ""
+  if (bytes < 1e6) return Math.max(1, Math.round(bytes / 1e3)) + " KB"
+  return (Math.round(bytes / 1e5) / 10) + " MB"
+}
+
+// "screenshot-2026-10-21_19-38-52-medium.jpg" (Omarchy's name, plus the size
+// word Transcode adds to a converted copy) -> title "2026-10-21 19:38:52",
+// details ["JPG", "medium-size copy"]. Other names are shown as they are.
+function describeShot(name) {
+  var dot = name.lastIndexOf(".")
+  var stem = dot > 0 ? name.slice(0, dot) : name
+  var details = dot > 0 ? [name.slice(dot + 1).toUpperCase()] : []
+  var m = /^screenshot-(\d{4}-\d\d-\d\d)_(\d\d)-(\d\d)-(\d\d)(?:-(.+))?$/.exec(stem)
+  if (!m) return { title: stem, details: details }
+  if (m[5]) details.push(/^(high|medium|low)$/.test(m[5]) ? m[5] + "-size copy" : m[5])
+  return { title: m[1] + " " + m[2] + ":" + m[3] + ":" + m[4], details: details }
+}
+
+function screenshotCandidate(shot, nowMs) {
+  var edits = shot.versions.length > 1 ? shot.versions.length - 1 : 0
+  var about = describeShot(shot.name)
+  var details = about.details.concat([fileSize(shot.bytes)])
+  if (edits) details.push(edits === 1 ? "1 edit" : edits + " edits")
+  return {
+    id: "screenshot:" + shot.name, type: "command", kind: "screenshot",
+    title: about.title,
+    subtitle: details.filter(function(d) { return d }).join(" · "),
+    typeLabel: relativeTime(shot.modifiedMs, nowMs),
+    imagePath: shot.path, path: shot.name, hasVersions: shot.versions.length > 0, rootSearch: { when: "always" }
+  }
+}
+
+function screenshotSections(shots, query, nowMs) {
+  var q = String(query || "").trim().toLowerCase()
+  var list = shots.filter(function(s) { return !q || s.name.toLowerCase().indexOf(q) >= 0 })
+  if (list.length === 0) return []
+  var midnight = new Date(nowMs); midnight.setHours(0, 0, 0, 0)
+  var todays = [], older = []
+  for (var i = 0; i < list.length; i++) (list[i].modifiedMs >= midnight.getTime() ? todays : older).push({ candidate: screenshotCandidate(list[i], nowMs), record: null })
+  var out = []
+  if (todays.length) out.push({ id: "shots-today", title: "Today", rows: todays })
+  if (older.length) out.push({ id: "shots-older", title: "Earlier", rows: older })
+  return out
+}
+
+// One screenshot's saved versions: the original, then each edit, newest first.
+function versionSections(shot, nowMs) {
+  if (!shot || shot.versions.length === 0) return []
+  var rows = shot.versions.slice().reverse().map(function(v, i) {
+    var original = v.name === "original.png"
+    return { candidate: {
+      id: "screenshot-version:" + shot.name + "/" + v.name, type: "command", kind: "screenshot-version",
+      title: original ? "Original" : (i === 0 ? "Latest edit" : "Edit"),
+      subtitle: [original ? "Before any edits" : v.name.replace(/^edit-/, "").replace(/(-\d)?\.png$/, "").replace("_", " ").replace(/-(\d\d)-(\d\d)$/, ":$1:$2"), fileSize(v.bytes)].filter(function(d) { return d }).join(" · "),
+      typeLabel: relativeTime(v.modifiedMs, nowMs),
+      imagePath: v.path, path: shot.name, versionPath: v.path, rootSearch: { when: "always" }
+    }, record: null }
+  })
+  return [{ id: "versions", title: shot.name, rows: rows }]
+}
+
 // Sections for the root view (SPEC §7.2):
 //   empty query: Favorites, Suggestions, Commands, Applications
 //   query:       Calculator, Results, Use "<q>" with…
@@ -288,6 +380,28 @@ function actionsFor(candidate) {
     }
     return calc
   }
+  if (candidate.kind === "screenshot") {
+    var shot = [
+      { id: "edit-screenshot", title: "Edit", shortcut: "↵", section: "primary", icon: "" },
+      { id: "view-screenshot", title: "Open in Image Viewer", shortcut: "Ctrl ↵", section: "primary", icon: "" },
+      { id: "convert", title: "Convert to JPG or PNG…", shortcut: "Ctrl Shift ↵", section: "primary", icon: "" },
+      { id: "copy-image", title: "Copy Image", shortcut: "Super C", section: "copy", icon: "" },
+      { id: "copy-path", title: "Copy File Path", shortcut: "", section: "copy", icon: "" }
+    ]
+    if (candidate.hasVersions) {
+      shot.push({ id: "show-versions", title: "Show All Versions", shortcut: "", section: "configure", icon: "" })
+      shot.push({ id: "edit-original", title: "Edit from Original", shortcut: "", section: "configure", icon: "" })
+    }
+    shot.push({ id: "show-in-files", title: "Show in Files", shortcut: "", section: "configure", icon: "" })
+    return shot
+  }
+  if (candidate.kind === "screenshot-version") {
+    return [
+      { id: "edit-version", title: "Edit from This Version", shortcut: "↵", section: "primary", icon: "" },
+      { id: "view-screenshot", title: "Open in Image Viewer", shortcut: "Ctrl ↵", section: "primary", icon: "" },
+      { id: "copy-image", title: "Copy Image", shortcut: "Super C", section: "copy", icon: "" }
+    ]
+  }
   var primary
   var list = []
   switch (candidate.kind) {
@@ -357,6 +471,9 @@ if (typeof module !== "undefined") {
     calculatorCandidate: calculatorCandidate,
     historyCandidate: historyCandidate,
     historySections: historySections,
+    screenshotCandidate: screenshotCandidate,
+    screenshotSections: screenshotSections,
+    versionSections: versionSections,
     decorate: decorate,
     rootSections: rootSections,
     submenuSections: submenuSections,
