@@ -1,8 +1,8 @@
 #!/bin/bash
 # oma-cast: control the oma-cast launcher plugin running inside omarchy-shell.
 #
-# Runtime calls go through omarchy-shell, which answers over the shell's own
-# socket (~5 ms). The launcher hotkey does not use this script at all: it is a
+# Runtime calls go through omarchy-shell, which runs `qs ipc`
+# (~100 ms per call since Omarchy 4.0.4). The launcher hotkey does not use this script at all: it is a
 # Hyprland global shortcut, oma-cast:toggle, that the plugin registers.
 
 set -uo pipefail
@@ -166,7 +166,6 @@ cmd_doctor() {
   echo "oma-cast doctor"
   check "omarchy-shell is installed" command -v omarchy-shell
   check "omarchy-shell is running" omarchy-shell shell ping
-  check "socat is installed (fast shell IPC)" command -v socat
   check "Hyprland socket is reachable" hyprctl version
   check "plugin is linked into $plugins_dir" test -n "$(current_link)"
   check "plugin is enabled" bash -c "omarchy plugin list --json 2>/dev/null | grep -q '\"id\":\"$PLUGIN_ID\"[^}]*\"enabled\":true'"

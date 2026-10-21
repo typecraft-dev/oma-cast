@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Io
 import qs.Commons
 import "ui"
 
@@ -108,7 +109,7 @@ Item {
     onPressed: root.toggle()
   }
 
-  ShellIpc {
+  IpcHandler {
     target: "oma-cast"
 
     function toggle(): string {
@@ -132,6 +133,12 @@ Item {
 
     function ping(): string {
       return "ok"
+    }
+
+    // Wall-clock ms of the first frame drawn after the last show or hide;
+    // tests/smoke.sh times the hotkey path with it.
+    function lastFrameAt(): string {
+      return String(launcher.lastFrameAt)
     }
 
     // Ids as rootSearch.search reports them: app:<desktop-id>,

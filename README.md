@@ -47,7 +47,7 @@ There's no theme config. oma-cast binds to Omarchy's own colours, so it changes 
 
 ## Install
 
-Requires Omarchy 4 (Hyprland 0.56+, `omarchy-shell`) and `socat`, which Omarchy already ships.
+Requires Omarchy 4 (Hyprland 0.56+, `omarchy-shell`).
 
 ```sh
 git clone https://github.com/typecraft-dev/oma-cast.git
@@ -102,7 +102,7 @@ The full plan is in [`SPEC.md`](SPEC.md).
 ## Development
 
 ```sh
-node --test tests/        # unit tests, no npm install needed
+node --test tests/*.test.js        # unit tests, no npm install needed
 tests/smoke.sh            # live checks against the running shell
 oma-cast dev          # reload on every save
 ```

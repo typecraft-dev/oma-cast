@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
@@ -11,8 +12,81 @@ import qs.Ui
 //
 // Views form a navigation stack: root search, a pushed Omarchy submenu, or
 // the alias editor. Each view keeps its own query.
-OverlayWindow {
+//
+// The surface is mapped once and kept. Mapping a fresh one (what Omarchy's
+// menu does on every open) makes Quickshell build a new backing window and
+// scene graph, about 150 ms before the first frame. Hidden, it is a 1×1
+// transparent surface with an empty input region and no keyboard focus;
+// shown, it spans the focused monitor with exclusive keyboard focus, like
+// Omarchy's own menu.
+PanelWindow {
   id: window
+
+  property bool shown: false
+  // What the surface shows. It lags `shown` only while the surface is being
+  // recreated on another monitor (see followFocusedMonitor).
+  readonly property bool presented: window.shown && !window.relocating
+  property bool relocating: false
+  visible: true
+  screen: window.targetScreen
+  anchors { top: true; left: true; bottom: window.presented; right: window.presented }
+  implicitWidth: 1
+  implicitHeight: 1
+  mask: window.presented ? null : noInput
+  color: "transparent"
+  WlrLayershell.layer: WlrLayer.Overlay
+  WlrLayershell.keyboardFocus: window.presented ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+  exclusionMode: ExclusionMode.Ignore
+
+  Region { id: noInput }
+
+  // The monitor to open on: Hyprland's focused one. Moving the surface to
+  // another monitor recreates it (the slow path), so the hidden surface
+  // follows monitor focus in the background and is already in place when
+  // the launcher opens. Returns true when it had to move.
+  property var targetScreen: null
+  function followFocusedMonitor() {
+    var monitor = Hyprland.focusedMonitor
+    if (!monitor) return false
+    for (var i = 0; i < Quickshell.screens.length; i++) {
+      var candidate = Quickshell.screens[i]
+      if (candidate.name === monitor.name) {
+        if (window.targetScreen === candidate) return false
+        window.targetScreen = candidate
+        return true
+      }
+    }
+    return false
+  }
+
+  Connections {
+    target: Hyprland
+    function onFocusedMonitorChanged() { if (!window.shown) window.followFocusedMonitor() }
+  }
+  Component.onCompleted: window.followFocusedMonitor()
+
+  // Opening while the surface moves: growing it before the new surface has
+  // drawn its first frame left it 1×1, so present only after that frame.
+  // The same frame signal times show/hide for `oma-cast` diagnostics.
+  property double lastFrameAt: 0     // ms epoch of the first frame after the last show/hide
+  property bool awaitingFrame: false
+  onPresentedChanged: window.awaitingFrame = true
+  Item {
+    id: surfaceProbe
+    property var backing: Window.window
+    Connections {
+      target: surfaceProbe.backing
+      function onFrameSwapped() {
+        if (window.relocating) window.relocating = false
+        else if (window.awaitingFrame) { window.awaitingFrame = false; window.lastFrameAt = Date.now() }
+      }
+    }
+  }
+  Timer {
+    id: relocateTimeout
+    interval: 500 // [D] safety net if that frame never comes
+    onTriggered: window.relocating = false
+  }
 
   required property var backend
   property var appLibrary: null
@@ -61,6 +135,9 @@ OverlayWindow {
   readonly property int footerHeight: px(42)
 
   ListModel { id: rows }
+  // Plain copy of `rows`, one rowData() object per row. Reading it is much
+  // cheaper than rows.get(), and syncRows() diffs against it.
+  property var rowMirror: []
 
   PointerMoveGate {
     id: pointerGate
@@ -69,8 +146,12 @@ OverlayWindow {
 
   // ----------------------------------------------------------- lifecycle
 
-  // Called on every open, before the surface maps.
+  // Called on every open, before the surface grows to the monitor.
   function prepare(payload) {
+    if (window.followFocusedMonitor()) {
+      window.relocating = true
+      relocateTimeout.restart()
+    }
     popTimer.stop()
     if (typeof payload.query === "string") window.query = payload.query
     window.actionPanelOpen = false
@@ -82,6 +163,7 @@ OverlayWindow {
   // The shell hid us: start the pop-to-root clock (SPEC §5.1).
   onShownChanged: {
     if (window.shown) return
+    window.followFocusedMonitor() // focus may have moved monitors while open
     window.actionPanelOpen = false
     var seconds = Number(window.general.popToRootTimeout)
     if (!(seconds > 0)) window.popToRoot()
@@ -124,25 +206,44 @@ OverlayWindow {
   function rebuild(resetSelection) {
     pointerGate.reset()
     var keepId = !resetSelection && window.selectedRow ? window.selectedRow.itemId : ""
-    rows.clear()
-    if (window.view.kind === "alias") { window.select(-1); return }
+    if (window.view.kind === "alias") { window.syncRows([]); window.select(-1); return }
     var result = window.backend.callSync("rootSearch.search", { query: window.query, view: window.view })
     if (!result.ok) {
+      window.syncRows([])
       window.showToast("failure", result.error)
       window.select(-1)
       return
     }
+    var next = []
     var keepIndex = -1
     for (var s = 0; s < result.data.length; s++) {
       var section = result.data[s]
-      if (section.title || s > 0) rows.append(window.rowData({ id: "section:" + section.id, title: section.title }, "section"))
+      if (section.title || s > 0) next.push(window.rowData({ id: "section:" + section.id, title: section.title }, "section"))
       for (var r = 0; r < section.rows.length; r++) {
         var c = section.rows[r]
-        if (c.id === keepId) keepIndex = rows.count
-        rows.append(window.rowData(c, "item"))
+        if (c.id === keepId) keepIndex = next.length
+        next.push(window.rowData(c, "item"))
       }
     }
+    window.syncRows(next)
     window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1))
+  }
+
+  // Update `rows` in place: rows that did not change keep their delegates,
+  // so a keystroke re-lays out only the rows whose text changed instead of
+  // recreating every visible row.
+  function syncRows(next) {
+    var old = window.rowMirror
+    var common = Math.min(old.length, next.length)
+    for (var i = 0; i < common; i++) if (!window.sameRow(old[i], next[i])) rows.set(i, next[i])
+    if (old.length > next.length) rows.remove(next.length, old.length - next.length)
+    else if (next.length > old.length) rows.append(next.slice(old.length))
+    window.rowMirror = next
+  }
+
+  function sameRow(a, b) {
+    for (var key in b) if (a[key] !== b[key]) return false
+    return true
   }
 
   function rowData(c, kind) {
@@ -164,13 +265,13 @@ OverlayWindow {
 
   function nextSelectable(from, direction) {
     for (var i = from + direction; i >= 0 && i < rows.count; i += direction)
-      if (rows.get(i).rowKind === "item") return i
+      if (window.rowMirror[i].rowKind === "item") return i
     return -1
   }
 
   function select(index) {
     window.selectedIndex = index
-    window.selectedRow = index >= 0 && index < rows.count ? rows.get(index) : null
+    window.selectedRow = index >= 0 && index < window.rowMirror.length ? window.rowMirror[index] : null
     if (index >= 0) list.positionViewAtIndex(index, ListView.Contain)
     if (index === window.nextSelectable(-1, 1)) list.positionViewAtBeginning()
   }
@@ -191,9 +292,9 @@ OverlayWindow {
   function jumpSection(direction) {
     var i = window.selectedIndex
     for (i += direction; i >= 0 && i < rows.count; i += direction)
-      if (rows.get(i).rowKind === "section") break
+      if (window.rowMirror[i].rowKind === "section") break
     if (direction < 0) {
-      for (i -= 1; i >= 0; i--) if (rows.get(i).rowKind === "section") break
+      for (i -= 1; i >= 0; i--) if (window.rowMirror[i].rowKind === "section") break
     }
     var first = window.nextSelectable(Math.max(-1, i), 1)
     if (first >= 0) window.select(first)
@@ -202,7 +303,7 @@ OverlayWindow {
   function nthItem(n) {
     var seen = 0
     for (var i = 0; i < rows.count; i++) {
-      if (rows.get(i).rowKind !== "item") continue
+      if (window.rowMirror[i].rowKind !== "item") continue
       if (++seen === n) return i
     }
     return -1
@@ -409,6 +510,7 @@ OverlayWindow {
 
   BorderSurface {
     id: card
+    visible: window.presented
     width: window.cardWidth
     height: window.compact ? window.headerHeight + card.borderTop + card.borderBottom : window.fullHeight
     radius: Math.max(Style.cornerRadius, window.px(8))

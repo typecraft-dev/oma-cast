@@ -36,17 +36,69 @@ function isSeparator(ch) {
   return ch !== "" && SEPARATORS.indexOf(ch) !== -1
 }
 
+// isSeparator by char code: \t \n space - . / ( ) [ ]
+function isSeparatorCode(code) {
+  switch (code) {
+    case 9: case 10: case 32: case 45: case 46: case 47: case 40: case 41: case 91: case 93: return true
+    default: return false
+  }
+}
+
 // ---------------------------------------------------------- normalisation
+
+// Per-string memo for normalize/transliterate. Candidate strings repeat on
+// every keystroke, and recomputing them was most of the search time. [D]
+// Plain prototype-less objects: Qt's JS engine looks string keys up there
+// several times faster than in a Map.
+var MEMO_LIMIT = 20000
+
+function newMemo() {
+  return { table: Object.create(null), size: 0 }
+}
+
+function memoGet(memo, key) {
+  return memo.table[key]
+}
+
+function memoSet(memo, key, value) {
+  if (memo.size >= MEMO_LIMIT) { memo.table = Object.create(null); memo.size = 0 }
+  if (memo.table[key] === undefined) memo.size++
+  memo.table[key] = value
+}
+
+var normalizeMemo = newMemo()
+var translitMemo = newMemo()
+
+function isLowerOrDigit(code) {
+  return (code >= 97 && code <= 122) || (code >= 48 && code <= 57)
+}
 
 // {normalizedText, wordBoundaries}: boundaries[n] is true when char n-1 is
 // [a-z0-9] and char n is [A-Z] (camelCase), from the original casing.
+// The result is shared through the memo; callers must not mutate it.
 function normalize(s) {
   var text = String(s === undefined || s === null ? "" : s)
-  var boundaries = []
+  var hit = memoGet(normalizeMemo, text)
+  if (hit) return hit
+  var boundaries = new Array(text.length)
   for (var i = 0; i < text.length; i++) {
-    boundaries.push(i > 0 && /[a-z0-9]/.test(text.charAt(i - 1)) && /[A-Z]/.test(text.charAt(i)))
+    var code = text.charCodeAt(i)
+    boundaries[i] = i > 0 && code >= 65 && code <= 90 && isLowerOrDigit(text.charCodeAt(i - 1))
   }
-  return { normalizedText: text.toLowerCase(), wordBoundaries: boundaries }
+  var lower = text.toLowerCase()
+  // For the fuzzy matcher: separator flags and positions, and word starts
+  // (a camelCase boundary or the char after a separator).
+  var seps = new Array(lower.length)
+  var starts = new Array(lower.length)
+  var sepPositions = []
+  for (var j = 0; j < lower.length; j++) {
+    seps[j] = isSeparatorCode(lower.charCodeAt(j))
+    if (seps[j]) sepPositions.push(j)
+    starts[j] = !!boundaries[j] || (j > 0 && seps[j - 1])
+  }
+  var out = { normalizedText: lower, wordBoundaries: boundaries, seps: seps, starts: starts, sepPositions: sepPositions }
+  memoSet(normalizeMemo, text, out)
+  return out
 }
 
 var TRANSLIT = {
@@ -59,12 +111,19 @@ var TRANSLIT = {
 // diacritic folds; the multi-char map entries may lengthen it.
 function transliterate(s) {
   var text = String(s === undefined || s === null ? "" : s)
-  if (typeof text.normalize === "function") text = text.normalize("NFD").replace(/[̀-ͯ]/g, "")
-  var out = ""
-  for (var i = 0; i < text.length; i++) {
-    var ch = text.charAt(i)
-    out += TRANSLIT[ch] !== undefined ? TRANSLIT[ch] : ch
+  var hit = memoGet(translitMemo, text)
+  if (hit !== undefined) return hit
+  var out = text
+  // Plain ASCII has nothing to fold.
+  if (/[^\x00-\x7f]/.test(text)) {
+    if (typeof text.normalize === "function") text = text.normalize("NFD").replace(/[̀-ͯ]/g, "")
+    out = ""
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i)
+      out += TRANSLIT[ch] !== undefined ? TRANSLIT[ch] : ch
+    }
   }
+  memoSet(translitMemo, text, out)
   return out
 }
 
@@ -72,91 +131,129 @@ function transliterate(s) {
 
 // af(target, query, {literalQueryDots}) → "exact" | "unmatched" | {score, skipped}.
 function fuzzyMatch(target, query, options) {
+  return matchNormalized(normalize(target), query, options)
+}
+
+// fuzzyMatch on an already normalized target. Works on char codes with two
+// reused score rows; the scores are the same as the cell-by-cell
+// description in ref 02 §4.3.
+function matchNormalized(tn, query, options) {
   var literalDots = !!(options && options.literalQueryDots)
-  var tn = normalize(target)
   var t = tn.normalizedText
   var bounds = tn.wordBoundaries
   var q = String(query === undefined || query === null ? "" : query).toLowerCase()
 
-  function querySep(ch) {
-    if (literalDots && ch === ".") return false
-    return isSeparator(ch)
-  }
-
   if (q.length === 0) return "unmatched"  // [I] callers handle the empty query before matching
   if (t === q) return "exact"
 
+  var qSep = new Array(q.length)
   var sepCount = 0
-  for (var i = 0; i < q.length; i++) if (querySep(q.charAt(i))) sepCount++
+  for (var i = 0; i < q.length; i++) {
+    var code = q.charCodeAt(i)
+    qSep[i] = !(literalDots && code === 46) && isSeparatorCode(code)
+    if (qSep[i]) sepCount++
+  }
   var u = q.length - sepCount
   if (u > t.length) return "unmatched"
 
-  // Subsequence precheck.
-  if (u > 2) {
+  // One non-separator character: the DP is a single row whose best cell is
+  // 4 at position 0, else 3 at a word start, else 2.
+  if (q.length === 1 && sepCount === 0) {
+    var at = t.indexOf(q)
+    if (at < 0) return "unmatched"
+    if (at === 0) return { score: 4, skipped: 0 }
+    if (isSeparatorCode(q.charCodeAt(0))) return { score: 2, skipped: 0 } // a literal "."
+    for (; at >= 0; at = t.indexOf(q, at + 1)) {
+      if (bounds[at] || isSeparatorCode(t.charCodeAt(at - 1))) return { score: 3, skipped: 0 }
+    }
+    return { score: 2, skipped: 0 }
+  }
+
+  // Subsequence precheck. The DP below only matches query characters at
+  // increasing positions, so without query separators a failed subsequence
+  // test is always "unmatched"; running it for short queries too only skips
+  // work. [D] (Raycast runs it for u > 2.)
+  if (u > 2 || sepCount === 0) {
     var ti = 0
     for (var qi = 0; qi < q.length; qi++) {
-      var qc = q.charAt(qi)
-      if (querySep(qc)) {
+      if (qSep[qi]) {
         // [I] "skips one separator in the target if one is present": advance
         // past the next target separator when there is one, else ignore.
         for (var s = ti; s < t.length; s++) {
-          if (isSeparator(t.charAt(s))) { ti = s + 1; break }
+          if (isSeparatorCode(t.charCodeAt(s))) { ti = s + 1; break }
         }
         continue
       }
-      var found = t.indexOf(qc, ti)
+      var found = t.indexOf(q.charAt(qi), ti)
       if (found < 0) return "unmatched"
       ti = found + 1
     }
   }
 
+  // The DP, sparse: a row only has cells where the target character equals
+  // the query character (any separator, for a separator row), so each row
+  // walks those positions with indexOf instead of every column. Scores are
+  // the same as the dense table: a cell adds its char score to the best
+  // reachable cell of the previous matched row, adjacent (e-1) for free or
+  // further back for -1.
   var n = t.length
   var NEG = -Infinity
-  var prev = null
+  var seps = tn.seps
+  var starts = tn.starts
+  var sepPositions = tn.sepPositions
+  var prevPos = null, prevVal = null   // previous matched row: positions ascending, scores
   var d = -1
   var p = 0
   var skipped = 0
 
   for (var row = 0; row < q.length; row++) {
     var ch = q.charAt(row)
-    var chSep = querySep(ch)
-    var cur = []
-    for (var z = 0; z < n; z++) cur.push(NEG)
-    var firstCol = -1
+    var chSep = qSep[row]
     var end = Math.min(n, n - (u - 1 - p))
+    var curPos = [], curVal = []
+    var j = 0             // prev entries before j are folded into gapBest
+    var gapBest = NEG     // best previous cell at or before e-2
+    var sIdx = 0
+    var e
+    if (chSep) {
+      while (sIdx < sepPositions.length && sepPositions[sIdx] <= d) sIdx++
+      e = sIdx < sepPositions.length ? sepPositions[sIdx] : -1
+    } else {
+      e = t.indexOf(ch, d + 1)
+    }
 
-    for (var e = d + 1; e < end; e++) {
-      var tc = t.charAt(e)
-      var sepMatch = chSep && isSeparator(tc)
-      if (!(tc === ch || sepMatch)) continue
-
+    while (e >= 0 && e < end) {
       var cellScore
-      if (sepMatch) cellScore = 1
+      if (chSep) cellScore = 1
       else if (p === 0 && e === 0) cellScore = 4 // [I] "first row" = first row that matches (p == 0)
-      else {
-        var wordStart = bounds[e] || (e > 0 && isSeparator(t.charAt(e - 1)))
-        cellScore = (wordStart && !isSeparator(tc)) ? 3 : 2
-      }
+      else cellScore = (starts[e] && !seps[e]) ? 3 : 2
 
-      var cell = NEG
+      var cell
       if (p === 0) {
         cell = cellScore
       } else {
-        for (var r = d; r < e; r++) {
-          if (prev[r] === NEG) continue
-          var v = prev[r] + cellScore - (r === e - 1 ? 0 : 1)
-          if (v > cell) cell = v
+        while (j < prevPos.length && prevPos[j] <= e - 2) {
+          if (prevVal[j] > gapBest) gapBest = prevVal[j]
+          j++
         }
+        var adjacent = j < prevPos.length && prevPos[j] === e - 1 ? prevVal[j] + cellScore : NEG
+        var gapped = gapBest + cellScore - 1
+        cell = adjacent > gapped ? adjacent : gapped
       }
-      if (cell === NEG) continue
-      cur[e] = cell
-      if (firstCol < 0) firstCol = e
+      if (cell !== NEG) {
+        curPos.push(e)
+        curVal.push(cell)
+      }
+
+      if (chSep) e = ++sIdx < sepPositions.length ? sepPositions[sIdx] : -1
+      else e = t.indexOf(ch, e + 1)
     }
 
-    if (firstCol >= 0) {
-      d = firstCol
+    if (curPos.length > 0) {
+      d = curPos[0]
       p++
-      prev = cur
+      prevPos = curPos
+      prevVal = curVal
     } else if (chSep) {
       // [I] An unmatched separator row is dropped; for the last row the
       // previous row's best still stands, so a trailing space does not unmatch.
@@ -166,9 +263,9 @@ function fuzzyMatch(target, query, options) {
     }
   }
 
-  if (!prev) return "unmatched"
+  if (!prevVal) return "unmatched"
   var best = NEG
-  for (var k = 0; k < prev.length; k++) if (prev[k] > best) best = prev[k]
+  for (var k = 0; k < prevVal.length; k++) if (prevVal[k] > best) best = prevVal[k]
   if (best === NEG) return "unmatched"
   return { score: best, skipped: skipped }
 }
@@ -245,7 +342,10 @@ function searchTermRank(m) {
 // q7e: does `q` occur in `title` as a whole word (start/end, separator or
 // camelCase boundary on both sides)?
 function wholeWordIn(title, q) {
-  var tn = normalize(title)
+  return wholeWordInNormalized(normalize(title), q)
+}
+
+function wholeWordInNormalized(tn, q) {
   var t = tn.normalizedText
   var b = tn.wordBoundaries
   var from = 0
@@ -262,6 +362,105 @@ function wholeWordIn(title, q) {
 
 // ---------------------------------------------------------- per candidate
 
+// The query-independent half of buildRecord, kept per candidate id while
+// the candidate's text fields stay the same objects. [D]
+var prepMemo = newMemo()
+
+function prepare(c) {
+  var rawTitle = String(c.title || "")
+  var titleT = transliterate(rawTitle)
+  var alternates = Array.isArray(c.alternateTitles) ? c.alternateTitles.map(function(a) { return String(a || "") }) : []
+  var subtitle = String(c.subtitle || "")
+  var keywords = Array.isArray(c.keywords) ? c.keywords.map(function(k) { return String(k || "") }) : []
+  if (subtitle) {
+    keywords.push(rawTitle + " " + subtitle)
+    keywords.push(subtitle + " " + rawTitle)
+  }
+  return {
+    // identity of the source fields, to tell when the entry is stale
+    title: c.title, subtitle: c.subtitle, keywords: c.keywords,
+    alternateTitles: c.alternateTitles, bundleId: c.bundleId,
+
+    titleT: titleT,
+    titleN: normalize(titleT),
+    alternatesLower: alternates.map(function(a) { return a.toLowerCase() }),
+    alternatesN: alternates.map(normalize),
+    subtitleN: subtitle && subtitle.toLowerCase() !== rawTitle.toLowerCase() ? normalize(subtitle) : null,
+    keywordsN: keywords.map(normalize),
+    bundleN: c.bundleId ? normalize(String(c.bundleId)) : null,
+    chars: null
+  }
+}
+
+function prepared(c) {
+  var id = c.id
+  var hit = id === undefined || id === null ? undefined : memoGet(prepMemo, id)
+  if (hit && hit.title === c.title && hit.subtitle === c.subtitle && hit.keywords === c.keywords
+      && hit.alternateTitles === c.alternateTitles && hit.bundleId === c.bundleId) return hit
+  var prep = prepare(c)
+  if (id !== undefined && id !== null) memoSet(prepMemo, id, prep)
+  return prep
+}
+
+// Every character any of the candidate's matched texts contains.
+function charsOf(prep) {
+  if (prep.chars) return prep.chars
+  var set = {}
+  var texts = [prep.titleN].concat(prep.alternatesN, prep.keywordsN)
+  if (prep.subtitleN) texts.push(prep.subtitleN)
+  if (prep.bundleN) texts.push(prep.bundleN)
+  for (var i = 0; i < texts.length; i++) {
+    var t = texts[i].normalizedText
+    for (var j = 0; j < t.length; j++) set[t.charAt(j)] = true
+  }
+  prep.chars = set
+  return set
+}
+
+// What a query needs from a candidate's texts: its distinct non-separator
+// characters, and whether it has no separators at all (then the whole query
+// must be a subsequence of one text). null when the query is not plain
+// ASCII, since transliteration could then make the title match differ.
+function requirements(q) {
+  var chars = []
+  var plain = true
+  for (var i = 0; i < q.length; i++) {
+    var code = q.charCodeAt(i)
+    if (code > 127) return null
+    if (isSeparatorCode(code)) plain = false
+    else if (chars.indexOf(q.charAt(i)) < 0) chars.push(q.charAt(i))
+  }
+  return { query: q, chars: chars, plain: plain }
+}
+
+function isSubsequence(q, t) {
+  var at = 0
+  for (var i = 0; i < q.length; i++) {
+    at = t.indexOf(q.charAt(i), at)
+    if (at < 0) return false
+    at++
+  }
+  return true
+}
+
+// False only when no text of the candidate can fuzzy-match: a required
+// character is missing from all of them, or (for a query without
+// separators) the query is a subsequence of none. Every fuzzyMatch then
+// fails, so the candidate can match through its alias or alwaysMatching
+// alone.
+function mayTextMatch(prep, req) {
+  var set = charsOf(prep)
+  for (var i = 0; i < req.chars.length; i++) if (!set[req.chars[i]]) return false
+  if (!req.plain) return true
+  var q = req.query
+  if (isSubsequence(q, prep.titleN.normalizedText)) return true
+  if (prep.subtitleN && isSubsequence(q, prep.subtitleN.normalizedText)) return true
+  for (var a = 0; a < prep.alternatesN.length; a++) if (isSubsequence(q, prep.alternatesN[a].normalizedText)) return true
+  for (var k = 0; k < prep.keywordsN.length; k++) if (isSubsequence(q, prep.keywordsN[k].normalizedText)) return true
+  if (prep.bundleN && isSubsequence(q, prep.bundleN.normalizedText)) return true
+  return false
+}
+
 // iXi: the ranking record for one candidate against a query.
 function buildRecord(candidate, query, options) {
   var opts = options || {}
@@ -273,11 +472,10 @@ function buildRecord(candidate, query, options) {
   var tq = transliterate(q)
   var frecency = typeof c.frecency === "number" && isFinite(c.frecency) ? c.frecency : 1
 
-  var title = transliterate(String(c.title || ""))
+  var prep = prepared(c)
+  var titleN = prep.titleN
   // JYi: a query starting with "/" matches the title's first "/" as a space.
-  if (tq.charAt(0) === "/") title = title.replace("/", " ")
-  var titleLower = title.toLowerCase()
-  var alternates = Array.isArray(c.alternateTitles) ? c.alternateTitles.map(function(a) { return String(a || "") }) : []
+  if (tq.charAt(0) === "/") titleN = normalize(prep.titleT.replace("/", " "))
 
   var record = {
     candidate: c,
@@ -302,66 +500,93 @@ function buildRecord(candidate, query, options) {
   }
   if (!q) return record
 
-  record.isBoostedSearchTerm = Array.isArray(c.boostedTerms) && c.boostedTerms.some(function(term) {
-    return String(term || "").toLowerCase() === q
-  })
+  // Plain loops below rather than map/some callbacks: closures are costly
+  // in Qt's JS engine, and this runs per candidate per keystroke.
+  var i
+  if (Array.isArray(c.boostedTerms)) {
+    for (i = 0; i < c.boostedTerms.length; i++) {
+      if (String(c.boostedTerms[i] || "").toLowerCase() === q) { record.isBoostedSearchTerm = true; break }
+    }
+  }
 
-  record.title = fuzzyMatch(title, tq, { literalQueryDots: literalDots })
+  var matchOpts = { literalQueryDots: literalDots }
+  record.title = matchNormalized(titleN, tq, matchOpts)
   if (record.title === "exact") record.titleMatch = "exact"
-  else if (titleLower.indexOf(q) === 0 || alternates.some(function(a) { return a.toLowerCase().indexOf(q) === 0 }))
-    record.titleMatch = "prefix"
+  else if (titleN.normalizedText.indexOf(q) === 0) record.titleMatch = "prefix"
+  else {
+    for (i = 0; i < prep.alternatesLower.length; i++) {
+      if (prep.alternatesLower[i].indexOf(q) === 0) { record.titleMatch = "prefix"; break }
+    }
+  }
   record.titleScore = matchScore(record.title)
 
-  record.alternates = alternates.map(function(a) { return fuzzyMatch(a, q, { literalQueryDots: literalDots }) })
+  var alternates = new Array(prep.alternatesN.length)
+  for (i = 0; i < alternates.length; i++) alternates[i] = matchNormalized(prep.alternatesN[i], q, matchOpts)
+  record.alternates = alternates
 
-  var subtitle = String(c.subtitle || "")
-  if (subtitle && subtitle.toLowerCase() !== String(c.title || "").toLowerCase()) {
-    record.subtitle = fuzzyMatch(subtitle, q, { literalQueryDots: literalDots })
+  if (prep.subtitleN) {
+    record.subtitle = matchNormalized(prep.subtitleN, q, matchOpts)
     record.subtitleExact = record.subtitle === "exact"
     record.subtitleScore = matchScore(record.subtitle)
   }
 
-  var keywords = Array.isArray(c.keywords) ? c.keywords.slice() : []
-  if (subtitle) {
-    keywords.push(String(c.title || "") + " " + subtitle)
-    keywords.push(subtitle + " " + String(c.title || ""))
-  }
-  if (c.bundleId && q.indexOf(".") !== -1) keywords.push(String(c.bundleId))
-  record.keywords = keywords.map(function(k) { return fuzzyMatch(String(k || ""), q, { literalQueryDots: literalDots }) })
+  // Keywords: the candidate's own, then "title subtitle" and "subtitle
+  // title" when there is a subtitle, then the bundle id for queries with ".".
+  var keywordsN = prep.keywordsN
+  if (prep.bundleN && q.indexOf(".") !== -1) keywordsN = keywordsN.concat([prep.bundleN])
+  var keywords = new Array(keywordsN.length)
+  for (i = 0; i < keywords.length; i++) keywords[i] = matchNormalized(keywordsN[i], q, matchOpts)
+  record.keywords = keywords
 
   record.searchTerm = searchTermMatch(c.searchTerms, q, frecency, c.openedAt, nowMs)
 
   // Title boost ($Yi/eXi): queries of 3+ chars without whitespace.
   if (q.length >= 3 && !/\s/.test(q)) {
-    if (record.title !== "exact" && wholeWordIn(title, tq)) {
+    if (record.title !== "exact" && wholeWordInNormalized(titleN, tq)) {
       var floor = 4 + (q.length - 1) * 2 + 0.5
       if (record.titleScore < floor) record.titleScore = floor
     }
-    var exactAlternate = record.alternates.some(function(m) { return m === "exact" })
-    if (exactAlternate) {
+    if (alternates.indexOf("exact") >= 0) {
       record.titleMatch = "exact"
     } else {
       // [I] Literal reading: the alternate-title max is part of the boost step.
-      for (var i = 0; i < record.alternates.length; i++) {
-        var s = matchScore(record.alternates[i])
+      for (i = 0; i < alternates.length; i++) {
+        var s = matchScore(alternates[i])
         if (s > record.titleScore) record.titleScore = s
       }
     }
   }
 
   var len = q.length
-  record.textMatched = record.alias !== "unmatched"
-    || passesThreshold(record.title, len, sensitivity)
-    || record.alternates.some(function(m) { return passesThreshold(m, len, sensitivity) })
-    || passesThreshold(record.subtitle, len, sensitivity)
-    || record.keywords.some(function(m) { return passesThreshold(m, len, sensitivity) })
+  var matched = record.alias !== "unmatched" || passesThreshold(record.title, len, sensitivity)
+  for (i = 0; !matched && i < alternates.length; i++) matched = passesThreshold(alternates[i], len, sensitivity)
+  if (!matched) matched = passesThreshold(record.subtitle, len, sensitivity)
+  for (i = 0; !matched && i < keywords.length; i++) matched = passesThreshold(keywords[i], len, sensitivity)
+  record.textMatched = matched
   record.isMatching = !!c.alwaysMatching || record.textMatched
   return record
 }
 
+// rank() drops a candidate whose text cannot match `query` unless its alias
+// matches or it is alwaysMatching. Exposed so callers can skip building
+// such candidates at all; `alias` is the alias the candidate will carry.
+function canSkip(candidate, alias, query) {
+  var q = String(query || "").trim().toLowerCase()
+  if (!q) return false
+  var req = requirements(q)
+  if (!req || candidate.alwaysMatching || aliasMatch(alias, q) !== "unmatched") return false
+  return !mayTextMatch(prepared(candidate), req)
+}
+
 // ------------------------------------------------------------- ordering
 
+// One collator instead of building one per localeCompare call (same
+// options, same order). Engines without Intl use localeCompare.
+var COLLATOR = typeof Intl !== "undefined" && Intl.Collator
+  ? new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }) : null
+
 function collate(a, b) {
+  if (COLLATOR) return COLLATOR.compare(String(a || ""), String(b || ""))
   return String(a || "").localeCompare(String(b || ""), undefined, { numeric: true, sensitivity: "base" })
 }
 
@@ -522,7 +747,16 @@ function byPinThen(then) {
 function rank(candidates, query, options) {
   var list = Array.isArray(candidates) ? candidates : []
   var q = String(query || "").trim()
-  var records = list.map(function(c) { return buildRecord(c, q, options) })
+  var qLower = q.toLowerCase()
+  var req = q ? requirements(qLower) : null
+  var records = []
+  for (var n = 0; n < list.length; n++) {
+    var c = list[n] || {}
+    // Would be dropped below as not matching; skip building its record.
+    if (req && !c.alwaysMatching && aliasMatch(c.alias, qLower) === "unmatched"
+        && !mayTextMatch(prepared(c), req)) continue
+    records.push(buildRecord(c, q, options))
+  }
   var ordered
 
   if (!q) {
@@ -565,6 +799,7 @@ if (typeof module !== "undefined") {
     buildRecord: buildRecord,
     comparePlain: comparePlain,
     compareMatched: compareMatched,
-    rank: rank
+    rank: rank,
+    canSkip: canSkip
   }
 }
