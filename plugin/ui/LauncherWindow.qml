@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
+import "../core/RowDiff.js" as RowDiff
 
 // Launcher surface (SPEC §5.1, §10.2): 750×475 at uiZoom 1, 66 px search
 // header, 42 px footer, centred horizontally about a quarter down the
@@ -121,28 +122,33 @@ OverlayWindow {
 
   // ---------------------------------------------------------------- rows
 
+  // Typing or changing view (resetSelection) selects the first row and
+  // scrolls to it. Background refreshes (resetSelection false) update rows
+  // in place and keep the selection and the scroll where the user left them.
   function rebuild(resetSelection) {
     pointerGate.reset()
     var keepId = !resetSelection && window.selectedRow ? window.selectedRow.itemId : ""
-    rows.clear()
-    if (window.view.kind === "alias") { window.select(-1); return }
+    if (window.view.kind === "alias") { rows.clear(); window.select(-1); return }
     var result = window.backend.callSync("rootSearch.search", { query: window.query, view: window.view })
     if (!result.ok) {
+      rows.clear()
       window.showToast("failure", result.error)
       window.select(-1)
       return
     }
-    var keepIndex = -1
+    var next = []
     for (var s = 0; s < result.data.length; s++) {
       var section = result.data[s]
-      if (section.title || s > 0) rows.append(window.rowData({ id: "section:" + section.id, title: section.title }, "section"))
-      for (var r = 0; r < section.rows.length; r++) {
-        var c = section.rows[r]
-        if (c.id === keepId) keepIndex = rows.count
-        rows.append(window.rowData(c, "item"))
-      }
+      if (section.title || s > 0) next.push(window.rowData({ id: "section:" + section.id, title: section.title }, "section"))
+      for (var r = 0; r < section.rows.length; r++) next.push(window.rowData(section.rows[r], "item"))
     }
-    window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1))
+    var changed = RowDiff.apply(rows, next)
+    var keepIndex = RowDiff.indexOfItem(rows, keepId)
+    if (keepIndex >= 0) {
+      if (changed || keepIndex !== window.selectedIndex) window.select(keepIndex, true)
+      return
+    }
+    window.select(window.nextSelectable(-1, 1), !resetSelection)
   }
 
   function rowData(c, kind) {
@@ -168,9 +174,12 @@ OverlayWindow {
     return -1
   }
 
-  function select(index) {
+  // keepScroll: the row is selected without moving the list, for a
+  // background refresh the user did not ask for.
+  function select(index, keepScroll) {
     window.selectedIndex = index
     window.selectedRow = index >= 0 && index < rows.count ? rows.get(index) : null
+    if (keepScroll) return
     if (index >= 0) list.positionViewAtIndex(index, ListView.Contain)
     if (index === window.nextSelectable(-1, 1)) list.positionViewAtBeginning()
   }

@@ -91,6 +91,17 @@ function fuzzyMatch(target, query, options) {
   var u = q.length - sepCount
   if (u > t.length) return "unmatched"
 
+  // Every non-separator query row must match a target cell or the DP below
+  // returns unmatched, so a query character missing from the target settles
+  // it. [D] Not in the port; it only skips DP runs that end unmatched, which
+  // most fields do on one- and two-character queries.
+  if (u <= 2) {
+    for (var mi = 0; mi < q.length; mi++) {
+      var mc = q.charAt(mi)
+      if (!querySep(mc) && t.indexOf(mc) === -1) return "unmatched"
+    }
+  }
+
   // Subsequence precheck.
   if (u > 2) {
     var ti = 0
@@ -359,6 +370,57 @@ function buildRecord(candidate, query, options) {
   return record
 }
 
+// ------------------------------------------------------------- prefilter
+
+// [D] Not part of the Raycast port. rank() rebuilds every record on every
+// keystroke, but a record can only be text-matched when each non-separator
+// query character occurs in one of its fields (fuzzyMatch needs them as a
+// subsequence). searchChars() is that union of characters; callers can
+// store it on the candidate as `searchChars` once, when candidates are
+// built, and rank() skips candidates that cannot match before buildRecord.
+// Skipped records are ones rank() would drop anyway (isMatching false), so
+// the ranked output is unchanged; options.prefilter = false turns it off.
+function searchChars(candidate) {
+  var c = candidate || {}
+  var seen = Object.create(null)
+  var out = ""
+  function add(value) {
+    var text = String(value === undefined || value === null ? "" : value).toLowerCase()
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i)
+      if (seen[ch] === true) continue
+      seen[ch] = true
+      out += ch
+    }
+  }
+  add(c.title)
+  add(transliterate(String(c.title || "")))
+  if (Array.isArray(c.alternateTitles)) c.alternateTitles.forEach(add)
+  add(c.subtitle)
+  if (Array.isArray(c.keywords)) c.keywords.forEach(add)
+  add(c.bundleId)
+  return out
+}
+
+function hasQueryChars(chars, q) {
+  for (var i = 0; i < q.length; i++) {
+    var ch = q.charAt(i)
+    if (!isSeparator(ch) && chars.indexOf(ch) === -1) return false
+  }
+  return true
+}
+
+// Can buildRecord(candidate, q) come out isMatching? `q` is the trimmed,
+// lowercased query and `tq` its transliteration (the title is matched
+// against tq, every other field against q).
+function mightMatch(candidate, q, tq) {
+  var c = candidate || {}
+  if (c.alwaysMatching || !q) return true
+  if (aliasMatch(c.alias, q) !== "unmatched") return true
+  var chars = typeof c.searchChars === "string" ? c.searchChars : searchChars(c)
+  return hasQueryChars(chars, q) || hasQueryChars(chars, tq)
+}
+
 // ------------------------------------------------------------- ordering
 
 function collate(a, b) {
@@ -522,7 +584,14 @@ function byPinThen(then) {
 function rank(candidates, query, options) {
   var list = Array.isArray(candidates) ? candidates : []
   var q = String(query || "").trim()
-  var records = list.map(function(c) { return buildRecord(c, q, options) })
+  var prefilter = q && !(options && options.prefilter === false)
+  var lq = q.toLowerCase()
+  var tq = prefilter ? transliterate(lq) : ""
+  var records = []
+  for (var n = 0; n < list.length; n++) {
+    if (prefilter && !mightMatch(list[n], lq, tq)) continue
+    records.push(buildRecord(list[n], q, options))
+  }
   var ordered
 
   if (!q) {
@@ -565,6 +634,8 @@ if (typeof module !== "undefined") {
     buildRecord: buildRecord,
     comparePlain: comparePlain,
     compareMatched: compareMatched,
-    rank: rank
+    rank: rank,
+    searchChars: searchChars,
+    mightMatch: mightMatch
   }
 }
