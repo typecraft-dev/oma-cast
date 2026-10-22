@@ -14,6 +14,7 @@ echo "ipc"
 [[ $($cli call system.healthPing '{}') == '{"ok":true,"data":null}' ]] && pass "system.healthPing round trip" || bad "system.healthPing round trip"
 [[ $($cli call foo.bar) == '{"ok":false,"error":"Unknown method foo.bar"}' ]] && pass "unknown methods are errors" || bad "unknown methods are errors"
 $cli call settings.getGeneralSettings | grep -q '"popToRootTimeout"' && pass "settings document loaded" || bad "settings document loaded"
+$cli call files.status | grep -q '"ok":true' && pass "file search status answers (passive)" || bad "file search status answers (passive)"
 
 echo "root search (Phase 1)"
 search() { $cli call rootSearch.search "{\"query\":\"$1\"}"; }

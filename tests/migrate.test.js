@@ -79,6 +79,33 @@ test("shipped settings migrations are valid and use Raycast defaults", () => {
   assert.deepEqual(r.doc.commands, {})
 })
 
+test("migrations receive the original document version", () => {
+  const seen = []
+  const list = [
+    { version: 1, name: "one", up(doc) { doc.one = true } },
+    { version: 2, name: "two", up(doc, ctx) { seen.push(ctx); doc.two = true } }
+  ]
+  Migrate.migrate({ schemaVersion: 1, one: true }, list, 1)
+  assert.deepEqual(seen, [{ from: 1, version: 2 }])
+})
+
+test("file search is on for a new install and off for an existing v1 doc", () => {
+  const fresh = Migrate.migrate(null, Schema.settingsMigrations, 1).doc
+  assert.equal(fresh.files.enabled, true)
+  assert.equal(fresh.files.root, "~")
+  assert.equal(fresh.files.includeInRootSearch, true)
+  assert.equal(fresh.files.followSymlinks, false)
+
+  const v1 = Migrate.migrate(null, [Schema.settingsMigrations[0]], 1).doc
+  const upgraded = Migrate.migrate(v1, Schema.settingsMigrations, 2).doc
+  assert.equal(upgraded.files.enabled, false)
+
+  v1.files = { enabled: true, root: "/tmp/work" }
+  const explicit = Migrate.migrate(v1, Schema.settingsMigrations, 3).doc
+  assert.equal(explicit.files.enabled, true)
+  assert.equal(explicit.files.root, "/tmp/work")
+})
+
 test("config keeps known keys of the right type and drops the rest", () => {
   assert.deepEqual(Schema.withConfigDefaults(null), Schema.configDefaults)
   const c = Schema.withConfigDefaults({ logLevel: "debug", keepVisibleOnFocusLoss: "yes", extra: 1 })

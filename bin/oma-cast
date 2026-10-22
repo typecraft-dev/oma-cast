@@ -20,6 +20,32 @@ installed_links() {
 
 current_link() { installed_links | tail -n1; }
 hypr_dir="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
+data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/oma-cast"
+settings_file="$data_dir/db/settings.json"
+helper_local="$HOME/.local/lib/oma-cast/oma-cast-files"
+helper_system="/usr/lib/oma-cast/oma-cast-files"
+
+helper_present() {
+  local candidate
+  for candidate in "${OMA_CAST_FILES_BIN:-}" "$helper_local" "$helper_system"; do
+    [[ -n $candidate && -x $candidate ]] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+build_helper() {
+  command -v cargo >/dev/null || {
+    echo "oma-cast: cargo not found; install rust to build the file search helper" >&2
+    return 1
+  }
+  echo "building the file search helper (cargo, one-time)…"
+  cargo build --release --locked --manifest-path "$repo/helper/Cargo.toml" || return 1
+  mkdir -p "$(dirname "$helper_local")"
+  install -Dm755 "$repo/helper/target/release/oma-cast-files" "$helper_local.new" || return 1
+  mv -f "$helper_local.new" "$helper_local" || return 1
+  echo "installed $helper_local"
+  echo "run 'oma-cast reload' to restart a running helper with the new binary"
+}
 
 usage() {
   cat <<USAGE
@@ -38,6 +64,15 @@ Setup
   dev                    Reload the plugin on every save under plugin/
   setup hyprland         Bind Alt+Space to the launcher in ~/.config/hypr/oma-cast.lua
   doctor                 Check that the pieces are in place
+
+File search
+  files build            Build and install the optional search helper (cargo)
+  files status           Show the cached helper status (does not start it)
+  files enable|disable   Turn file search on or off
+  files root [<path>]    Show or set the indexed root
+  files reindex          Rescan the configured root
+  files reset-ranking    Clear the file access ranking
+  files retry            Retry after building a missing helper
 USAGE
 }
 
@@ -52,6 +87,10 @@ need_shell() {
 cmd_install() {
   need_shell
   [[ -f $plugin_src/manifest.json ]] || die "plugin source missing at $plugin_src"
+
+  local new_install=0
+  [[ -f $settings_file ]] || new_install=1
+
   mkdir -p "$plugins_dir"
   if [[ -e $plugin_link && ! -L $plugin_link ]]; then
     die "$plugin_link exists and is not a symlink; move it away first"
@@ -63,6 +102,24 @@ cmd_install() {
   if [[ ! -e $HOME/.local/bin/oma-cast || -L $HOME/.local/bin/oma-cast ]]; then
     ln -sfn "$self" "$HOME/.local/bin/oma-cast"
     echo "linked ~/.local/bin/oma-cast"
+  fi
+
+  if (( new_install )); then
+    echo "New install: file search is enabled by default (index starts on first use)."
+    echo "Disable later with: oma-cast files disable"
+    if command -v cargo >/dev/null; then
+      build_helper || echo "oma-cast: warning: helper build failed; run: oma-cast files build" >&2
+    else
+      echo "oma-cast: warning: cargo not found; run 'oma-cast files build' after installing Rust" >&2
+    fi
+  else
+    local existing_enabled=false
+    existing_enabled=$(python3 -I -c 'import json,sys; print(str(json.load(open(sys.argv[1])).get("files",{}).get("enabled", False)).lower())' "$settings_file" 2>/dev/null || echo false)
+    if [[ $existing_enabled == true ]]; then
+      echo "File search is enabled (existing settings); helper: $(helper_present || echo 'not installed')"
+    else
+      echo "File search is off for existing installs; opt in with: oma-cast files build && oma-cast files enable"
+    fi
   fi
 
   omarchy-shell -q shell rescanPlugins
@@ -91,6 +148,9 @@ cmd_uninstall() {
   omarchy-shell -q shell rescanPlugins
   if [[ -L $HOME/.local/bin/oma-cast && $(readlink -f "$HOME/.local/bin/oma-cast") == "$self" ]]; then
     rm "$HOME/.local/bin/oma-cast" && echo "removed ~/.local/bin/oma-cast"
+  fi
+  if [[ -f $helper_local ]]; then
+    rm -f "$helper_local" && echo "removed $helper_local"
   fi
 }
 
@@ -136,6 +196,34 @@ LUA
   hyprctl reload >/dev/null && echo "reloaded Hyprland; Alt+Space toggles oma-cast"
 }
 
+cmd_files() {
+  case "${1:-}" in
+    build) build_helper ;;
+    status) need_shell; ipc call files.status '{}' ;;
+    enable)
+      helper_present >/dev/null || die "file search helper not found; run: oma-cast files build"
+      need_shell
+      ipc call files.updateSettings '{"enabled":true}'
+      ;;
+    disable) need_shell; ipc call files.updateSettings '{"enabled":false}' ;;
+    root)
+      need_shell
+      if [[ -n ${2:-} ]]; then
+        command -v jq >/dev/null || die "jq is required to encode the path"
+        local json
+        json=$(jq -cn --arg root "$2" '{root:$root}')
+        ipc call files.updateSettings "$json"
+      else
+        ipc call files.status '{}' | python3 -I -c 'import json,sys; d=json.load(sys.stdin); print(d.get("data",{}).get("root",""))'
+      fi
+      ;;
+    reindex) need_shell; ipc call files.reindex '{}' ;;
+    reset-ranking) need_shell; ipc call files.resetRanking '{}' ;;
+    retry) need_shell; ipc call files.retry '{}' ;;
+    *) die "usage: oma-cast files build|status|enable|disable|root [path]|reindex|reset-ranking|retry" ;;
+  esac
+}
+
 cmd_doctor() {
   local bad=0
   check() {
@@ -151,6 +239,50 @@ cmd_doctor() {
   check "plugin is enabled" bash -c "omarchy plugin list --json 2>/dev/null | grep -q '\"id\":\"$PLUGIN_ID\"[^}]*\"enabled\":true'"
   check "plugin answers IPC" bash -c "[[ \$(omarchy-shell $IPC_TARGET ping) == ok ]]"
   check "backend answers system.healthPing" bash -c "omarchy-shell $IPC_TARGET call system.healthPing '{}' | grep -q '\"ok\":true'"
+
+  local helper files_json files_enabled files_state files_error indexed rss
+  files_field() {
+    printf '%s' "$files_json" | python3 -I -c 'import json,sys; d=json.load(sys.stdin).get("data",{}); v=d.get(sys.argv[1],""); print(str(v).lower() if isinstance(v,bool) else v)' "$1" 2>/dev/null
+  }
+  helper=$(helper_present || true)
+  files_json=$(omarchy-shell "$IPC_TARGET" call files.status '{}' 2>/dev/null || true)
+  files_enabled=$(files_field enabled)
+  files_state=$(files_field state)
+  files_error=$(files_field error)
+  indexed=$(files_field indexedFiles)
+  rss=$(files_field rssMb)
+
+  if [[ -n $helper ]]; then
+    printf '  ok    file search helper %s\n' "$helper"
+  elif [[ $files_enabled == true ]]; then
+    printf '  FAIL  file search helper missing; run: oma-cast files build\n'
+    bad=1
+  else
+    printf '  info  file search helper not installed\n'
+  fi
+
+  if [[ $files_enabled == true ]]; then
+    case $files_state in
+      error)
+        printf '  FAIL  file search: %s\n' "${files_error:-unknown error}"
+        bad=1
+        ;;
+      stopped|disabled)
+        printf '  info  file search enabled; starts on the first file query\n'
+        ;;
+      "")
+        printf '  info  file search state unavailable (plugin not answering?)\n'
+        ;;
+      *)
+        printf '  ok    file search %s (%s files, %s MB RSS)\n' "$files_state" "${indexed:-0}" "${rss:-0}"
+        ;;
+    esac
+  elif [[ -z $files_enabled ]]; then
+    printf '  info  file search state unavailable (plugin not answering?)\n'
+  else
+    printf '  info  file search disabled; oma-cast files build && oma-cast files enable\n'
+  fi
+
   if [[ -f $hypr_dir/oma-cast.lua ]]; then
     printf '  ok    hotkey file %s\n' "$hypr_dir/oma-cast.lua"
   else
@@ -168,6 +300,7 @@ case "${1:-}" in
   uninstall) cmd_uninstall ;;
   reload) cmd_reload ;;
   dev) cmd_dev ;;
+  files) cmd_files "${2:-}" "${3:-}" ;;
   setup)
     case "${2:-}" in
       hyprland) cmd_setup_hyprland ;;

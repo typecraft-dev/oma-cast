@@ -53,11 +53,12 @@ plugin/                  # the Omarchy shell plugin (what gets linked into ~/.co
   Launcher.qml           #   entry point: open()/close() from the shell, ShellIpc "oma-cast", GlobalShortcut oma-cast:toggle
   Backend.qml            #   in-process backend: paths, config.json, stores, method registry, notifications
   ui/                    #   launcher surface and (later) views
-  services/              #   QML services that do I/O (JsonStore, OmarchyMenuSource; later clipboard, …)
+  services/              #   QML services that do I/O (JsonStore, OmarchyMenuSource, Files; later clipboard, …)
   core/*.js              #   pure logic, no Qt imports: shared by QML and node tests (module.exports guard)
-                         #   Ranker, Frecency (ref 02 §4, port exactly), OmarchyMenu, RootSearch, Schema, Migrate, Rpc, Paths, Log
+                         #   Ranker, Frecency (ref 02 §4, port exactly), OmarchyMenu, RootSearch, Files, Schema, Migrate, Rpc, Paths, Log
+helper/                  #   oma-cast-files: Rust sidecar around fff-search 0.11.0 (file-name search, frecency)
 bin/oma-cast             # bash CLI
-tests/*.test.js          # node --test unit tests for plugin/core (ranker, frecency, Omarchy menu, root search, …)
+tests/*.test.js          # node --test unit tests for plugin/core (ranker, frecency, Omarchy menu, root search, files, …)
 tests/smoke.sh           # live acceptance check against the running shell
 ```
 
@@ -67,6 +68,7 @@ Rules for `plugin/core/*.js`: one self-contained file per module (QML `import "x
 
 ```sh
 node --test tests/*.test.js   # unit tests (node's built-in runner; no npm install)
+cargo test --manifest-path helper/Cargo.toml   # file-search sidecar tests
 mise x act@latest -- act push   # run .github/workflows/ci.yml locally in Docker (.actrc maps the WarpBuild label)
 tests/smoke.sh               # live checks: doctor, IPC, toggle latency (<100 ms). Shows/hides the launcher, never types.
 omarchy plugin validate plugin
@@ -79,6 +81,8 @@ bin/oma-cast uninstall
 oma-cast toggle | show | hide
 oma-cast run <commandId>             # Phase 1+
 oma-cast call <method> [json]        # any backend method, e.g. oma-cast call system.info
+oma-cast files status|enable|disable|root|reindex|reset-ranking|retry
+oma-cast files build                 # local cargo build of the sidecar (no shell needed)
 oma-cast doctor
 oma-cast setup hyprland              # writes ~/.config/hypr/oma-cast.lua (Alt+Space) and requires it from hyprland.lua
 
@@ -122,6 +126,7 @@ Works:
   - Compact mode shows only the header until you type.
   - A launch from root clears the query [I].
   - A row is selected on hover only after a real pointer move (Omarchy's PointerMoveGate).
+- **File search (Phase 7 partial):** a Rust sidecar (`helper/`, `fff-search = 0.11.0`) indexes file names under `~` and answers a Files section in root plus a "Search Files" view. Query history is deliberately not stored; only FFF's access frecency LMDB is. Three rows max in root, a filename-confidence gate, hidden/secret filtering, `.ignore` support, and `Show All Files`. New installs default on and `install` builds the helper; existing installs opt in. `oma-cast files …` controls it.
 - **Calculator** (`core/Calculator.js`, our own engine [D]; no `qalc`/fend dependency): a "Calculator" section above Results with Raycast's two-pane card (question → answer, captions below each). It handles:
   - arithmetic and functions
   - Soulver-style percentages (`$30 + 20%`, `20% off 50`, `50 as a % of 200`)
@@ -133,11 +138,12 @@ Works:
 
   ↵ copies the answer (HUD), Ctrl+↵ pastes it through `omarchy-clipboard-paste-text`, Ctrl+Shift+C copies "question = answer". Each one saves to **Calculator History** (`db/calculator.json`, 4096 rows / 90 days): a built-in command and pushed view, searchable, Ctrl+D deletes an entry, Ctrl+Shift+D deletes all. RPC: `calculator.calculate|historyGetAll|historyDelete|historyDeleteAll|refreshCurrencies|getCurrencies`. A bare number, word or quantity (`42`, `firefox`, `5 kg`) never produces a row, because the section takes ↵.
 - **Latency:** show → mapped in 37–44 ms, hide in 9–25 ms (`tests/smoke.sh`).
-- **Tests:** root search, calculator and default-agent hand-off coverage (`node --test tests/*.test.js`).
+- **Tests:** 106 node unit tests + 8 helper tests (`node --test tests/*.test.js`, `cargo test --manifest-path helper/Cargo.toml`), covering root search, files, calculator and the default-agent hand-off. One test parses the installed Omarchy menu and fails on an Omarchy whose root menus were renamed (`style` → `appearance`).
 
 **Default-agent hand-off (fork, 2026-10-20):** user-authorized addition outside the original phase plan. The root fallback "Ask default agent" and Ctrl+Alt+Enter pass the query to `omarchy-agent --prompt` as a literal argv element. `AgentLauncher.qml` checks the configured agent/terminal with a bounded, question-free preflight, prevents overlapping submissions and cancels on hide/unload. `Launcher.qml` dismisses the overlay before launching through `Util.execArgv`. Errors leave the query visible. There are no new dependencies, model APIs, credentials or question-history writes. Existing CLI approval behaviour is inherited. Portable checks do not establish live terminal focus, authentication, or provider compatibility; verify those on Omarchy.
 
 Stubbed / not yet:
+- File search previews/Quick Look and content search; hidden dotfiles at a non-git root; multi-root/scopes; a per-file "forget" action.
 - Keystroke buffering before the surface maps. Keys sent within ~40 ms of the hotkey go to the window underneath.
 - Vim navigation bindings, Ctrl+P dropdown, Ctrl+T, Ctrl+Shift+K, inline argument pills, alerts.
 - No settings window, so you can't re-enable a disabled command except by editing `~/.local/share/oma-cast/db/settings.json` (delete its `enabled: false`). That's Phase 2.
@@ -153,6 +159,7 @@ Stubbed / not yet:
 
 Deviations from the original spec (SPEC §2.0 and the Phase 1 note in §12):
 - A Quickshell plugin instead of Tauri + Node; there's no NDJSON supervisor until Phase 5.
+- File search uses an out-of-process `fff-search` sidecar instead of the custom Rust/SQLite indexer in SPEC §8.6/Phase 7. It is a new build/runtime dependency, default-on only for new installs; existing installs opt in. Recorded in SPEC.
 - JSON documents instead of SQLite; no DB encryption or libsecret key.
 - Logs go to the shell log; `config.json` instead of `config.toml`; no D-Bus name.
 - The Omarchy theme replaces Raycast's 8 themes; the HUD is Omarchy's OSD.

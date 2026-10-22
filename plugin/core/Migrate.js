@@ -46,7 +46,9 @@ function migrate(doc, migrations, now) {
   var applied = []
   for (var v = from + 1; v <= latest; v++) {
     var m = migrations[v - 1]
-    var next = m.up(current)
+    // `ctx.from` is the document's version before this migrate() call, so a
+    // migration can tell a fresh document (0) from an upgrade (1, 2, …).
+    var next = m.up(current, { from: from, version: v })
     if (next !== undefined) current = next
     if (!current || typeof current !== "object") throw new Error("Migration " + v + " (" + m.name + ") returned no document")
     history = history.concat([{ version: v, name: m.name, appliedAt: stamp }])

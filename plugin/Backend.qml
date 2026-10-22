@@ -35,12 +35,16 @@ Item {
   property var candidates: []
   property var candidatesById: ({})
   property int candidatesRevision: 0
-  readonly property bool loading: menuSource.loading || agentLauncher.checking
+  readonly property bool loading: menuSource.loading || filesService.loading || agentLauncher.checking
+  readonly property var filesSettings: Schema.withFilesDefaults(settingsStore.loaded ? settingsStore.doc.files : null)
+  readonly property int filesRevision: filesService.revision
+  readonly property int filesStatusRevision: filesService.statusRevision
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
 
   signal notification(string method, var data)
+  signal filesHelperUnavailable()
 
 
   function call(method, data) { return Rpc.call(backend.registry, method, data) }
@@ -89,18 +93,22 @@ Item {
     onTriggered: backend.rebuildCandidates()
   }
 
-  function searchContext() {
+  function searchContext(query) {
+    var q = String(query || "")
+    var include = q.length > 0 && backend.filesSettings.enabled && backend.filesSettings.includeInRootSearch
     return {
       commands: settingsStore.loaded ? settingsStore.doc.commands : ({}),
       frecency: frecencyStore.loaded ? frecencyStore.doc.items : ({}),
       nowMs: Date.now(),
-      sensitivity: settingsStore.loaded ? settingsStore.doc.general.rootSearchSensitivity : "medium"
+      sensitivity: settingsStore.loaded ? settingsStore.doc.general.rootSearchSensitivity : "medium",
+      includeFiles: !!include,
+      fileRows: include ? filesService.rootRows(q) : []
     }
   }
 
   function decorated(id) {
     var c = backend.candidatesById[id]
-    return c ? RootSearch.decorate(c, backend.searchContext(), backend.deps) : null
+    return c ? RootSearch.decorate(c, backend.searchContext(""), backend.deps) : null
   }
 
   // ------------------------------------------------------------ calculator
@@ -217,10 +225,45 @@ Item {
     return candidate.kind === "omarchy-link" ? candidate.target : candidate.menuId
   }
 
+  // One action on one file row. Files never touch frecency.json or the
+  // command catalog; FFF's LMDB records the open.
+  function performFileAction(file, action) {
+    switch (action) {
+      case "open":
+        Util.execArgv(["xdg-open", file.path])
+        filesService.track(file.path)
+        return { close: true }
+      case "open-in-editor":
+        Util.execArgv(["omarchy-launch-editor", file.path])
+        filesService.track(file.path)
+        return { close: true }
+      case "reveal":
+        Util.execArgv(["uwsm-app", "--", "nautilus", "--select", file.path])
+        return { close: true }
+      case "copy-path":
+        Util.execArgv(["wl-copy", "--", file.path])
+        return { close: true, hud: "Copied to Clipboard" }
+      case "copy-name":
+        Util.execArgv(["wl-copy", "--", file.fileName])
+        return { close: true, hud: "Copied to Clipboard" }
+    }
+    throw new Error("Unknown file action " + action)
+  }
+
+  // One action on one row. Returns what the UI should do next:
+  // { close, push: {view}, toast: {style, title}, hud: "text" }.
   function performAction(data) {
     var id = String(data && data.id || "")
     var action = String(data && data.action || "open")
     var query = String(data && data.query || "").trim()
+
+    if (id === "files:more") return { push: { kind: "files", title: "Files", query: query } }
+    if (id.indexOf("file:") === 0) {
+      var file = filesService.rowFor(id)
+      if (!file) throw new Error("Unknown file " + id)
+      return backend.performFileAction(file, action)
+    }
+
     var candidate = backend.decorated(id)
     if (!candidate) throw new Error("Unknown command " + id)
 
@@ -296,6 +339,42 @@ Item {
   }
 
 
+  function filesStatus() {
+    var settings = Schema.withFilesDefaults(settingsStore.loaded ? settingsStore.doc.files : null)
+    var snapshot = filesService.statusSnapshot()
+    if (!settings.enabled) snapshot.state = "disabled"
+    snapshot.enabled = settings.enabled
+    snapshot.root = settings.root
+    return snapshot
+  }
+
+  function filesRequest(query) {
+    filesService.request(query)
+  }
+
+  function updateFilesSettings(data) {
+    if (!settingsStore.loaded) throw new Error("settings not loaded")
+    if (settingsStore.readOnly) throw new Error("settings are read-only: " + (settingsStore.lastError || "written by a newer build"))
+    var patch = data && typeof data === "object" ? data : {}
+    var allowed = { enabled: "boolean", root: "string", includeInRootSearch: "boolean", followSymlinks: "boolean" }
+    for (var key in patch) {
+      if (allowed[key] === undefined) throw new Error("Unknown file setting " + key)
+      if (typeof patch[key] !== allowed[key]) throw new Error("Setting " + key + " must be a " + allowed[key])
+    }
+    if (patch.root !== undefined) {
+      patch.root = String(patch.root).trim()
+      if (!patch.root) throw new Error("The file root cannot be empty")
+      if (patch.root !== "~" && patch.root.charAt(0) !== "/") throw new Error("The file root must be ~ or an absolute path")
+    }
+    var before = Schema.withFilesDefaults(settingsStore.doc.files)
+    var next = Schema.withFilesDefaults(Object.assign({}, settingsStore.doc.files || {}, patch))
+    settingsStore.update(function(doc) { doc.files = next })
+    backend.emit("settings.filesSettingsChanged", next)
+    if (next.enabled !== before.enabled && !next.enabled) filesService.stop()
+    if (next.root !== before.root) filesService.reindex(next.root)
+    return next
+  }
+
   function registerServices() {
     Rpc.register(backend.registry, "system", {
       healthPing: function() { return null },
@@ -364,14 +443,35 @@ Item {
       }
     })
 
+    Rpc.register(backend.registry, "files", {
+      status: function() { return backend.filesStatus() },
+      updateSettings: function(data) { return backend.updateFilesSettings(data) },
+      reindex: function() {
+        filesService.reindex(backend.filesSettings.root)
+        return backend.filesStatus()
+      },
+      resetRanking: function() {
+        filesService.resetRanking()
+        return backend.filesStatus()
+      },
+      retry: function() {
+        filesService.retry()
+        return backend.filesStatus()
+      }
+    })
+
     Rpc.register(backend.registry, "rootSearch", {
       search: function(data) {
         var query = String(data && data.query || "")
         var view = data && data.view
-        var ctx = backend.searchContext()
+        var ctx = backend.searchContext(query)
         var sections
-        if (view && view.kind === "menu") sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
-        else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
+        if (view && view.kind === "menu")
+          sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
+        else if (view && view.kind === "files")
+          sections = RootSearch.filesSections(filesService.cachedRows(query), query)
+        else if (view && view.kind === "calculator-history")
+          sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else {
           if (query.trim()) ctx.calculation = backend.calculate(query)
           sections = RootSearch.rootSections(backend.candidates, query, ctx, backend.deps)
@@ -381,13 +481,19 @@ Item {
         })
       },
       getActions: function(data) {
-        var rowId = String(data && data.id || "")
-        if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
-        if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
-        var candidate = backend.decorated(rowId)
+        var id = String(data && data.id || "")
+        if (id === "files:more") return RootSearch.actionsFor({ kind: "files-more" })
+        if (id.indexOf("file:") === 0) {
+          var file = filesService.rowFor(id)
+          if (!file) throw new Error("Unknown file " + id)
+          return RootSearch.actionsFor(file)
+        }
+        if (id === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
+        if (id.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
+        var candidate = backend.decorated(id)
         if (!candidate) {
-          var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === data.id })[0]
-          if (!fallback) throw new Error("Unknown command " + (data && data.id))
+          var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === id })[0]
+          if (!fallback) throw new Error("Unknown command " + id)
           return RootSearch.actionsFor({ kind: "fallback", title: fallback.title })
         }
         return RootSearch.actionsFor(candidate)
@@ -470,7 +576,8 @@ Item {
     function onValuesChanged() { rebuildTimer.restart() }
   }
 
-  Component.onDestruction: { settingsStore.flush(); frecencyStore.flush(); calculatorStore.flush() }
+  // Guards and providers describe live system state: refresh them each open.
+  Component.onDestruction: { filesService.stop(); settingsStore.flush(); frecencyStore.flush(); calculatorStore.flush() }
   onNotification: function(method, data) {
     if (method === "window.visibilityChanged" && data && data.visible) {
       menuSource.refresh()
@@ -499,6 +606,19 @@ Item {
     id: menuSource
     onRevisionChanged: rebuildTimer.restart()
     onMessage: function(level, text, metadata) { backend.log(level, "omarchy-menu", text, metadata) }
+  }
+
+  Files {
+    id: filesService
+    enabled: backend.filesSettings.enabled
+    root: backend.filesSettings.root
+    home: backend.paths.home
+    helperCandidates: backend.paths.helperCandidates
+    frecencyDb: backend.paths.fffDb + "/frecency"
+    runtimeDir: backend.paths.runtime
+    followSymlinks: backend.filesSettings.followSymlinks
+    onMessage: function(level, text, metadata) { backend.log(level, "files", text, metadata) }
+    onHelperUnavailable: backend.filesHelperUnavailable()
   }
 
   JsonStore {

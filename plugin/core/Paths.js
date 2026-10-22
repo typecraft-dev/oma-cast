@@ -17,6 +17,11 @@ function resolve(env) {
   var data = xdg(env, "XDG_DATA_HOME", home + "/.local/share") + "/" + APP
   var cache = xdg(env, "XDG_CACHE_HOME", home + "/.cache") + "/" + APP
   var state = xdg(env, "XDG_STATE_HOME", home + "/.local/state") + "/" + APP
+  var helperOverride = String(env("OMA_CAST_FILES_BIN") || "")
+  var helperCandidates = []
+  if (helperOverride) helperCandidates.push(helperOverride)
+  helperCandidates.push(home + "/.local/lib/oma-cast/oma-cast-files")
+  helperCandidates.push("/usr/lib/oma-cast/oma-cast-files")
 
   return {
     home: home,
@@ -25,6 +30,7 @@ function resolve(env) {
     scriptCommands: config + "/script-commands",
     data: data,
     db: data + "/db",
+    fffDb: data + "/db/fff",
     extensions: data + "/extensions",
     extensionSupport: data + "/extension-support",
     clipboard: data + "/clipboard",
@@ -33,7 +39,8 @@ function resolve(env) {
     state: state,
     logs: state + "/logs",
     backups: state + "/backups",
-    runtime: runtimeBase + "/" + APP
+    runtime: runtimeBase + "/" + APP,
+    helperCandidates: helperCandidates
   }
 }
 

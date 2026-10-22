@@ -537,6 +537,14 @@ Grammar: `{keyword opt="v" opt2='v' | modifier | modifier}`. Quotes accepted: `"
 - Content search (P2): extract text via `pdftotext`, docx/odt via zip+xml, plain text, OCR images. Run extraction in a **separate process**, as Raycast does for crash isolation [O].
 - Results: name match first, then path, sorted by recency. Detail pane: preview (image, PDF first page, text head) plus metadata. Quick Look = a large preview window, or GNOME Sushi if installed.
 
+> **Implementation note (2026-10-20):** the shipped file search uses
+> [`fff-search` 0.11.0](https://github.com/dmtrKovalenko/fff) in a small
+> out-of-process sidecar (`helper/`) instead of the SQLite/FTS indexer above.
+> It covers file-name search, the root Files section, frecency and actions;
+> previews, content search, scopes and hidden-file support are deferred. See
+> [`docs/file-search.md`](docs/file-search.md). New installs default
+> it on; existing installs opt in.
+
 ---
 
 ## 9. Extension runtime (Raycast-extension compatibility)
@@ -832,6 +840,13 @@ Repo layout [D]:
 ### Phase 7: File search
 - Indexer (Rust, separate thread; content extraction in a subprocess), search UI with preview, root-search Files section, Quick Look, settings.
 - **Accept:** a 500k-file home dir indexes in under 2 min. Queries return in under 50 ms. Renames and moves are reflected within 2 s.
+
+> **Implementation note (2026-10-20):** the first slice ships with
+> `fff-search` 0.11.0 in `helper/` and a QML sidecar service; see
+> `docs/file-search.md`. Measured on a 20,662-file home: 30 ms scan,
+> 20–35 MB RSS with the watcher, 0–2 ms queries. Previews, content search,
+> hidden files and scopes are later phases. The 500k-file acceptance is not yet
+> tested.
 
 ### Phase 8: Parity features
 - Emoji & Symbols, Notes window, Theme Studio, Switch Theme, Confetti, Focus, Screenshots, Calendar, Contacts, Dictionary, Translator (provider), Dictation (whisper.cpp), Typing Practice, `.rayconfig` import/export (§11), Kill Process and Color Picker as first-party extras.

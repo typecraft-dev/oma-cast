@@ -14,6 +14,17 @@ test("defaults follow the XDG base directory spec", () => {
   assert.equal(p.logs, "/home/u/.local/state/oma-cast/logs")
   assert.equal(p.runtime, "/run/user/1000/oma-cast")
   assert.equal(p.scriptCommands, "/home/u/.config/oma-cast/script-commands")
+  assert.equal(p.fffDb, "/home/u/.local/share/oma-cast/db/fff")
+  assert.deepEqual(p.helperCandidates, [
+    "/home/u/.local/lib/oma-cast/oma-cast-files",
+    "/usr/lib/oma-cast/oma-cast-files"
+  ])
+})
+
+test("the helper override comes first and is not required to exist", () => {
+  const p = Paths.resolve(envOf({ HOME: "/home/u", OMA_CAST_FILES_BIN: "/opt/oma-cast-files" }))
+  assert.equal(p.helperCandidates[0], "/opt/oma-cast-files")
+  assert.equal(p.helperCandidates.length, 3)
 })
 
 test("absolute XDG overrides win, relative ones are ignored", () => {
