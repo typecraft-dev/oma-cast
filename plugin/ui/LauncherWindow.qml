@@ -393,8 +393,10 @@ PanelWindow {
   }
 
   function isTyping(event) {
+    // Qt marks numpad digits and operators with KeypadModifier, not a shortcut.
+    var modifiers = event.modifiers & ~Qt.KeypadModifier
     return event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127
-      && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)
+      && (modifiers === Qt.NoModifier || modifiers === Qt.ShiftModifier)
   }
 
   Connections {
