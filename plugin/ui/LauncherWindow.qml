@@ -55,6 +55,7 @@ PanelWindow {
   readonly property bool atRoot: window.stack.length === 1
   readonly property bool compact: window.general.windowMode === "compact" && window.atRoot && !window.query
   readonly property string placeholder: window.view.kind === "alias" ? "Type an alias, then press ↵"
+    : window.view.kind === "keybindings" ? window.backend.keybindingText("placeholder")
     : window.view.kind === "menu" ? "Search " + window.view.title + "…"
     : window.view.kind === "calculator-history" ? "Search calculations…"
     : "Search for apps and commands…"
@@ -154,6 +155,7 @@ PanelWindow {
       glyphFont: String(c.glyphFont || ""),
       iconName: String(c.iconName || ""),
       typeLabel: String(c.typeLabel || ""),
+      shortcutKeys: String(c.shortcutKeys || ""),
       alias: String(c.alias || ""),
       checked: !!c.checked,
       disabled: !!c.disabled,
@@ -375,7 +377,7 @@ PanelWindow {
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer"]); return true }
+      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-shortcut"]); return true }
       if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries"]); return true }
       if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry"]); return true }
       if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }

@@ -99,6 +99,19 @@ need live desktop validation.
 | `Esc` / `Shift+Esc` | Back / back to root |
 | `Ctrl +` / `Ctrl −` / `Ctrl 0` | Zoom |
 
+## Keybindings search
+
+Press **Alt+Space**, search for **Search Keybindings**, and press Enter.
+Search by action (for example `file manager`) or chord (`Super+Shift+F`).
+Shortcuts appear as keycaps; Enter or Ctrl+Shift+C copies the selected chord.
+Escape returns through the launcher navigation. Bindings also appear in root
+search, and Learn → Keybindings opens this native view.
+
+The list refreshes from `omarchy menu keybindings --print` whenever the launcher
+opens, including personal bindings and the active keyboard layout. Selecting a
+shortcut copies it; it does not execute its desktop action. Direct access:
+`oma-cast run builtin:keybindings`.
+
 ## CLI
 
 ```sh

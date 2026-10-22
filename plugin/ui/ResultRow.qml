@@ -14,6 +14,7 @@ Item {
   required property string glyphFont
   required property string iconName
   required property string typeLabel
+  required property string shortcutKeys
   required property string alias
   required property bool checked
   required property bool disabled
@@ -180,6 +181,16 @@ Item {
       anchors.rightMargin: row.px(12)
       anchors.verticalCenter: parent.verticalCenter
       spacing: row.px(10)
+
+      KeyHint {
+        visible: row.shortcutKeys.length > 0
+        anchors.verticalCenter: parent.verticalCenter
+        keys: row.shortcutKeys
+        color: row.look.foreground
+        fontFamily: row.look.fontFamily
+        pixelSize: Math.round(Style.font.caption * row.zoom)
+        zoom: row.zoom
+      }
 
       Rectangle {
         visible: row.alias.length > 0

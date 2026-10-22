@@ -9,6 +9,14 @@ var FALLBACKS = [
 
 var BUILTINS = [
   {
+    id: "builtin:keybindings",
+    title: "Search Keybindings",
+    subtitle: "Find keyboard shortcuts",
+    keywords: ["keys", "keyboard", "shortcuts", "hotkeys", "bindings"],
+    run: { view: "keybindings" },
+    rootSearch: { when: "always" }
+  },
+  {
     id: "builtin:omarchy-menu",
     title: "Omarchy Menu",
     subtitle: "Open the original Omarchy menu",
@@ -270,6 +278,9 @@ function actionsFor(candidate) {
     }
     return calc
   }
+  if (candidate.kind === "keybinding") return [
+    { id: "copy-shortcut", title: "Copy Shortcut", shortcut: "↵", section: "primary", icon: "" }
+  ]
   var primary
   var list = []
   switch (candidate.kind) {

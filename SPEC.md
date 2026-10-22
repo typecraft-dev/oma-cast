@@ -73,6 +73,14 @@ Consequences for Linux:
 
 ### 2.0 Quickshell build (current) [D, 2026-10-19]
 
+**Keybindings search [D, 2026-10-22]:** A `builtin:keybindings` command pushes a
+keybindings search view. `KeybindingsSource` reads Omarchy's public
+`menu keybindings --print` output on open, retaining the last successful list
+if refresh fails. Shortcut rows also participate in root search. They show
+keycaps and copy their chord on selection; no dispatcher is executed. The
+existing Learn → Keybindings command routes to the same view. This uses the
+existing QML view stack and has no additional runtime dependencies.
+
 **This supersedes the Tauri + Node design below for Omarchy.** Omarchy's desktop (bar, menus, launcher, notifications, lock screen) runs in one long-lived Quickshell process, `omarchy-shell`, whose features are plugins. oma-cast is one more plugin there, built the way Omarchy builds its own menu and emoji picker. The reasons:
 - **No external dependencies.** No Tauri, WebKitGTK, Node runtime, npm packages or native SQLite modules. It needs only what Omarchy already ships: Quickshell, Qt, bash, socat and Hyprland.
 - **Native look.** The plugin reads the active Omarchy theme's `[menu]` tokens (`qs.Commons.Color`, `Style`), so `omarchy theme set` restyles it live with no theme parser.

@@ -103,6 +103,11 @@ Check each of these on the machine instead of assuming it; Omarchy changes often
 
 ## Status
 
+Keybindings search (2026-10-22): native Search Keybindings view, live Omarchy
+binding source, root-search shortcut results, keycap accessories, and copy
+shortcut actions. `tests/keybindings.test.js` covers parsing, stable IDs,
+custom/alternate bindings, chord and fuzzy queries, and literal markup data.
+
 Renamed **raylinux → oma-launcher → oma-cast** on 2026-10-19 (plugin `typecraft.oma-cast`, CLI `oma-cast`, IPC target and global shortcut `oma-cast:toggle`, XDG dirs `oma-cast`). The app icon is Omarchy's logo: glyph `\ue900` in the `omarchy` font, the same one the bar's menu button uses.
 
 **Phase 1 (Quickshell build): done**, with the gaps listed below. **Phase 0: done.** Omarchy 4.0.0.alpha, Quickshell 0.3.2, Hyprland 0.56.2.

@@ -1,0 +1,9 @@
+{
+  "keybindings.title": "Search Keybindings",
+  "keybindings.subtitle": "Find keyboard shortcuts",
+  "keybindings.placeholder": "Search actions or shortcuts…",
+  "keybindings.section": "Keyboard Shortcuts",
+  "keybindings.copy": "Copy Shortcut",
+  "keybindings.copied": "Shortcut copied",
+  "keybindings.refreshError": "Could not refresh keybindings"
+}
