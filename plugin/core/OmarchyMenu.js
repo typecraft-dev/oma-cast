@@ -52,10 +52,39 @@ function parse(raw) {
   return { items: items, error: "" }
 }
 
-function buildTree(defaultItems, userItems) {
+function applyTranslations(items, catalog) {
+  var source = Array.isArray(items) ? items : []
+  var strings = (catalog && typeof catalog === "object") ? catalog : ({})
+  var out = []
+  for (var i = 0; i < source.length; i++) {
+    var entry = source[i]
+    var translated = entry && strings[entry.id]
+    if (!translated || typeof translated !== "object") {
+      out.push(entry)
+      continue
+    }
+    var next = {}
+    for (var k in entry) next[k] = entry[k]
+    if (translated.label) {
+      if (translated.label !== entry.label && entry.label) {
+        var aliases = Array.isArray(entry.aliases) ? entry.aliases.slice() : []
+        if (aliases.indexOf(entry.label) < 0) aliases.push(entry.label)
+        next.aliases = aliases
+      }
+      next.label = translated.label
+    }
+    if (translated.title) next.title = translated.title
+    if (translated.description) next.description = translated.description
+    out.push(next)
+  }
+  return out
+}
+
+function buildTree(defaultItems, userItems, catalog) {
+  var translatedDefaults = catalog ? applyTranslations(defaultItems, catalog) : (defaultItems || [])
   var byId = {}
   var order = []
-  var sources = [defaultItems || [], userItems || []]
+  var sources = [translatedDefaults, userItems || []]
   for (var s = 0; s < sources.length; s++) {
     for (var i = 0; i < sources[s].length; i++) {
       var entry = sources[s][i]
@@ -167,6 +196,11 @@ var PROVIDERS = {
     script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
     icon: "󰐋",
     actionFor: function(value) { return "omarchy-powerprofiles-set autodetect " + shellQuote(value) }
+  },
+  "languages": {
+    script: "current=$(omarchy-language 2>/dev/null); omarchy-language list 2>/dev/null | while IFS=$'\\t' read -r name code english; do [[ -z $code ]] && continue; printf '%s\\t%s\\t%s\\t%s\\n' \"$name\" \"$code\" \"$current\" \"$english\"; done",
+    icon: "\uf1ab",
+    actionFor: function(value) { return "omarchy-language " + shellQuote(value) }
   }
 }
 
@@ -187,11 +221,14 @@ function providerItems(menuId, providerName, output) {
     var label = parts[0] || ""
     var value = parts[1] || label
     var current = parts[2] || ""
+    var alias = parts[3] || ""
     if (!label) continue
     var id = menuId + "." + slugify(value)
     while (taken[id]) id += "-"
     taken[id] = true
-    var item = normalizeItem(id, { icon: spec.icon, label: label, action: spec.actionFor(value) })
+    var aliases = []
+    if (alias) aliases.push(alias)
+    var item = normalizeItem(id, { icon: spec.icon, label: label, action: spec.actionFor(value), aliases: aliases })
     item.parent = menuId
     item.isCurrent = value === current
     rows.push(item)
@@ -208,6 +245,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     stripJsonc: stripJsonc,
     parse: parse,
+    applyTranslations: applyTranslations,
     buildTree: buildTree,
     breadcrumb: breadcrumb,
     depth: depth,

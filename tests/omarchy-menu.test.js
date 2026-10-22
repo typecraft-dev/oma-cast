@@ -74,6 +74,29 @@ test("only a bare summon is run in-process", () => {
   assert.equal(M.summonAction("omarchy-shell shell summon x; rm -rf ~"), null)
 })
 
+test("applyTranslations translates labels and retains original in aliases", () => {
+  const items = M.parse(sample).items
+  const catalog = { "system": { label: "Sistema" }, "system.lock": { label: "Bloquear tela" } }
+  const tree = M.buildTree(items, [], catalog)
+  assert.equal(tree.items["system"].label, "Sistema")
+  assert.deepEqual(tree.items["system"].aliases, ["power-menu", "System"])
+  assert.equal(tree.items["system.lock"].label, "Bloquear tela")
+  assert.deepEqual(M.breadcrumb(tree, "system.lock"), ["Sistema"])
+})
+
+test("languages provider enumerates and marks current language", () => {
+  const out = "English\ten\tpt-BR\tEnglish\nPortuguês (Brasil)\tpt-BR\tpt-BR\tPortuguese (Brazil)\n"
+  const rows = M.providerItems("setup.language", "languages", out)
+  assert.equal(rows.length, 2)
+  assert.equal(rows[0].id, "setup.language.en")
+  assert.equal(rows[0].isCurrent, false)
+  assert.equal(rows[1].id, "setup.language.pt-br")
+  assert.equal(rows[1].isCurrent, true)
+  assert.equal(rows[1].label, "Português (Brasil)")
+  assert.deepEqual(rows[1].aliases, ["Portuguese (Brazil)"])
+  assert.equal(rows[1].action, "omarchy-language 'pt-BR'")
+})
+
 const shipped = "/usr/share/omarchy/default/omarchy/omarchy-menu.jsonc"
 test("the installed Omarchy menu parses completely", { skip: !fs.existsSync(shipped) }, () => {
   const r = M.parse(fs.readFileSync(shipped, "utf8"))

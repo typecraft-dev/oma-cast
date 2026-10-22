@@ -9,10 +9,14 @@ Item {
   property string omarchyPath: Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy"
   readonly property string defaultPath: source.omarchyPath + "/default/omarchy/omarchy-menu.jsonc"
   readonly property string userPath: Quickshell.env("HOME") + "/.config/omarchy/extensions/omarchy-menu.jsonc"
+  readonly property string languagePath: Quickshell.env("OMARCHY_LANGUAGE_FILE") || ((Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/omarchy/language")
+
+  property string language: "en"
+  property var menuCatalog: ({})
 
   property var defaultItems: []
   property var userItems: []
-  property var tree: OmarchyMenu.buildTree([], [])
+  property var tree: OmarchyMenu.buildTree([], [], ({}))
   property var guards: ({ when: {}, checked: {}, disabled: {} })
   property var providerItems: ({})
   property bool loading: guardProc.running || providerProc.running
@@ -20,8 +24,25 @@ Item {
 
   signal message(string level, string text, var metadata)
 
+  function setLanguage(raw) {
+    var code = String(raw || "").trim()
+    if (!/^[a-z]{2,3}(-[A-Za-z]{2})?$/.test(code)) code = "en"
+    if (source.language === code) return
+    source.language = code
+    menuCatalogFile.reload()
+  }
+
+  function parseCatalog(raw) {
+    try {
+      var parsed = JSON.parse(raw || "{}")
+      return (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : ({})
+    } catch (e) {
+      return ({})
+    }
+  }
+
   function rebuild() {
-    source.tree = OmarchyMenu.buildTree(source.defaultItems, source.userItems)
+    source.tree = OmarchyMenu.buildTree(source.defaultItems, source.userItems, source.menuCatalog)
     source.revision++
     source.refresh()
   }
@@ -121,5 +142,25 @@ Item {
     onFileChanged: reload()
     onLoaded: source.load("user", text())
     onLoadFailed: source.load("user", "")
+  }
+
+  FileView {
+    id: languageFile
+    path: source.languagePath
+    watchChanges: true
+    printErrors: false
+    onLoaded: source.setLanguage(text())
+    onLoadFailed: source.setLanguage("")
+    onFileChanged: reload()
+  }
+
+  FileView {
+    id: menuCatalogFile
+    path: source.omarchyPath + "/default/i18n/" + source.language + "/menu.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: { source.menuCatalog = source.parseCatalog(text()); source.rebuild() }
+    onLoadFailed: { source.menuCatalog = ({}); source.rebuild() }
+    onFileChanged: reload()
   }
 }
