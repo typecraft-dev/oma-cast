@@ -87,6 +87,7 @@ need live desktop validation.
 | Key | Does |
 |---|---|
 | `↵` / `Ctrl+↵` / `Ctrl+Shift+↵` | Run the first, second or third action |
+| `Shift+↵` | Open a new window of an app (`↵` switches to the one already open) |
 | `Ctrl+K` | Open the action panel |
 | `Super+V` / `Ctrl+V` / `Ctrl+Shift+V` / `Shift+Insert` | Paste text into the query (also accepts clipboard-history selections) |
 | `Ctrl+Alt+↵` | Ask the default agent using the current root-search text |

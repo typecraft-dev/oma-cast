@@ -112,6 +112,7 @@ Works:
   - empty root: Favorites, Suggestions (frecency > 1, top 6), Commands, Applications
   - query: Results, then `Use "<q>" with…` (Google, DuckDuckGo fallbacks)
 - **Providers:** apps from `shell.appLibrary`, the whole Omarchy menu (about 400 items, with breadcrumbs, guards, ✓ state and font/power-profile provider rows), and the built-in "Omarchy Menu".
+- **Opening an open app [D]:** ↵ on an app focuses its most recently used window, switching to its workspace, and launches only when none is open. Windows match by desktop id, `StartupWMClass`, or the URL Chromium/Brave web app classes are built from (`RootSearch.findAppWindow`). The focus waits for the `oma-cast` layer to unmap, since Hyprland refuses focus while it holds the keyboard. Shift+↵ ("Open New Window") always launches.
 - **Ranking state:** frecency (+100 per launch, 10-day half-life) and learned search terms in `db/frecency.json`. Aliases (exact → top; duplicates rejected), favourites (Ctrl+Shift+F, reorder Ctrl+Alt+↑↓) and disabled commands live in `db/settings.json` `commands`.
 - **Navigation:** pushed Omarchy submenus (search within them), the alias editor, back with Esc / Ctrl+[ / Backspace on an empty query / the header arrow, and Shift+Esc to pop to root.
 - **Keyboard:** Ctrl+K action panel (filterable, per-row shortcuts), ↵ / Ctrl+↵ / Ctrl+Shift+↵ for the first three actions, Ctrl+1–9, Ctrl+↑↓ to jump sections, PageUp/PageDown, ↑ on an empty root for search history, Ctrl+Shift+C copy, Alt+Shift+D disable, Ctrl + / − / 0 zoom.

@@ -180,3 +180,31 @@ test("the about panel describes a row", () => {
   const calc = RS.aboutFor({ kind: "calculator", calcInput: "2+2", calcResult: "4", calcResultCaption: "Four" }, NOW)
   assert.deepEqual(calc.map((r) => r.label), ["Question", "Answer", "Type"])
 })
+
+test("app windows: keys from desktop id, StartupWMClass and web app URL", () => {
+  assert.deepEqual(RS.appWindowKeys({ id: "sublime_text", startupClass: "subl" }), ["sublime_text", "subl"])
+  assert.deepEqual(RS.appWindowKeys({ id: "WhatsApp", execString: '/home/u/.local/bin/chrome-webapp "https://web.whatsapp.com/"' }), ["whatsapp", "webapp:web.whatsapp.com"])
+  assert.deepEqual(RS.appWindowKeys({ id: "Chat", command: ["omarchy-launch-webapp", "https://app.parlichat.com/chats"] }), ["chat", "webapp:app.parlichat.com/chats"])
+  assert.deepEqual(RS.appWindowKeys({ id: "firefox", execString: "firefox https://example.com" }), ["firefox"])
+  assert.deepEqual(RS.windowClassKeys("chrome-web.whatsapp.com__-Default"), ["chrome-web.whatsapp.com__-default", "webapp:web.whatsapp.com"])
+  assert.deepEqual(RS.windowClassKeys("brave-app.parlichat.com__chats-Default"), ["brave-app.parlichat.com__chats-default", "webapp:app.parlichat.com/chats"])
+})
+
+test("app windows: picks the most recently focused mapped window", () => {
+  const clients = [
+    { class: "firefox", address: "0xa", focusHistoryID: 3, mapped: true },
+    { class: "Firefox", address: "0xb", focusHistoryID: 1, mapped: true },
+    { class: "firefox", address: "0xc", focusHistoryID: 0, mapped: false },
+    { class: "chrome-web.whatsapp.com__-Default", address: "0xd", focusHistoryID: 2, mapped: true }
+  ]
+  assert.equal(RS.findAppWindow(clients, ["firefox"]), "0xb")
+  assert.equal(RS.findAppWindow(clients, ["whatsapp", "webapp:web.whatsapp.com"]), "0xd")
+  assert.equal(RS.findAppWindow(clients, ["signal-desktop"]), "")
+  assert.equal(RS.findAppWindow(clients, []), "")
+})
+
+test("actions: apps offer Open New Window on Shift+Enter", () => {
+  const app = RS.decorate(RS.appCandidate(apps[0]), ctx(), deps)
+  const openNew = RS.actionsFor(app).find((a) => a.id === "open-new")
+  assert.equal(openNew.shortcut, "Shift ↵")
+})

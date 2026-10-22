@@ -64,9 +64,58 @@ function appCandidate(entry) {
     bundleId: desktopId,
     typeLabel: "Application",
     appId: desktopId,
+    windowKeys: appWindowKeys(entry),
     iconName: String(entry.icon || ""),
     rootSearch: { when: "always" }
   }
+}
+
+// host+path of a web app URL, the shape both sides of the match reduce to.
+// The trailing slash is dropped rather than forced: web apps disagree on it.
+function webappKey(url) {
+  return "webapp:" + String(url).replace(/^[a-z]+:\/\//i, "").replace(/\/+$/, "").toLowerCase()
+}
+
+// Keys a Hyprland window class can match for one desktop entry. No single
+// one covers everything: StartupWMClass is the declared answer but often
+// wrong or absent, the desktop id covers files named after their class, and
+// web apps declare no class at all, so their URL is rebuilt from Exec.
+function appWindowKeys(entry) {
+  var keys = []
+  function add(key) { if (key && keys.indexOf(key) < 0) keys.push(key) }
+  add(String(entry.id || "").toLowerCase())
+  add(String(entry.startupClass || "").toLowerCase())
+  var exec = String(entry.execString || "")
+  if (!exec && entry.command && entry.command.length) exec = Array.prototype.join.call(entry.command, " ")
+  if (/--app=|webapp/.test(exec)) {
+    var url = exec.match(/https?:\/\/[^\s"']+/)
+    if (url) add(webappKey(url[0]))
+  }
+  return keys
+}
+
+// Keys for one window class. Chromium-based browsers build a web app's class
+// off its URL: chrome-web.whatsapp.com__-Default -> web.whatsapp.com.
+function windowClassKeys(windowClass) {
+  var cls = String(windowClass || "").toLowerCase()
+  var keys = [cls]
+  var url = cls.replace(/^(brave|chrome|chromium)-/, "")
+  if (url !== cls) keys.push(webappKey(url.replace(/-default$/, "").replace(/__/g, "/").replace(/_/g, "/")))
+  return keys
+}
+
+// Address of the most recently focused window of an app, or "" when none is
+// open. focusHistoryID 0 is the focused window, higher is older.
+function findAppWindow(clients, keys) {
+  if (!keys || !keys.length) return ""
+  var best = null
+  for (var i = 0; i < (clients || []).length; i++) {
+    var c = clients[i]
+    if (!c || !c.class || c.mapped === false) continue
+    var matches = windowClassKeys(c.class).some(function(k) { return keys.indexOf(k) >= 0 })
+    if (matches && (!best || c.focusHistoryID < best.focusHistoryID)) best = c
+  }
+  return best ? String(best.address) : ""
 }
 
 function menuCandidate(tree, item, guards, deps) {
@@ -319,6 +368,7 @@ function actionsFor(candidate) {
     list.push({ id: "open-in-omarchy-menu", title: "Open in Omarchy Menu", shortcut: "Ctrl ↵", section: "primary", icon: "" })
   if (candidate.kind === "fallback") return list
 
+  if (candidate.kind === "app") list.push({ id: "open-new", title: "Open New Window", shortcut: "Shift ↵", section: "primary", icon: "" })
   if (candidate.kind === "app") list.push({ id: "copy-id", title: "Copy Desktop ID", shortcut: "Ctrl Shift C", section: "copy", icon: "" })
   if (candidate.kind === "omarchy-action") list.push({ id: "copy-command", title: "Copy Command", shortcut: "Ctrl Shift C", section: "copy", icon: "" })
 
@@ -433,6 +483,9 @@ if (typeof module !== "undefined") {
     confirmationFor: confirmationFor,
     aboutFor: aboutFor,
     appCandidate: appCandidate,
+    appWindowKeys: appWindowKeys,
+    windowClassKeys: windowClassKeys,
+    findAppWindow: findAppWindow,
     menuCandidate: menuCandidate,
     menuCandidates: menuCandidates,
     builtinCandidate: builtinCandidate,
