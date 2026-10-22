@@ -43,7 +43,7 @@ Item {
   Rectangle {
     visible: row.isCalculator
     anchors.fill: parent
-    radius: Math.max(Style.cornerRadius, row.px(6))
+    radius: Style.cornerRadius
     color: row.selected ? row.look.selectedBackground : Util.alpha(row.look.foreground, 0.04)
     border.width: 1
     border.color: Util.alpha(row.look.foreground, row.selected ? 0 : 0.08)
@@ -141,7 +141,7 @@ Item {
   Rectangle {
     visible: !row.isSection && !row.isCalculator
     anchors.fill: parent
-    radius: Math.max(Style.cornerRadius, row.px(6))
+    radius: Style.cornerRadius
     color: row.selected ? row.look.selectedBackground : "transparent"
     opacity: row.disabled ? 0.45 : 1
 
@@ -186,7 +186,8 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         height: aliasText.implicitHeight + row.px(4)
         width: aliasText.implicitWidth + row.px(12)
-        radius: row.px(4)
+        // Small badge: follow Hyprland down to square, capped like Menu.qml.
+        radius: Math.min(Style.cornerRadius, row.px(4))
         color: "transparent"
         border.width: 1
         border.color: Util.alpha(row.look.foreground, 0.3)

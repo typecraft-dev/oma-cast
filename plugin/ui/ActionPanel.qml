@@ -37,7 +37,8 @@ Rectangle {
 
   width: px(340)
   height: Math.min(px(360), list.contentHeight + searchRow.height + px(16))
-  radius: Math.max(Style.cornerRadius, px(8))
+  // Follow Hyprland like the native HUD (Style mirrors decoration:rounding).
+  radius: Style.cornerRadius
   color: look.background
   border.width: 1
   border.color: Util.alpha(look.foreground, 0.15)
@@ -77,7 +78,7 @@ Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: panel.px(34)
-        radius: Math.max(Style.cornerRadius, panel.px(6))
+        radius: Style.cornerRadius
         color: index === panel.selectedIndex ? panel.look.selectedBackground : "transparent"
 
         Text {

@@ -631,7 +631,9 @@ PanelWindow {
     id: card
     width: window.cardWidth
     height: window.compact ? window.headerHeight + card.borderTop + card.borderBottom : window.fullHeight
-    radius: Math.max(Style.cornerRadius, window.px(8))
+    // Follow Hyprland like the native HUD: Style.cornerRadius already
+    // mirrors `decoration:rounding` (see omarchy Style.qml).
+    radius: Style.cornerRadius
     anchors.horizontalCenter: parent.horizontalCenter
     y: Math.max(Style.gapsOut, Math.min(Math.round(window.height / 4), window.height - window.fullHeight - Style.gapsOut))
     color: window.look.background
