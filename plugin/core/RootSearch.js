@@ -279,8 +279,22 @@ function submenuSections(candidates, menuId, query, ctx, deps) {
     if (!q && rest.indexOf(".") >= 0) continue
     inside.push(decorate(c, ctx, deps))
   }
-  if (!q) return inside.length ? [{ id: "menu", title: "", rows: inside.map(function(c) { c.subtitle = ""; return { candidate: c, record: null } }) }] : []
-  var ranked = deps.Ranker.rank(inside, q, rankOptions(ctx))
+
+  // The apps provider contributes existing application candidates, alongside
+  // any static children. Its provider may be overridden by the user's menu.
+  var applications = []
+  if (candidates.some(function(c) { return c.id === "omarchy:" + menuId && c.provider === "apps" })) {
+    applications = candidates.filter(function(c) { return c.type === "application" && isEnabled(c, ctx) })
+      .map(function(c) { return decorate(c, ctx, deps) })
+  }
+
+  if (!q) {
+    // Drop the shared breadcrumb, keeping static children in menu order.
+    var rows = inside.map(function(c) { c.subtitle = ""; return { candidate: c, record: null } })
+    rows = rows.concat(deps.Ranker.rank(applications, "", rankOptions(ctx)))
+    return rows.length ? [{ id: "menu", title: "", rows: rows }] : []
+  }
+  var ranked = deps.Ranker.rank(inside.concat(applications), q, rankOptions(ctx))
   return ranked.length ? [{ id: "results", title: "Results", rows: ranked }] : []
 }
 

@@ -17,6 +17,7 @@ const apps = ["firefox", "chromium", "signal-desktop", "org.gnome.Nautilus", "Al
 }))
 
 const menu = OmarchyMenu.buildTree(OmarchyMenu.parse(`{
+  "apps": {"label":"Apps","provider":"apps"},
   "system": {"label":"System"},
   "system.lock": {"icon":"l","label":"Lock","action":"omarchy-system-lock"},
   "system.shutdown": {"label":"Shutdown","action":"omarchy-system shutdown"},
@@ -27,10 +28,14 @@ const menu = OmarchyMenu.buildTree(OmarchyMenu.parse(`{
   "style.font": {"label":"Font","provider":"fonts"}
 }`).items, [])
 
-function candidates(guards, providerItems) {
+function candidates(guards, providerItems, tree) {
   return apps.map(RS.appCandidate)
-    .concat(RS.menuCandidates(menu, guards || { when: {}, checked: {}, disabled: {} }, providerItems || {}, deps))
+    .concat(RS.menuCandidates(tree || menu, guards || { when: {}, checked: {}, disabled: {} }, providerItems || {}, deps))
     .concat(RS.BUILTINS.map(RS.builtinCandidate))
+}
+
+function menuWith(overrides) {
+  return OmarchyMenu.buildTree(menu.order.map((id) => menu.items[id]), OmarchyMenu.parse(JSON.stringify(overrides)).items)
 }
 
 function ctx(extra) {
@@ -114,6 +119,102 @@ test("a submenu lists its children, and searches its descendants", () => {
   assert.deepEqual(titles(children[0]), ["Toggle"])
   const found = RS.submenuSections(candidates(), "trigger", "night", ctx(), deps)
   assert.deepEqual(titles(found[0]), ["Nightlight"])
+})
+
+test("Apps submenu lists installed applications", () => {
+  const sections = RS.submenuSections(candidates(), "apps", "", ctx(), deps)
+  assert.equal(sections.length, 1)
+  assert.equal(sections[0].id, "menu")
+  const ids = sections[0].rows.map((row) => row.candidate.id).sort()
+  assert.deepEqual(ids, apps.map((app) => `app:${app.id}`).sort())
+  assert.ok(sections[0].rows.every((row) => row.candidate.kind === "app"))
+})
+
+test("Apps submenu respects a user override of its provider", () => {
+  const custom = menuWith({ apps: { label: "Fonts", provider: "fonts" } })
+  const rows = OmarchyMenu.providerItems("apps", "fonts", "Iosevka\tIosevka\tIosevka\n")
+  const sections = RS.submenuSections(candidates(null, { apps: rows }, custom), "apps", "", ctx(), deps)
+  assert.deepEqual(titles(sections[0]), ["Iosevka"])
+  assert.equal(sections[0].rows[0].candidate.kind, "omarchy-action")
+})
+
+test("Apps submenu preserves custom children in menu order before applications", () => {
+  const custom = menuWith({
+    "apps.zulu": { label: "Zulu action", action: "custom-zulu" },
+    "apps.alpha": { label: "Alpha action", action: "custom-alpha" },
+    "apps.tools": { label: "Tools" },
+    "apps.tools.inspect": { label: "Inspect configuration", action: "custom-inspect" }
+  })
+  const sections = RS.submenuSections(candidates(null, null, custom), "apps", "", ctx(), deps)
+  const rows = sections[0].rows.map((row) => row.candidate)
+  assert.deepEqual(rows.slice(0, 3).map((c) => c.id), ["omarchy:apps.zulu", "omarchy:apps.alpha", "omarchy:apps.tools"])
+  assert.ok(rows.slice(0, 3).every((c) => c.subtitle === ""))
+  assert.deepEqual(rows.slice(3).map((c) => c.id).sort(), apps.map((app) => `app:${app.id}`).sort())
+  assert.ok(!rows.some((c) => c.id === "omarchy:apps.tools.inspect"), "descendants stay out of the unfiltered list")
+})
+
+test("Apps submenu searches custom descendants with their breadcrumbs", () => {
+  const custom = menuWith({
+    "apps.tools": { label: "Tools" },
+    "apps.tools.inspect": { label: "Inspect configuration", action: "custom-inspect" }
+  })
+  const sections = RS.submenuSections(candidates(null, null, custom), "apps", "inspect", ctx(), deps)
+  assert.equal(sections[0]?.id, "results")
+  assert.deepEqual(titles(sections[0]), ["Inspect configuration"])
+  assert.equal(sections[0].rows[0].candidate.subtitle, "Apps › Tools")
+})
+
+test("Apps submenu ranks matching applications in a Results section", () => {
+  const sections = RS.submenuSections(candidates(), "apps", " firefox ", ctx(), deps)
+  assert.equal(sections[0].id, "results")
+  assert.equal(sections[0].title, "Results")
+  assert.equal(titles(sections[0])[0], "Firefox")
+  assert.ok(sections[0].rows.every((row) => row.candidate.kind === "app"))
+  const dotted = RS.submenuSections(candidates(), "apps", "org.gnome.", ctx(), deps)
+  assert.deepEqual(titles(dotted[0]), ["Files"])
+})
+
+test("Apps submenu excludes disabled applications from browsing and searching", () => {
+  const context = ctx({ commands: { "app:firefox": { enabled: false } } })
+  for (const query of ["", "firefox"]) {
+    const sections = RS.submenuSections(candidates(), "apps", query, context, deps)
+    assert.ok(!sections.some((s) => s.rows.some((r) => r.candidate.id === "app:firefox")))
+  }
+})
+
+test("Apps submenu matches application aliases", () => {
+  const context = ctx({ commands: { "app:chromium": { alias: "zz" } } })
+  const sections = RS.submenuSections(candidates(), "apps", "zz", context, deps)
+  assert.deepEqual(titles(sections[0]), ["Chromium"])
+  assert.equal(sections[0].rows[0].candidate.alias, "zz")
+})
+
+test("Apps submenu ranks unfiltered applications by frecency", () => {
+  const context = ctx({ frecency: { "app:signal-desktop": Frecency.recordVisit(null, NOW - 1000, "") } })
+  const sections = RS.submenuSections(candidates(), "apps", "", context, deps)
+  assert.equal(titles(sections[0])[0], "Signal")
+  assert.ok(sections[0].rows[0].candidate.frecency > 1)
+})
+
+test("application providers are identified by metadata rather than menu id", () => {
+  const custom = menuWith({ personal: { label: "Personal" }, "personal.launchers": { label: "Launchers", provider: "apps" } })
+  const sections = RS.submenuSections(candidates(null, null, custom), "personal.launchers", "", ctx(), deps)
+  assert.deepEqual(sections[0].rows.map((r) => r.candidate.id).sort(), apps.map((app) => `app:${app.id}`).sort())
+})
+
+test("Apps submenu returns no sections for no applications or no matches", () => {
+  const noApps = candidates().filter((c) => c.type !== "application")
+  assert.deepEqual(RS.submenuSections(noApps, "apps", "", ctx(), deps), [])
+  assert.deepEqual(RS.submenuSections(candidates(), "apps", "zzzz-no-match", ctx(), deps), [])
+})
+
+test("submenu searches do not mutate candidate metadata", () => {
+  const input = candidates()
+  const before = JSON.parse(JSON.stringify(input))
+  for (const menuId of ["apps", "trigger"]) {
+    for (const query of ["", "firefox", "nightlight"]) RS.submenuSections(input, menuId, query, ctx(), deps)
+  }
+  assert.deepEqual(input, before)
 })
 
 test("provider rows are searchable under their menu", () => {
