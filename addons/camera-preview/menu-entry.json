@@ -1,0 +1,9 @@
+{
+  "camera-preview": {
+    "icon": "󰄀",
+    "label": "Open camera",
+    "description": "Check your camera before a meeting",
+    "aliases": ["camera", "webcam", "preview", "meeting"],
+    "action": "omarchy-shell shell summon oma-cast.camera-preview '{}'"
+  }
+}

@@ -162,3 +162,10 @@ Deviations from the original spec (SPEC §2.0 and the Phase 1 note in §12):
 - The Omarchy theme replaces Raycast's 8 themes; the HUD is Omarchy's OSD.
 
 Testing lesson: the query survives hide/show until pop-to-root. A live test must clear it first (Ctrl+U), or typed text gets appended to the old query. Pressing ↵ on a stale query once opened real browser tabs.
+
+**Optional camera preview add-on:** `addons/camera-preview/` is a separate
+Omarchy panel plugin using Qt Multimedia, registered in oma-cast through the
+existing user menu extension API. It previews the default camera, supports
+selecting another connected camera, and stops capture when hidden or unloaded.
+It does not implement the planned Raycast extension runtime. Installation is
+opt-in; see its README.

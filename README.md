@@ -61,6 +61,11 @@ Press **Alt+Space**. Super+Space stays the Omarchy menu. You can change the laun
 
 To remove it: `oma-cast uninstall`.
 
+## Optional plugins
+
+- [Camera preview](addons/camera-preview/README.md): add **Open camera** to check
+  your webcam in a mirrored preview before a meeting.
+
 ## Ask your default agent
 
 Type a question, select **Ask default agent** under the web-search fallbacks,
