@@ -26,15 +26,23 @@ function harness(text) {
     isActionPanelKey: () => false, direction: () => 0
   }
   const actionPanel = { filter: "" }
+  let cursor = window.query.length
+  const queryText = {
+    selectionStart: cursor, selectionEnd: cursor,
+    get cursorPosition() { return cursor },
+    set cursorPosition(value) { cursor = value; this.selectionStart = value; this.selectionEnd = value },
+    deselect() { this.cursorPosition = cursor }
+  }
   const clipboardInput = { text: "", clear() { this.text = "" }, paste() { this.text = text } }
-  const context = vm.createContext({ Qt, window, actionPanel, clipboardInput, Util: { editsFilter: () => false } })
+  const context = vm.createContext({ Qt, window, actionPanel, queryText, clipboardInput, Util: { editsFilter: () => false } })
   window.setQuery = next => {
     context.next = next
     vm.runInContext(body("function setQuery(next)"), context)
+    queryText.cursorPosition = window.query.length
   }
   window.pasteClipboard = () => vm.runInContext(body("function pasteClipboard()"), context)
   return {
-    Qt, window, actionPanel, clipboardInput, changes,
+    Qt, window, actionPanel, queryText, clipboardInput, changes,
     press(key, modifiers) {
       context.event = { key: Qt["Key_" + key], modifiers }
       return vm.runInContext(body("function handleKey(event)"), context)
@@ -90,8 +98,23 @@ test("clipboard paste also works in submenu queries and alias editing", () => {
   assert.equal(h.window.query, "prefix some text with\tspaces")
   h.window.view.kind = "alias"
   h.window.query = ""
+  h.queryText.cursorPosition = 0
   h.press("Insert", h.Qt.ShiftModifier)
   assert.equal(h.window.query, "sometextwithspaces")
+})
+
+test("query paste inserts at the cursor and replaces the selected text", () => {
+  const h = harness("5")
+  h.window.query = "12+34"
+  h.queryText.cursorPosition = 3
+  h.press("V", h.Qt.ControlModifier)
+  assert.equal(h.window.query, "12+534")
+  assert.equal(h.queryText.cursorPosition, 4)
+  h.queryText.selectionStart = 3
+  h.queryText.selectionEnd = 6
+  h.press("Insert", h.Qt.ShiftModifier)
+  assert.equal(h.window.query, "12+5")
+  assert.equal(h.queryText.cursorPosition, 4)
 })
 
 test("action-panel paste edits its filter without changing the query", () => {
