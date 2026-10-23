@@ -104,7 +104,7 @@ need live desktop validation.
 
 ```sh
 oma-cast toggle | show | hide
-oma-cast run <commandId>         # e.g. app:com.mitchellh.ghostty, omarchy:style.theme
+oma-cast run <commandId>         # e.g. app:com.mitchellh.ghostty, omarchy:appearance.theme
 oma-cast call <method> [json]    # call any backend method
 oma-cast doctor
 ```
