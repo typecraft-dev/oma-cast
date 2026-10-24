@@ -137,12 +137,17 @@ function decorate(candidate, ctx, deps) {
   for (var k in candidate) out[k] = candidate[k]
   var settings = (ctx.commands && ctx.commands[candidate.id]) || {}
   var visits = (ctx.frecency && ctx.frecency[candidate.id]) || null
-  out.alias = settings.alias ? String(settings.alias).toLowerCase() : ""
+  out.alias = aliasOf(candidate, ctx)
   out.favoriteOrder = typeof settings.favoriteOrder === "number" ? settings.favoriteOrder : null
   out.frecency = visits ? deps.Frecency.score(visits.anchor, ctx.nowMs / 1000) : 1
   out.openedAt = visits ? visits.openedAt : null
   out.searchTerms = visits && visits.searchTerms ? visits.searchTerms : []
   return out
+}
+
+function aliasOf(candidate, ctx) {
+  var settings = ctx.commands && ctx.commands[candidate.id]
+  return settings && settings.alias ? String(settings.alias).toLowerCase() : ""
 }
 
 function isEnabled(candidate, ctx) {
@@ -229,15 +234,17 @@ function passesFilter(candidate, filter) {
 function rootSections(candidates, query, ctx, deps) {
   var q = String(query || "").trim()
   var filtered = ctx.filter && ctx.filter !== "all"
-  var decorated = []
-  for (var i = 0; i < candidates.length; i++) {
-    if (!isEnabled(candidates[i], ctx) || !passesFilter(candidates[i], ctx.filter)) continue
-    decorated.push(decorate(candidates[i], ctx, deps))
-  }
   var opts = rankOptions(ctx)
 
   if (q) {
-    var searchable = decorated.filter(function(c) { return c.rootSearch.when !== "empty" })
+    // Decorate only what can still match: rank() would drop the rest.
+    var searchable = []
+    for (var n = 0; n < candidates.length; n++) {
+      var c = candidates[n]
+      if (c.rootSearch.when === "empty" || !isEnabled(c, ctx) || !passesFilter(c, ctx.filter)) continue
+      if (deps.Ranker.canSkip(c, aliasOf(c, ctx), q)) continue
+      searchable.push(decorate(c, ctx, deps))
+    }
     var results = deps.Ranker.rank(searchable, q, opts)
     var sections = []
     if (ctx.calculation && !filtered) sections.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
@@ -246,6 +253,11 @@ function rootSections(candidates, query, ctx, deps) {
     return sections
   }
 
+  var decorated = []
+  for (var i = 0; i < candidates.length; i++) {
+    if (!isEnabled(candidates[i], ctx) || !passesFilter(candidates[i], ctx.filter)) continue
+    decorated.push(decorate(candidates[i], ctx, deps))
+  }
   var shown = decorated.filter(function(c) { return c.rootSearch.when !== "searching" || c.favoriteOrder !== null })
   var taken = {}
   var favorites = shown.filter(function(c) { return c.favoriteOrder !== null })

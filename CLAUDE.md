@@ -34,14 +34,14 @@ Spec legend: **[O]** observed in Raycast, **[I]** inferred, **[D]** design decis
 
 ## Architecture: an Omarchy shell plugin (SPEC §2.0)
 
-oma-cast runs **inside `omarchy-shell`**, Omarchy's long-lived Quickshell process, as the plugin `typecraft.oma-cast`. That is how Omarchy builds its own menu, emoji picker and clipboard overlays. **Keep external dependencies near zero:** QML and plain JS only, using what Omarchy already ships (Quickshell, Qt, bash, socat, Hyprland). No Tauri, Node runtime, npm packages or native modules without asking first. The Tauri/Node design in SPEC §2 is kept for reference only.
+oma-cast runs **inside `omarchy-shell`**, Omarchy's long-lived Quickshell process, as the plugin `typecraft.oma-cast`. That is how Omarchy builds its own menu, emoji picker and clipboard overlays. **Keep external dependencies near zero:** QML and plain JS only, using what Omarchy already ships (Quickshell, Qt, bash, Hyprland). No Tauri, Node runtime, npm packages or native modules without asking first. The Tauri/Node design in SPEC §2 is kept for reference only.
 
 To learn the host, read the shell's own code in `$OMARCHY_PATH/shell/` (`/usr/share/omarchy/shell`):
 - `shell.qml`: plugin loading, `summon`/`hide`/`toggle`, and the scoped `shell` API
 - `plugins/menu/Menu.qml`: the Omarchy launcher/menu
 - `plugins/emojis/Emojis.qml`: a small overlay plugin
 - `services/AppLibrary.qml` + `AppSearch.js`: desktop entries, icons, `uwsm-app -- gtk-launch` launching
-- `Commons/{Style,Color,Util}.qml` (Omarchy 4.0.x has no `Ui/OverlayWindow`; overlays are a `PanelWindow` on `WlrLayer.Overlay`)
+- `Commons/{Style,Color,Util}.qml`, `Ui/` (BorderSurface, PointerMoveGate, …). Omarchy 4.0.4 removed `Ui/OverlayWindow.qml` and `ShellIpc`; windows are plain `PanelWindow`s and IPC is Quickshell's `IpcHandler` (`import Quickshell.Io`)
 - `default/agents/skills/omarchy/plugins.md`: plugin safety rules. Use `textFormat: Text.PlainText` for any dynamic text.
 
 ## Repo layout
@@ -93,7 +93,7 @@ Check each of these on the machine instead of assuming it; Omarchy changes often
 
 - **Hyprland config is Lua** (Hyprland 0.56). `~/.config/hypr/hyprland.lua` `require`s `default.hypr.omarchy` and the user's `hypr.bindings` etc. Bindings use `o.bind("ALT + SPACE", "desc", dispatcher)`. `oma-cast setup hyprland` writes only `~/.config/hypr/oma-cast.lua` and appends one `require("hypr.oma-cast")`. Never edit Omarchy's files.
 - **Hotkey.** Super+Space is the Omarchy menu and Super+Alt+Space is the dock's app grid. oma-cast defaults to **Alt+Space** through `hl.dsp.global("oma-cast:toggle")`, so the plugin's GlobalShortcut fires with no process spawn. Users can change their binding in `oma-cast.lua`; never force a Super+Space swap.
-- **IPC.** `omarchy-shell <target> <fn> args…` answers over the shell's socket (needs `socat`), falling back to `qs ipc`. Our target is `oma-cast`. `IpcHandler` (Quickshell.Io; 4.0.x dropped `ShellIpc`) functions must have typed params and return a string.
+- **IPC.** `omarchy-shell <target> <fn> args…` runs `qs ipc` (about 100 ms per call since Omarchy 4.0.4; there is no socat fast path any more). Our target is `oma-cast`. `IpcHandler` (Quickshell.Io; 4.0.x dropped `ShellIpc`) functions must have typed params and return a string.
 - **Theme.** Bind colours to `Commons.Color.menu.*` and sizes to `Style.*`. They follow `omarchy theme set` live; no theme parsing.
 - **App launching.** Use `shell.appLibrary.launch(id, name)`. It goes through `uwsm-app -- gtk-launch`, sends terminal apps to `omarchy-launch-tui`, and shows Omarchy's launch OSD. The shell only provides `appLibrary` to `menu`-kind plugins.
 - **Terminals and paste.** Alacritty/Ghostty/Kitty need Ctrl+Shift+V (SPEC §5.3). Read the class from `hyprctl activewindow -j`.
@@ -105,7 +105,7 @@ Check each of these on the machine instead of assuming it; Omarchy changes often
 
 Renamed **raylinux → oma-launcher → oma-cast** on 2026-10-19 (plugin `typecraft.oma-cast`, CLI `oma-cast`, IPC target and global shortcut `oma-cast:toggle`, XDG dirs `oma-cast`). The app icon is Omarchy's logo: glyph `\ue900` in the `omarchy` font, the same one the bar's menu button uses.
 
-**Phase 1 (Quickshell build): done**, with the gaps listed below. **Phase 0: done.** Omarchy 4.0.0.alpha, Quickshell 0.3.2, Hyprland 0.56.2.
+**Phase 1 (Quickshell build): done**, with the gaps listed below. **Phase 0: done.** Omarchy 4.0.0.alpha, Quickshell 0.3.2, Hyprland 0.56.2. Ported to Omarchy 4.0.4 / Quickshell 0.3.1 on 2026-10-21 (see Deviations).
 
 Works:
 - **Root search** ported from ref 02 §4.2–4.6 (`core/Ranker.js`, `core/Frecency.js`, golden tests). Sections (`core/RootSearch.js`):
@@ -142,12 +142,16 @@ Works:
   config.json sets `remToPxRate` (16), `workHoursPerDay` (8) and `clockFormat` (`auto` follows the Qt locale, or `12h` / `24h`).
 
   ↵ copies the answer (HUD), Ctrl+↵ pastes it through `omarchy-clipboard-paste-text`, Ctrl+Shift+C copies "question = answer". Each one saves to **Calculator History** (`db/calculator.json`, 4096 rows / 90 days): a built-in command and pushed view, searchable, Ctrl+D deletes an entry, Ctrl+Shift+D deletes all. RPC: `calculator.calculate|historyGetAll|historyDelete|historyDeleteAll|refreshCurrencies|getCurrencies`. A bare number, word or quantity (`42`, `firefox`, `5 kg`) never produces a row, because the section takes ↵.
-- **Latency:** show → mapped in 59–66 ms, hide in 24–42 ms on Omarchy 4.0.6 (`tests/smoke.sh`; it was 37–44 ms on the old `OverlayWindow`).
-- **Tests:** root search, calculator and default-agent hand-off coverage (`node --test tests/*.test.js`).
+- **Latency** (2026-10-21, Omarchy 4.0.4):
+  - Hotkey → first frame: 22–25 ms shown, 12–26 ms hidden (`tests/smoke.sh`, which reads the plugin's `lastFrameAt`). Mapping a fresh surface cost about 150 ms of scene-graph setup per open, so the surface now stays mapped (see Deviations).
+  - A keystroke reaches the screen in about 13–23 ms. Search medians are 1–15 ms in the shell (1–2 letter queries are the slowest).
+  - The `oma-cast` CLI adds about 100 ms per call (`qs ipc`); the hotkey does not use it.
+- **Tests:** root search, calculator and default-agent hand-off coverage (`node --test tests/*.test.js`). `tests/ranker-fast.test.js` holds the fast ranker paths to a dense reference DP.
 
 **Default-agent hand-off (fork, 2026-10-20):** user-authorized addition outside the original phase plan. The root fallback "Ask default agent" and Ctrl+Alt+Enter pass the query to `omarchy-agent --prompt` as a literal argv element. `AgentLauncher.qml` checks the configured agent/terminal with a bounded, question-free preflight, prevents overlapping submissions and cancels on hide/unload. `Launcher.qml` dismisses the overlay before launching through `Util.execArgv`. Errors leave the query visible. There are no new dependencies, model APIs, credentials or question-history writes. Existing CLI approval behaviour is inherited. Portable checks do not establish live terminal focus, authentication, or provider compatibility; verify those on Omarchy.
 
 Stubbed / not yet:
+- Keystroke buffering. The persistent surface has keyboard focus within about 30 ms of the hotkey; keys typed before that go to the window underneath.
 - No settings window, so you can't re-enable a disabled command except with Undo on the toast (Ctrl+T) or by editing `~/.local/share/oma-cast/db/settings.json` (delete its `enabled: false`). That's Phase 2.
 - No deep links (`oma-cast://`); Phase 2 or 9.
 
@@ -160,5 +164,8 @@ Deviations from the original spec (SPEC §2.0 and the Phase 1 note in §12):
 - JSON documents instead of SQLite; no DB encryption or libsecret key.
 - Logs go to the shell log; `config.json` instead of `config.toml`; no D-Bus name.
 - The Omarchy theme replaces Raycast's 8 themes; the HUD is Omarchy's OSD.
+- Omarchy 4.0.4 dropped `OverlayWindow` and `ShellIpc`; `Launcher.qml` uses `IpcHandler`.
+- `ui/LauncherWindow.qml` is a `PanelWindow` that is **mapped once and kept** [D]. Hidden, it is 1×1 px with an empty input mask and no keyboard focus. Shown, it spans the monitor with `Exclusive` focus, like Omarchy's menu. The hidden surface follows Hyprland's focused monitor; if the monitor changes at the moment of opening, it waits for the new surface's first frame before growing. When the screen list changes (an output that drops out and returns under the same name, e.g. while locked), it remaps itself.
+- Root search has fast paths that keep the ranking identical [D]: a per-string normalize/transliterate cache, a per-candidate text cache, a sparse fuzzy DP, a one-character shortcut, and a prefilter (`Ranker.canSkip`) that skips candidates `rank()` would drop. The list model is updated in place instead of cleared.
 
 Testing lesson: the query survives hide/show until pop-to-root. A live test must clear it first (Ctrl+U), or typed text gets appended to the old query. Pressing ↵ on a stale query once opened real browser tabs.

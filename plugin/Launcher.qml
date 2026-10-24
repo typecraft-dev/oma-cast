@@ -128,6 +128,10 @@ Item {
       return "ok"
     }
 
+    function lastFrameAt(): string {
+      return String(launcher.lastFrameAt)
+    }
+
     function run(commandId: string): string {
       return JSON.stringify(root.run(commandId))
     }

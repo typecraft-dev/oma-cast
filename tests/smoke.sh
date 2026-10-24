@@ -3,6 +3,7 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
 cli=bin/oma-cast
+shell_ipc() { omarchy-shell oma-cast "$@"; }   # plugin functions the CLI does not wrap
 fail=0
 pass() { printf '  ok    %s\n' "$1"; }
 bad() { printf '  FAIL  %s\n' "$1"; fail=1; }
@@ -24,28 +25,25 @@ search zzzz-no-match | grep -q '"id":"fallback-commands"' && pass "fallback sect
 count=$($cli call system.info | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["data"]["candidates"])')
 (( count > 300 )) && pass "$count candidates (apps + Omarchy menu)" || bad "only $count candidates"
 
-echo "toggle latency (show -> layer mapped, hide -> unmapped; budget 100 ms)"
-sock="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
-events=$(mktemp)
-socat -u "UNIX-CONNECT:$sock" - 2>/dev/null | while IFS= read -r line; do
-  case $line in *layer\>\>oma-cast*) echo "$(date +%s%N) ${line%%>>*}" >>"$events" ;; esac
-done &
-watcher=$!
-sleep 0.3
+# The surface stays mapped (ui/LauncherWindow.qml), so there are no Hyprland
+# open/close layer events to time. Trigger the real hotkey path (the global
+# shortcut, no CLI) and read back when the plugin drew its first frame.
+echo "toggle latency (hotkey -> first frame shown / hidden; budget 100 ms)"
+toggle() { hyprctl dispatch 'hl.dsp.global("oma-cast:toggle")' >/dev/null; }
+frame_at() { shell_ipc lastFrameAt; }
 $cli hide
+toggle; sleep 0.3; toggle; sleep 0.3   # warm-up: the first show after a reload is slower
 worst=0
 for i in 1 2 3 4 5; do
-  t0=$(date +%s%N); $cli show; sleep 0.3
-  t1=$(date +%s%N); $cli hide; sleep 0.3
-  open=$(grep openlayer "$events" | sed -n "${i}p" | cut -d' ' -f1)
-  close=$(grep closelayer "$events" | sed -n "${i}p" | cut -d' ' -f1)
-  if [[ -z $open || -z $close ]]; then bad "run $i: no layer event seen"; continue; fi
-  show_ms=$(( (open - t0) / 1000000 )); hide_ms=$(( (close - t1) / 1000000 ))
+  t0=$(date +%s%3N); toggle; sleep 0.3; shown=$(frame_at)
+  t1=$(date +%s%3N); toggle; sleep 0.3; hidden=$(frame_at)
+  if [[ ! $shown =~ ^[0-9]+$ || ! $hidden =~ ^[0-9]+$ ]] || (( shown < t0 || hidden < t1 )); then bad "run $i: no frame recorded"; continue; fi
+  show_ms=$(( shown - t0 )); hide_ms=$(( hidden - t1 ))
   printf '        run %d: show %3d ms, hide %3d ms\n' "$i" "$show_ms" "$hide_ms"
   (( show_ms > worst )) && worst=$show_ms
   (( hide_ms > worst )) && worst=$hide_ms
 done
-kill "$watcher" 2>/dev/null; pkill -f "socat -u UNIX-CONNECT:$sock" 2>/dev/null; rm -f "$events"
+[[ $(shell_ipc isOpen) == false ]] || { $cli hide; bad "launcher left open"; }
 (( worst > 0 && worst < 100 )) && pass "worst toggle ${worst} ms" || bad "worst toggle ${worst} ms"
 
 exit $fail

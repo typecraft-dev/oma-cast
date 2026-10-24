@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
@@ -9,6 +10,12 @@ import "../core/RootSearch.js" as RootSearch
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
 // overlay layer the shell's own emoji picker uses.
+//
+// The surface is mapped once and kept. Mapping a fresh one (what Omarchy's
+// menu does on every open) makes Quickshell build a new backing window and
+// scene graph, about 150 ms before the first frame. Hidden, it is a 1×1
+// transparent surface with an empty input region and no keyboard focus;
+// shown, it spans the focused monitor with exclusive keyboard focus.
 PanelWindow {
   id: window
 
@@ -18,13 +25,89 @@ PanelWindow {
 
   signal dismissRequested()
 
-  visible: window.shown
-  anchors { top: true; bottom: true; left: true; right: true }
+  // What the surface shows. It lags `shown` only while the surface is being
+  // recreated on another monitor (see followFocusedMonitor).
+  readonly property bool presented: window.shown && !window.relocating
+  property bool relocating: false
+  visible: !window.remapping
+  screen: window.targetScreen
+  anchors { top: true; left: true; bottom: window.presented; right: window.presented }
+  implicitWidth: 1
+  implicitHeight: 1
+  mask: window.presented ? null : noInput
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
   WlrLayershell.namespace: "oma-cast"
   WlrLayershell.layer: WlrLayer.Overlay
-  WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+  WlrLayershell.keyboardFocus: window.presented ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+  Region { id: noInput }
+
+  // The monitor to open on: Hyprland's focused one. Moving the surface to
+  // another monitor recreates it (the slow path), so the hidden surface
+  // follows monitor focus in the background and is already in place when
+  // the launcher opens. Returns true when it had to move.
+  property var targetScreen: null
+  function followFocusedMonitor() {
+    var monitor = Hyprland.focusedMonitor
+    if (!monitor) return false
+    for (var i = 0; i < Quickshell.screens.length; i++) {
+      var candidate = Quickshell.screens[i]
+      if (candidate.name === monitor.name) {
+        if (window.targetScreen === candidate) return false
+        window.targetScreen = candidate
+        return true
+      }
+    }
+    return false
+  }
+
+  Connections {
+    target: Hyprland
+    function onFocusedMonitorChanged() { if (!window.shown) window.followFocusedMonitor() }
+  }
+  // Outputs can vanish and come back under the same name (lid close,
+  // suspend, DPMS while locked). The focused monitor doesn't change then,
+  // and re-pointing the screen alone didn't bring the surface back, so
+  // unmap and remap it once the screen list settles.
+  property bool remapping: false
+  Connections {
+    target: Quickshell
+    function onScreensChanged() { remapTimer.restart() }
+  }
+  Timer {
+    id: remapTimer
+    interval: 250 // [D] let Hyprland report the returning monitor first
+    onTriggered: {
+      window.followFocusedMonitor()
+      window.remapping = true
+      Qt.callLater(function() { window.remapping = false })
+    }
+  }
+  Component.onCompleted: window.followFocusedMonitor()
+
+  // Opening while the surface moves: growing it before the new surface has
+  // drawn its first frame left it 1×1, so present only after that frame.
+  // The same frame signal times show/hide for `oma-cast` diagnostics.
+  property double lastFrameAt: 0     // ms epoch of the first frame after the last show/hide
+  property bool awaitingFrame: false
+  onPresentedChanged: window.awaitingFrame = true
+  Item {
+    id: surfaceProbe
+    property var backing: Window.window
+    Connections {
+      target: surfaceProbe.backing
+      function onFrameSwapped() {
+        if (window.relocating) window.relocating = false
+        else if (window.awaitingFrame) { window.awaitingFrame = false; window.lastFrameAt = Date.now() }
+      }
+    }
+  }
+  Timer {
+    id: relocateTimeout
+    interval: 500 // [D] safety net if that frame never comes
+    onTriggered: window.relocating = false
+  }
 
   readonly property var general: {
     window.backend.storeRevision
@@ -89,6 +172,9 @@ PanelWindow {
   readonly property int footerHeight: px(42)
 
   ListModel { id: rows }
+  // Plain copy of `rows`, one rowData() object per row. Reading it is much
+  // cheaper than rows.get(), and syncRows() diffs against it.
+  property var rowMirror: []
 
   PointerMoveGate {
     id: pointerGate
@@ -105,6 +191,10 @@ PanelWindow {
   }
 
   function prepare(payload) {
+    if (window.followFocusedMonitor()) {
+      window.relocating = true
+      relocateTimeout.restart()
+    }
     popTimer.stop()
     if (typeof payload.query === "string") window.query = payload.query
     window.closePopups()
@@ -115,6 +205,7 @@ PanelWindow {
 
   onShownChanged: {
     if (window.shown) return
+    window.followFocusedMonitor() // focus may have moved monitors while open
     window.closePopups()
     var seconds = Number(window.general.popToRootTimeout)
     if (!(seconds > 0)) window.popToRoot()
@@ -156,25 +247,44 @@ PanelWindow {
   function rebuild(resetSelection) {
     pointerGate.reset()
     var keepId = !resetSelection && window.selectedRow ? window.selectedRow.itemId : ""
-    rows.clear()
-    if (window.view.kind === "alias") { window.select(-1); return }
+    if (window.view.kind === "alias") { window.syncRows([]); window.select(-1); return }
     var result = window.backend.callSync("rootSearch.search", { query: window.query, view: window.view, filter: window.atRoot ? window.rootFilter : "all" })
     if (!result.ok) {
+      window.syncRows([])
       window.showToast("failure", result.error)
       window.select(-1)
       return
     }
+    var next = []
     var keepIndex = -1
     for (var s = 0; s < result.data.length; s++) {
       var section = result.data[s]
-      if (section.title || s > 0) rows.append(window.rowData({ id: "section:" + section.id, title: section.title }, "section"))
+      if (section.title || s > 0) next.push(window.rowData({ id: "section:" + section.id, title: section.title }, "section"))
       for (var r = 0; r < section.rows.length; r++) {
         var c = section.rows[r]
-        if (c.id === keepId) keepIndex = rows.count
-        rows.append(window.rowData(c, c.kind === "calculator" ? "calculator" : "item"))
+        if (c.id === keepId) keepIndex = next.length
+        next.push(window.rowData(c, c.kind === "calculator" ? "calculator" : "item"))
       }
     }
+    window.syncRows(next)
     window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1))
+  }
+
+  // Update `rows` in place: rows that did not change keep their delegates,
+  // so a keystroke re-lays out only the rows whose text changed instead of
+  // recreating every visible row.
+  function syncRows(next) {
+    var old = window.rowMirror
+    var common = Math.min(old.length, next.length)
+    for (var i = 0; i < common; i++) if (!window.sameRow(old[i], next[i])) rows.set(i, next[i])
+    if (old.length > next.length) rows.remove(next.length, old.length - next.length)
+    else if (next.length > old.length) rows.append(next.slice(old.length))
+    window.rowMirror = next
+  }
+
+  function sameRow(a, b) {
+    for (var key in b) if (a[key] !== b[key]) return false
+    return true
   }
 
   function rowData(c, kind) {
@@ -200,7 +310,7 @@ PanelWindow {
   }
 
   function isSelectable(index) {
-    var kind = rows.get(index).rowKind
+    var kind = window.rowMirror[index].rowKind
     return kind === "item" || kind === "calculator"
   }
 
@@ -212,7 +322,7 @@ PanelWindow {
 
   function select(index) {
     window.selectedIndex = index
-    window.selectedRow = index >= 0 && index < rows.count ? rows.get(index) : null
+    window.selectedRow = index >= 0 && index < window.rowMirror.length ? window.rowMirror[index] : null
     // Argument values belong to one command; a different row starts empty.
     var id = window.selectedRow ? window.selectedRow.itemId : ""
     if (id !== window.argsForId) {
@@ -241,9 +351,9 @@ PanelWindow {
   function jumpSection(direction) {
     var i = window.selectedIndex
     for (i += direction; i >= 0 && i < rows.count; i += direction)
-      if (rows.get(i).rowKind === "section") break
+      if (window.rowMirror[i].rowKind === "section") break
     if (direction < 0) {
-      for (i -= 1; i >= 0; i--) if (rows.get(i).rowKind === "section") break
+      for (i -= 1; i >= 0; i--) if (window.rowMirror[i].rowKind === "section") break
     }
     var first = window.nextSelectable(Math.max(-1, i), 1)
     if (first >= 0) window.select(first)
@@ -629,6 +739,7 @@ PanelWindow {
 
   BorderSurface {
     id: card
+    visible: window.presented
     width: window.cardWidth
     height: window.compact ? window.headerHeight + card.borderTop + card.borderBottom : window.fullHeight
     radius: Math.max(Style.cornerRadius, window.px(8))
