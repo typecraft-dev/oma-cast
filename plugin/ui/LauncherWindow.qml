@@ -27,7 +27,7 @@ PanelWindow {
   // recreated on another monitor (see followFocusedMonitor).
   readonly property bool presented: window.shown && !window.relocating
   property bool relocating: false
-  visible: true
+  visible: !window.remapping
   screen: window.targetScreen
   anchors { top: true; left: true; bottom: window.presented; right: window.presented }
   implicitWidth: 1
@@ -62,6 +62,25 @@ PanelWindow {
   Connections {
     target: Hyprland
     function onFocusedMonitorChanged() { if (!window.shown) window.followFocusedMonitor() }
+  }
+  // Outputs can vanish and come back with the same name (lid close, suspend,
+  // DPMS while locked). The focused monitor doesn't change then, so without
+  // this the surface stays on the dead screen and never draws again.
+  // A re-pointed screen alone didn't bring the surface back, so unmap and
+  // remap it once the screen list settles.
+  property bool remapping: false
+  Connections {
+    target: Quickshell
+    function onScreensChanged() { remapTimer.restart() }
+  }
+  Timer {
+    id: remapTimer
+    interval: 250 // [D] let Hyprland report the returning monitor first
+    onTriggered: {
+      window.followFocusedMonitor()
+      window.remapping = true
+      Qt.callLater(function() { window.remapping = false })
+    }
   }
   Component.onCompleted: window.followFocusedMonitor()
 
