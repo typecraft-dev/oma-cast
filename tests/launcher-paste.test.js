@@ -32,6 +32,10 @@ function harness(text) {
     context.next = next
     vm.runInContext(body("function setQuery(next)"), context)
   }
+  window.insertText = text => {
+    context.text = text
+    vm.runInContext(body("function insertText(text)"), context)
+  }
   window.pasteClipboard = () => vm.runInContext(body("function pasteClipboard()"), context)
   return {
     Qt, window, actionPanel, clipboardInput, changes,

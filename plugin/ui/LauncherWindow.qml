@@ -115,6 +115,7 @@ PanelWindow {
 
   onShownChanged: {
     if (window.shown) return
+    Qt.inputMethod.reset()
     window.closePopups()
     var seconds = Number(window.general.popToRootTimeout)
     if (!(seconds > 0)) window.popToRoot()
@@ -438,6 +439,12 @@ PanelWindow {
     clipboardInput.paste()
     var text = clipboardInput.text.replace(/[\r\n\u2028\u2029]+/g, " ")
     clipboardInput.clear()
+    window.insertText(text)
+  }
+
+  // Pasted or input-method text: into the action panel filter, the focused
+  // argument pill, or the query.
+  function insertText(text) {
     if (!text) return
     if (window.actionPanelOpen) actionPanel.filter += text
     else if (window.argFocus >= 0) {
@@ -640,12 +647,25 @@ PanelWindow {
 
     MouseArea { anchors.fill: parent; onClicked: { window.closePopups(); keyCatcher.forceActiveFocus() } }
 
-    Item {
+    // A TextInput, not a plain Item, so Qt enables the input method (fcitx5, ibus) for CJK typing.
+    TextInput {
       id: keyCatcher
-      anchors.fill: parent
+      x: caret.x
+      y: header.y + caret.y
+      width: 1
+      height: caret.height
       focus: true
+      opacity: 0
+      selectByMouse: false
+      font: queryText.font
       Keys.priority: Keys.BeforeItem
       Keys.onPressed: function(event) { if (window.handleKey(event)) event.accepted = true }
+      onTextChanged: {
+        if (!text) return
+        var committed = text
+        text = ""
+        window.insertText(committed)
+      }
     }
 
     Item {
@@ -694,19 +714,21 @@ PanelWindow {
         x: lead.x + lead.width + window.px(12)
         width: Math.min(implicitWidth, header.queryRoom - (pills.visible ? pills.width + window.px(10) : 0))
         anchors.verticalCenter: parent.verticalCenter
-        text: window.query || (pills.visible ? "" : window.placeholder)
+        readonly property string preedit: window.actionPanelOpen || window.argFocus >= 0 ? "" : keyCatcher.preeditText
+        text: (window.query + preedit) || (pills.visible ? "" : window.placeholder)
         color: window.look.foreground
-        opacity: window.query ? 1 : 0.45
+        opacity: window.query || preedit ? 1 : 0.45
         font.family: window.look.fontFamily
         font.pixelSize: Math.round(Style.font.heading * 1.15 * window.zoom)
         elide: Text.ElideLeft
       }
 
       Rectangle {
+        id: caret
         width: Math.max(1, Style.space(2))
         height: queryText.font.pixelSize + Style.space(4)
         anchors.verticalCenter: parent.verticalCenter
-        x: queryText.x + (window.query ? Math.min(queryText.contentWidth, queryText.width) + Style.space(1) : 0)
+        x: queryText.x + (window.query || queryText.preedit ? Math.min(queryText.contentWidth, queryText.width) + Style.space(1) : 0)
         color: window.look.accent
         visible: window.shown && !window.actionPanelOpen && window.argFocus < 0
 
