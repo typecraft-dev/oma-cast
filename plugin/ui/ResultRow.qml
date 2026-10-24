@@ -2,9 +2,6 @@ import QtQuick
 import Quickshell
 import qs.Commons
 
-// One list row (SPEC §10.2): 22 px icon, title, secondary subtitle, and right
-// accessories in Raycast's order: alias badge, ✓ state, type label. Section
-// headers use the same delegate with rowKind "section".
 Item {
   id: row
 
@@ -21,6 +18,10 @@ Item {
   required property bool checked
   required property bool disabled
   required property bool favorite
+  required property string calcInput
+  required property string calcResult
+  required property string calcInputCaption
+  required property string calcResultCaption
 
   property bool selected: false
   property var look: null
@@ -31,10 +32,96 @@ Item {
   signal clicked(int index)
 
   readonly property bool isSection: row.rowKind === "section"
+  readonly property bool isCalculator: row.rowKind === "calculator"
   function px(v) { return Math.round(Style.space(v) * row.zoom) }
 
   width: ListView.view ? ListView.view.width : 0
-  height: row.isSection ? (row.title ? px(30) : px(6)) : px(42)
+  height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(118) : px(42))
+
+  // The inline calculator (ref 04 §1 Calculator): question on the left,
+  // answer on the right, each with a caption, an arrow between them.
+  Rectangle {
+    visible: row.isCalculator
+    anchors.fill: parent
+    radius: Math.max(Style.cornerRadius, row.px(6))
+    color: row.selected ? row.look.selectedBackground : Util.alpha(row.look.foreground, 0.04)
+    border.width: 1
+    border.color: Util.alpha(row.look.foreground, row.selected ? 0 : 0.08)
+
+    Repeater {
+      model: row.isCalculator ? [
+        { text: row.calcInput, caption: row.calcInputCaption, answer: false },
+        { text: row.calcResult, caption: row.calcResultCaption, answer: true }
+      ] : []
+
+      delegate: Item {
+        required property var modelData
+        required property int index
+        x: index === 0 ? 0 : parent.width / 2 + row.px(20)
+        width: parent.width / 2 - row.px(20)
+        height: parent.height
+
+        Text {
+          id: calcText
+          textFormat: Text.PlainText
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.verticalCenter: parent.verticalCenter
+          anchors.verticalCenterOffset: -row.px(10)
+          width: parent.width - row.px(24)
+          horizontalAlignment: Text.AlignHCenter
+          text: modelData.text
+          color: modelData.answer && row.selected ? row.look.accent : row.look.foreground
+          font.family: row.look.fontFamily
+          font.pixelSize: Math.round(Style.font.heading * 1.25 * row.zoom)
+          font.weight: modelData.answer ? Font.DemiBold : Font.Normal
+          fontSizeMode: Text.HorizontalFit
+          minimumPixelSize: Math.round(Style.font.body * row.zoom)
+          elide: Text.ElideRight
+        }
+
+        Rectangle {
+          visible: modelData.caption.length > 0
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.top: calcText.bottom
+          anchors.topMargin: row.px(8)
+          width: Math.min(captionText.implicitWidth + row.px(16), parent.width - row.px(24))
+          height: captionText.implicitHeight + row.px(6)
+          radius: height / 2
+          color: Util.alpha(row.look.foreground, 0.08)
+
+          Text {
+            id: captionText
+            anchors.centerIn: parent
+            width: Math.min(implicitWidth, parent.parent.width - row.px(40))
+            textFormat: Text.PlainText
+            text: modelData.caption
+            color: row.look.foreground
+            opacity: 0.7
+            font.family: row.look.fontFamily
+            font.pixelSize: Math.round(Style.font.caption * row.zoom)
+            elide: Text.ElideRight
+          }
+        }
+      }
+    }
+
+    Rectangle {
+      anchors.centerIn: parent
+      width: row.px(28)
+      height: row.px(28)
+      radius: width / 2
+      color: Util.alpha(row.look.foreground, 0.08)
+      Text {
+        anchors.centerIn: parent
+        textFormat: Text.PlainText
+        text: "→"
+        color: row.look.foreground
+        opacity: 0.7
+        font.family: row.look.fontFamily
+        font.pixelSize: Math.round(Style.font.body * row.zoom)
+      }
+    }
+  }
 
   Text {
     visible: row.isSection && row.title.length > 0
@@ -52,7 +139,7 @@ Item {
   }
 
   Rectangle {
-    visible: !row.isSection
+    visible: !row.isSection && !row.isCalculator
     anchors.fill: parent
     radius: Math.max(Style.cornerRadius, row.px(6))
     color: row.selected ? row.look.selectedBackground : "transparent"

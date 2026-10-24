@@ -2,7 +2,7 @@
 
 **Source:** static reverse engineering of Raycast **2.8.2** (`com.raycast.macos`, macOS 26, arm64) installed on this machine, done 2026-10-19.
 **Target:** a clean-room, feature-equivalent launcher for **Arch Linux**, Wayland first (Hyprland → KDE → GNOME), with an X11 fallback.
-**Scope:** all Raycast features **except AI** (AI Chat, Quick AI, AI Commands, MCP, Screen Awareness, Browser-context-for-AI, "Ask X" commands, Dictate-to-AI, Remote).
+**Scope:** all Raycast features **except AI** (AI Chat, Quick AI, AI Commands, MCP, Screen Awareness, Browser-context-for-AI, "Ask X" commands, Dictate-to-AI, Remote). This fork adds a user-authorized explicit hand-off to Omarchy's default agent in its default terminal (§2.0); it does not implement those Raycast AI features.
 
 This file is the plan. Claude Code should read it first. The `reference/` folder holds the detailed evidence (verbatim schemas, method lists, wire formats), and this spec points into it by section.
 
@@ -25,7 +25,7 @@ Legend: **[O]** = observed in the shipped binaries or JS. **[I]** = inferred. **
 1. **Clean room.** Do not copy, bundle or redistribute anything from `/Applications/Raycast.app`: no frontend JS, `index.mjs`, `@raycast/api/index.js` from the app bundle, icons, PNGs, fonts or `.node` modules. They are proprietary. This spec describes *behaviour and interfaces* so you can write your own implementation. The open-source pieces you can use are the public npm package `@raycast/api` (type definitions and the `ray` CLI; check its license for the version you pin), `@raycast/utils`, and the `raycast/extensions` GitHub repo (MIT), which is the corpus you test compatibility against.
 2. **Don't call Raycast's servers.** Store, account, sync, currency rates, translation and telemetry all go to `*.raycast.com`. A third-party client must not use them. Get extensions from the `raycast/extensions` repo and build them locally (§9.8). Use your own or public data sources for everything else.
 3. **No telemetry.** Drop Sentry and PostHog completely.
-4. **AI is out of scope.** Where a built-in mixes AI with non-AI behaviour (Dictation, Translator), build only the non-AI path and leave a `// AI: not implemented` seam.
+4. **Embedded AI is out of scope.** The explicit default-agent terminal hand-off in §2.0 is the fork's authorized exception. Where another built-in mixes AI with non-AI behaviour (Dictation, Translator), build only the non-AI path and leave a `// AI: not implemented` seam.
 5. **Prior art to study, not copy:** Vicinae (an open-source Linux launcher with Raycast-extension compatibility; check its current state), Espanso (text expansion via evdev/uinput), cliphist/clipse (Wayland clipboard history), plocate/fsearch (file index), Ulauncher/Walker/Anyrun (launcher UX on Wayland).
 
 ---
@@ -76,7 +76,7 @@ Consequences for Linux:
 **This supersedes the Tauri + Node design below for Omarchy.** Omarchy's desktop (bar, menus, launcher, notifications, lock screen) runs in one long-lived Quickshell process, `omarchy-shell`, whose features are plugins. oma-cast is one more plugin there, built the way Omarchy builds its own menu and emoji picker. The reasons:
 - **No external dependencies.** No Tauri, WebKitGTK, Node runtime, npm packages or native SQLite modules. It needs only what Omarchy already ships: Quickshell, Qt, bash and Hyprland.
 - **Native look.** The plugin reads the active Omarchy theme's `[menu]` tokens (`qs.Commons.Color`, `Style`), so `omarchy theme set` restyles it live with no theme parser.
-- **Speed.** The shell process is always warm. A hotkey reaches the plugin as a Hyprland global shortcut with no process spawn, and the CLI goes through the shell's socket (about 5 ms).
+- **Speed.** The shell process is always warm. A hotkey reaches the plugin as a Hyprland global shortcut with no process spawn, and the CLI goes through `qs ipc` (about 100 ms per call).
 
 ```
 omarchy-shell (Quickshell, one process)
@@ -96,6 +96,30 @@ How the rest of this spec maps onto it:
 - **§6 data.** Persisted state is one versioned JSON document per store under `$XDG_DATA_HOME/oma-cast/db/` (`core/Migrate.js`: numbered migrations, history, atomic writes, never overwrite an unreadable or newer file). There is **no encryption at rest** and no libsecret key: Qt's FileView has no cipher, and full-disk encryption is the Omarchy default. If a store outgrows JSON (clipboard history, file index), revisit with Qt's built-in `QtQuick.LocalStorage` (SQLite) before adding a native dependency.
 - **§10 frontend.** QML instead of React, with themes from Omarchy's tokens. The 8 Raycast themes (§10.4) become optional palettes over the same tokens.
 - **Logging** goes to the shell's log (`qs log -n -p "$OMARCHY_PATH/shell"`, lines prefixed `[oma-cast]`), with the level from `config.json`. There are no separate log files.
+
+**Default-agent hand-off [D, fork, 2026-10-20].** Non-empty root queries add an
+"Ask default agent" row after the web-search fallbacks. Selecting it or pressing
+Ctrl+Alt+Enter explicitly submits the current query to `omarchy-agent --prompt`
+as one literal argument. Omarchy owns agent/account choice, authentication,
+approval flags, working directory and terminal selection via `omarchy-launch-tui`
+and `xdg-terminal-exec`. No agent SDK, network endpoint, credentials or new
+package is introduced. Reference: Omarchy `quattro` `3ac43659dcbf88e84d951e3ce979b48a60a7d1f2`,
+`shell/plugins/agents/Panel.qml` (`startPrompt`) and `bin/omarchy-agent{,-prompt}`.
+
+`services/AgentLauncher.qml` owns one bounded preflight at a time; core argv
+validation and the fixed check script live in `core/Agent.js`. Missing tooling,
+unset/uninstalled agent or unavailable terminal reports a visible error without
+clearing the query. Hide, timeout or plugin unload cancels the pending request.
+On success the entry point closes the overlay, clears the query and forwards
+argv using `Util.execArgv`. This checks prerequisites only: authentication and
+terminal startup failures remain the existing launcher's responsibility.
+
+Accept: normal app ranking/Enter selection is unchanged; fallback and shortcut
+launch a fresh default-agent session in the selected terminal; quotes, Unicode,
+multiline text, shell metacharacters and leading dashes arrive literally; blank
+queries never submit; missing setup and cancellation never launch. Portable
+fixtures cover argv/preflight and lifecycle; live Omarchy focus, terminal and
+account acceptance remains required. Embedded chat and model calls are deferred.
 
 The original Tauri design follows, kept for reference and for non-Omarchy targets.
 
@@ -768,7 +792,14 @@ Repo layout [D]:
   - **Themes.** The 8 Raycast themes and the CSS variables are replaced by the live Omarchy theme tokens (§2.0).
   - **HUD.** The HUD is Omarchy's OSD (`omarchy-shell osd show`).
   - **Settings.** There is no settings window yet (Phase 2); aliases are set from the action panel.
-  - **Not done:** vim navigation bindings (Ctrl+K would clash with the action panel), Ctrl+P dropdown, Ctrl+T toast focus, Ctrl+Shift+K about panel, inline argument pills (no command declares arguments yet), alerts (no destructive action needs one yet), and keystroke buffering (see the note above).
+  - **Leftovers finished [D, 2026-10-22]:**
+    - **Navigation bindings.** `general.navigationBindings` = `emacs` (Ctrl+N down) or `vim-motions` (Ctrl+J/K). On Linux Ctrl replaces both ⌃ and ⌘, so vim's Ctrl+K would clash with the action panel: in vim mode the action panel moves to **Alt+K**. The search field has no text cursor, so Ctrl+B/F and Ctrl+H/L do nothing.
+    - **Ctrl+P dropdown.** Ctrl+P is always `toggleFilter`, so emacs Ctrl+P = up is dropped in the list (it still moves up inside popups). Raycast's root has no dropdown; ours filters root search by type (All / Applications / Commands, `RootSearch.FILTERS`), hides the Calculator and fallback sections while filtered, and resets on pop-to-root.
+    - **Ctrl+T** opens the toast's actions. Failure toasts offer "Copy Error Message"; "Disable Command" offers "Undo".
+    - **Ctrl+Shift+K** About panel: `rootSearch.getItemInfo` → `RootSearch.aboutFor`.
+    - **Argument pills.** Builtins may declare `arguments` (`{name, placeholder, required}`). "Search Google" and "Search DuckDuckGo" are root commands with a `query` argument. Tab enters the pills, Shift+Tab / Backspace on an empty pill goes back, ↵ with an empty required argument focuses it.
+    - **Alerts.** `rootSearch.performAction` returns `{confirm}` for Shut Down / Restart / Log Out and Delete All Entries until called with `confirmed: true`. `oma-cast run` is explicit and skips it.
+    - **Keystroke buffering: won't do.** A parked surface conflicts with Omarchy's remap-on-open design (note above).
   - **"fir" → Firefox:** on a list where another title starts with "Fire", the literal port ties at score 8 and the collator decides until Firefox has been launched once (`tests/ranker.test.js`).
 
 ### Phase 2: Core built-ins
@@ -826,4 +857,4 @@ Repo layout [D]:
 - **Snippet expansion needs input-device access.** This is a security trade-off; keep it opt-in, and do the IBus/Fcitx5 engine as the cleaner long-term path.
 - **Unrecovered numbers** [I]: backend timeouts and restart limits, HUD duration, the Suggestions section size, and window y-offset. Pick sensible values (given above) and tune them.
 - **Frecency epoch:** Raycast's anchor epoch wasn't confirmed. It doesn't matter for a clone that uses Unix seconds consistently, but convert carefully when importing `frecency` from `.rayconfig` (check whether values look like 2001-epoch seconds, i.e. ≈ 8×10⁸ vs Unix ≈ 1.7×10⁹).
-- **Calculator parity.** Soulver-style natural language ("$30 + 20%", "3 days from now", time zones) exceeds `fend`. Consider libqalculate as an alternate engine behind the same interface.
+- **Calculator parity.** Soulver-style natural language ("$30 + 20%", "3 days from now", time zones) exceeds `fend`. Consider libqalculate as an alternate engine behind the same interface. **[D] 2026-10-19:** the Quickshell build uses neither. `plugin/core/Calculator.js` is a self-contained JS evaluator that covers these cases (see CLAUDE.md Status). libqalculate isn't an Omarchy dependency, and `qalc` reads "15% of 80" and "3 days from now" differently from Soulver.

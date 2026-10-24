@@ -2,7 +2,7 @@ const test = require("node:test")
 const assert = require("node:assert/strict")
 const F = require("../plugin/core/Frecency.js")
 
-const T = 1_800_000_000 // Unix seconds
+const T = 1_800_000_000
 const DAY = 86400
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`)
 
@@ -10,7 +10,7 @@ test("unvisited and malformed anchors score 1", () => {
   assert.equal(F.score(null, T), 1)
   assert.equal(F.score(undefined, T), 1)
   assert.equal(F.score(NaN, T), 1)
-  assert.equal(F.score(T - 100 * DAY, T), 1) // decayed below 1 clamps to 1
+  assert.equal(F.score(T - 100 * DAY, T), 1)
 })
 
 test("a first visit scores 101 and halves every 10 days", () => {
@@ -22,9 +22,9 @@ test("a first visit scores 101 and halves every 10 days", () => {
 
 test("each visit adds 100 to the decayed score", () => {
   const a1 = F.visit(null, T)
-  const a2 = F.visit(a1, T + 10 * DAY)          // 50.5 + 100
+  const a2 = F.visit(a1, T + 10 * DAY)
   near(F.score(a2, T + 10 * DAY), 150.5)
-  const a3 = F.visit(a2, T + 10 * DAY)          // same instant: +100 again
+  const a3 = F.visit(a2, T + 10 * DAY)
   near(F.score(a3, T + 10 * DAY), 250.5)
 })
 

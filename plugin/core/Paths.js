@@ -1,11 +1,8 @@
-// XDG locations for the clone (SPEC §6.3), from an environment lookup
-// function so QML (Quickshell.env) and tests (a plain object) share it.
 
 var APP = "oma-cast"
 
 function xdg(env, name, homeFallback) {
   var value = String(env(name) || "")
-  // The XDG spec says relative paths are invalid and must be ignored.
   if (value.charAt(0) === "/") return value.replace(/\/+$/, "")
   return homeFallback
 }
@@ -40,7 +37,6 @@ function resolve(env) {
   }
 }
 
-// Directories created at startup. Runtime is per-boot; the rest persist.
 function directoriesToCreate(paths) {
   return [paths.config, paths.db, paths.cache, paths.logs, paths.backups, paths.runtime]
 }

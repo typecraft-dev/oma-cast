@@ -1,7 +1,4 @@
 #!/bin/bash
-# Live Phase 0 acceptance check against the running omarchy-shell.
-# Needs the plugin installed (bin/oma-cast install). It shows and hides the
-# launcher but never types, so nothing lands in other windows.
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1

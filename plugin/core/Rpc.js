@@ -1,11 +1,3 @@
-// In-process method registry: the clone's "backend" surface (SPEC §3.4).
-//
-// Methods keep Raycast's dotted `namespace.method` names so the reference
-// method lists stay usable. There is no wire protocol: the launcher UI, the
-// IPC handler and later services all dispatch through one registry. [D]
-//
-// Loaded both by QML (`import "core/Rpc.js" as Rpc`) and by node --test, so
-// it has no imports and exports through the module guard at the bottom.
 
 function createRegistry() {
   return {
@@ -18,8 +10,6 @@ function isMethodName(method) {
   return /^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)+$/.test(String(method || ""))
 }
 
-// register(reg, "system", { healthPing: fn, ... }) adds system.healthPing.
-// Registering a name twice is a programming error, so it throws.
 function register(registry, namespace, handlers) {
   var ns = String(namespace || "")
   if (!/^[A-Za-z][A-Za-z0-9.]*$/.test(ns)) throw new Error("Invalid namespace " + ns)
@@ -51,13 +41,8 @@ function isThenable(value) {
   return !!value && typeof value.then === "function"
 }
 
-// Synchronous dispatch for callers that cannot wait, such as IPC. Returns
-// { ok: true, data } or { ok: false, error }. A handler that answers with a
-// promise yields { ok: true, pending: true }: the call ran, its result is
-// delivered later through call().
 function callSync(registry, method, data) {
   var handler = registry.handlers[String(method || "")]
-  // Same text as Raycast's backend for an unknown method [O].
   if (!handler) return { ok: false, error: "Unknown method " + method }
   try {
     var result = handler(data === undefined ? null : data)
@@ -68,8 +53,6 @@ function callSync(registry, method, data) {
   }
 }
 
-// Promise-based dispatch. Rejects with an Error whose message is the
-// handler's error, mirroring the frontend `ipc` proxy contract.
 function call(registry, method, data) {
   var handler = registry.handlers[String(method || "")]
   if (!handler) return Promise.reject(new Error("Unknown method " + method))
@@ -80,9 +63,6 @@ function call(registry, method, data) {
   }
 }
 
-// Notifications: `ns.thing` methods fanned out to subscribers, the
-// in-process analogue of ipcNotification (SPEC §3.2). Returns an
-// unsubscribe function.
 function subscribe(registry, method, callback) {
   var key = String(method || "")
   var list = registry.subscribers[key] || []
@@ -94,8 +74,6 @@ function subscribe(registry, method, callback) {
   }
 }
 
-// Returns how many subscribers were notified. A throwing subscriber does not
-// stop the others; its error goes to onError when given.
 function emit(registry, method, data, onError) {
   var list = registry.subscribers[String(method || "")] || []
   for (var i = 0; i < list.length; i++) {

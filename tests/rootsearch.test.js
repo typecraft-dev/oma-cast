@@ -51,7 +51,18 @@ test("a query always ends with the fallback section", () => {
   assert.equal(sections.length, 1)
   assert.equal(sections[0].id, "fallback-commands")
   assert.equal(sections[0].title, "Use “zzzz-nothing” with…")
-  assert.deepEqual(titles(sections[0]), ["Search Google", "Search DuckDuckGo"])
+  assert.deepEqual(titles(sections[0]), ["Search Google", "Search DuckDuckGo", "Ask default agent"])
+})
+
+test("agent hand-off is explicit, stays after apps/web search, and only appears at root with a query", () => {
+  const sections = results("firefox")
+  assert.equal(sections[0].rows[0].candidate.id, "app:firefox")
+  const row = sections.at(-1).rows.at(-1).candidate
+  assert.equal(row.id, "fallback:agent")
+  assert.match(row.subtitle, /Ctrl\+Alt\+Enter/)
+  assert.deepEqual(RS.actionsFor(row).map(a => a.id), ["open"])
+  assert.ok(!results("").flatMap(s => s.rows).some(r => r.candidate.id === row.id))
+  assert.ok(!RS.submenuSections(candidates(), "trigger", "question?", ctx(), deps).flatMap(s => s.rows).some(r => r.candidate.id === row.id))
 })
 
 test("an exact alias puts its command on top (Phase 1 accept)", () => {
@@ -61,7 +72,6 @@ test("an exact alias puts its command on top (Phase 1 accept)", () => {
 })
 
 test("launching bumps frecency and teaches the query (Phase 1 accept)", () => {
-  // Chromium and Signal tie for "i" on title score alone; a launch decides it.
   const before = titles(results("web")[0])
   assert.deepEqual(before.slice(0, 2), ["Chromium", "Firefox"])
   const visit = Frecency.recordVisit(null, NOW - 1000, "web")
@@ -133,4 +143,40 @@ test("favourite reordering", () => {
 
 test("fallback URLs encode the query", () => {
   assert.equal(RS.fallbackUrl(RS.FALLBACKS[0], " a&b c "), "https://www.google.com/search?q=a%26b%20c")
+})
+
+test("web searches take an inline argument", () => {
+  const google = results("google")[0].rows[0].candidate
+  assert.equal(google.id, "builtin:google-search")
+  assert.deepEqual(google.arguments.map((a) => a.name), ["query"])
+  assert.equal(RS.missingArgument(google.arguments, {}), 0)
+  assert.equal(RS.missingArgument(google.arguments, { query: " a b " }), -1)
+  assert.equal(RS.fillArguments(google.run.url, { query: " a&b " }), "https://www.google.com/search?q=a%26b")
+  assert.equal(results("ddg")[0].rows[0].candidate.id, "builtin:duckduckgo-search")
+})
+
+test("the root filter narrows by type and drops calculator and fallbacks", () => {
+  const apps = results("", ctx({ filter: "applications" }))
+  assert.deepEqual(apps.map((s) => s.id), ["apps"])
+  const commands = results("lock", ctx({ filter: "commands", calculation: { result: "1" } }))
+  assert.ok(commands.every((s) => s.id === "results"))
+  assert.ok(commands[0].rows.every((r) => r.candidate.type === "command"))
+  assert.deepEqual(RS.FILTERS.map((f) => f.id), ["all", "applications", "commands"])
+})
+
+test("power commands and delete-all ask for confirmation", () => {
+  assert.equal(RS.confirmationFor("omarchy:system.shutdown", "open").primary, "Shut Down")
+  assert.equal(RS.confirmationFor("omarchy:system.shutdown", "copy-command"), null)
+  assert.equal(RS.confirmationFor("omarchy:system.lock", "open"), null)
+  assert.ok(RS.confirmationFor("calculator-history:x", "delete-all-entries").destructive)
+})
+
+test("the about panel describes a row", () => {
+  const lock = results("lock")[0].rows[0].candidate
+  const about = Object.fromEntries(RS.aboutFor(lock, NOW).map((r) => [r.label, r.value]))
+  assert.equal(about.Command, "omarchy-system-lock")
+  assert.equal(about.ID, "omarchy:system.lock")
+  assert.equal(about.Location, "System")
+  const calc = RS.aboutFor({ kind: "calculator", calcInput: "2+2", calcResult: "4", calcResultCaption: "Four" }, NOW)
+  assert.deepEqual(calc.map((r) => r.label), ["Question", "Answer", "Type"])
 })

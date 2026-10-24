@@ -1,5 +1,3 @@
-// Log levels and line formatting (reference/05 §3.1 levels). The lines go
-// to the shell's own log via console.*; `qs log` / the journal keep them.
 
 var LEVELS = ["trace", "debug", "info", "warning", "error", "fatal"]
 
@@ -12,8 +10,6 @@ function shouldLog(level, threshold) {
   return levelIndex(level) >= levelIndex(threshold)
 }
 
-// "[oma-cast] [info] [system] message {json}". Metadata is optional and
-// serialized on one line so a log stays grep-able.
 function format(level, category, message, metadata) {
   var line = "[oma-cast] [" + LEVELS[levelIndex(level)] + "]"
   if (category) line += " [" + category + "]"

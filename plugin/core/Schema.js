@@ -1,47 +1,52 @@
-// Persisted documents and their migrations. Each entry is one JSON file
-// under $XDG_DATA_HOME/oma-cast/db/. Add a migration to the end of a list;
-// never edit or reorder one that has shipped.
 
-// General settings, using Raycast's key names and defaults
-// (reference/04 §3, App. C). [O] values unless marked.
 var settingsMigrations = [
   {
     version: 1,
     name: "general-settings",
     up: function(doc) {
       doc.general = {
-        windowMode: "expanded",                   // expanded | compact
+        windowMode: "expanded",
         showFavoritesInCompactMode: true,
-        windowPresentationMode: "mouse-screen",   // mouse-screen | active-screen | primary-screen
-        popToRootTimeout: 90,                     // seconds: 0,5,15,30,60,90,120,180
-        escapeKeyBehavior: "pop-back-or-close",   // pop-back-or-close | close-and-pop-to-root
-        navigationBindings: "emacs",              // emacs | vim-motions
-        rootSearchSensitivity: "medium",          // low | medium | high; backend default [O], SPEC §7.3
+        windowPresentationMode: "mouse-screen",
+        popToRootTimeout: 90,
+        escapeKeyBehavior: "pop-back-or-close",
+        navigationBindings: "emacs",
+        rootSearchSensitivity: "medium",
         uiZoom: 1,
-        theme: "omarchy"                          // [D] follow the active Omarchy theme
+        theme: "omarchy"
       }
-      doc.commands = {}                           // commandId -> {enabled, alias, hotkey, favoriteOrder, fallbackOrder, meta}
+      doc.commands = {}
       return doc
     }
   }
 ]
 
-// Root-search ranking state (SPEC §6.4 `frecency`): per item an anchor in
-// Unix seconds (Frecency.js), when it was last opened, and the queries that
-// launched it. `searchHistory` backs ↑ in an empty root (SPEC §7.5).
 var frecencyMigrations = [
   {
     version: 1,
     name: "frecency",
     up: function(doc) {
-      doc.items = {}            // itemId -> {anchor, openedAt, searchTerms: [{term, at}]}
-      doc.searchHistory = []    // newest first, unique, capped
+      doc.items = {}
+      doc.searchHistory = []
       return doc
     }
   }
 ]
 
-var SEARCH_HISTORY_LIMIT = 20   // [I]
+// Calculator History (SPEC §6.4 calculator_history), capped and pruned by
+// Calculator.pushHistory.
+var calculatorMigrations = [
+  {
+    version: 1,
+    name: "calculator-history",
+    up: function(doc) {
+      doc.history = []          // newest first: {id, query, result, copy, kind, createdAt}
+      return doc
+    }
+  }
+]
+
+var SEARCH_HISTORY_LIMIT = 20
 
 function pushSearchHistory(history, query) {
   var q = String(query || "").trim()
@@ -54,15 +59,40 @@ function pushSearchHistory(history, query) {
 
 var documents = {
   settings: { file: "settings.json", migrations: settingsMigrations },
-  frecency: { file: "frecency.json", migrations: frecencyMigrations }
+  frecency: { file: "frecency.json", migrations: frecencyMigrations },
+  calculator: { file: "calculator.json", migrations: calculatorMigrations }
 }
 
-// Host flags in $XDG_CONFIG_HOME/oma-cast/config.json: user-editable and
-// non-secret (SPEC §6.3). Not migrated; unknown keys are kept and ignored,
-// missing ones fall back to these defaults.
 var configDefaults = {
-  logLevel: "info",                    // trace | debug | info | warning | error | fatal
-  keepVisibleOnFocusLoss: false        // dev aid (keepMainWindowVisibleOnResignKey)
+  logLevel: "info",
+  keepVisibleOnFocusLoss: false,
+  // Daily ECB reference rates from frankfurter.dev for currency conversion
+  // (SPEC §8 Calculator). The only network request oma-cast makes. [D]
+  currencyRates: true,
+  // Calculator preferences named after Raycast's (ref 04 App. B) [O].
+  remToPxRate: 16,
+  workHoursPerDay: 8,
+  // "auto" follows the Qt locale; "12h" or "24h" forces a clock. [D]
+  clockFormat: "auto"
+}
+
+// Values a config key or general setting may take, beyond its type.
+var configChoices = {
+  clockFormat: ["auto", "12h", "24h"]
+}
+
+var generalChoices = {
+  windowMode: ["expanded", "compact"],
+  escapeKeyBehavior: ["pop-back-or-close", "close-and-pop-to-root"],
+  navigationBindings: ["emacs", "vim-motions"],
+  rootSearchSensitivity: ["low", "medium", "high"]
+}
+
+function validConfigValue(key, value) {
+  if (typeof value !== typeof configDefaults[key]) return false
+  if (configChoices[key]) return configChoices[key].indexOf(value) >= 0
+  if (typeof value === "number") return isFinite(value) && value > 0
+  return true
 }
 
 function withConfigDefaults(value) {
@@ -70,7 +100,7 @@ function withConfigDefaults(value) {
   for (var key in configDefaults) out[key] = configDefaults[key]
   if (value && typeof value === "object" && !Array.isArray(value)) {
     for (var k in value) {
-      if (configDefaults[k] !== undefined && typeof value[k] === typeof configDefaults[k]) out[k] = value[k]
+      if (configDefaults[k] !== undefined && validConfigValue(k, value[k])) out[k] = value[k]
     }
   }
   return out
@@ -80,10 +110,12 @@ if (typeof module !== "undefined") {
   module.exports = {
     settingsMigrations: settingsMigrations,
     frecencyMigrations: frecencyMigrations,
+    calculatorMigrations: calculatorMigrations,
     pushSearchHistory: pushSearchHistory,
     SEARCH_HISTORY_LIMIT: SEARCH_HISTORY_LIMIT,
     documents: documents,
     configDefaults: configDefaults,
+    generalChoices: generalChoices,
     withConfigDefaults: withConfigDefaults
   }
 }

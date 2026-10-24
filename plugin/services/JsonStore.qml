@@ -2,18 +2,12 @@ import QtQuick
 import Quickshell.Io
 import "../core/Migrate.js" as Migrate
 
-// One persisted, versioned JSON document (core/Migrate.js). Loads on
-// `ready`, migrates, writes back atomically, and picks up external edits.
-// A file that does not parse is never overwritten: the store goes read-only
-// and reports why, so a hand edit gone wrong cannot lose data.
 Item {
   id: store
 
   required property string path
   required property var migrations
-  // Set once the parent directory exists; FileView cannot create it.
   property bool ready: false
-  // Injected clock for history stamps; tests and callers may override.
   property var now: function() { return Date.now() }
 
   property var doc: null
@@ -36,7 +30,6 @@ Item {
     return true
   }
 
-  // Write any pending change now, e.g. before the shell reloads plugins.
   function flush() {
     if (!saveTimer.running) return
     saveTimer.stop()
@@ -52,8 +45,6 @@ Item {
   }
 
   function ingest(text) {
-    // Our own write coming back through the file watcher. A store that went
-    // read-only always re-reads: the user may have restored the old text.
     if (store.loaded && !store.readOnly && text === store._lastWritten) return
 
     var parsed = Migrate.parse(text)

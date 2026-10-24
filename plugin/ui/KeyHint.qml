@@ -1,7 +1,6 @@
 import QtQuick
 import qs.Commons
 
-// A shortcut drawn as key caps: "Ctrl Shift F" -> [Ctrl][Shift][F].
 Row {
   id: hint
 

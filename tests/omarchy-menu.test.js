@@ -39,7 +39,6 @@ test("user items override fields of built-in ones and append new ids", () => {
   assert.equal(tree.items["system.lock"].label, "Lock Screen")
   assert.equal(tree.items["system.lock"].action, "omarchy-system-lock")
   assert.equal(tree.items["system.lock"].kind, "action")
-  // Items whose parent menu does not exist hang off the root, so they stay reachable.
   assert.deepEqual(tree.children.root, ["system", "style", "link.to-style", "trigger.clip", "personal"])
   assert.deepEqual(tree.children["personal"], ["personal.notes"])
 })

@@ -1,9 +1,4 @@
 #!/bin/bash
-# oma-cast: control the oma-cast launcher plugin running inside omarchy-shell.
-#
-# Runtime calls go through omarchy-shell, which runs `qs ipc`
-# (~100 ms per call since Omarchy 4.0.4). The launcher hotkey does not use this script at all: it is a
-# Hyprland global shortcut, oma-cast:toggle, that the plugin registers.
 
 set -uo pipefail
 
@@ -16,7 +11,6 @@ plugin_src="$repo/plugin"
 plugins_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins"
 plugin_link="$plugins_dir/$PLUGIN_ID"
 
-# Our links in the plugins dir: the install link, or a reload link (below).
 installed_links() {
   local link
   for link in "$plugin_link" "$plugin_link".dev-*; do
@@ -72,7 +66,6 @@ cmd_install() {
   fi
 
   omarchy-shell -q shell rescanPlugins
-  # The scan runs in the background; enable answers "not ready" until it lands.
   local out i
   for i in $(seq 1 50); do
     out=$(omarchy plugin enable "$PLUGIN_ID" 2>&1) && break
@@ -101,12 +94,6 @@ cmd_uninstall() {
   fi
 }
 
-# Reloading after an edit needs two things the shell will not do for a
-# symlinked plugin: its inotify watch does not follow the link into the repo,
-# and Quickshell keeps every QML file it has read, by path, for the life of
-# the process (clearComponentCache does not drop them). So each reload links
-# the plugin under a path the shell has never seen. The directory name is
-# free; the plugin id comes from manifest.json.
 cmd_reload() {
   [[ -n $(current_link) ]] || die "plugin is not installed; run: oma-cast install"
   local old
@@ -125,8 +112,6 @@ cmd_dev() {
     done
 }
 
-# Hyprland on Omarchy is configured in Lua. Write our own file and require it
-# once from hyprland.lua; never edit Omarchy's files or the user's bindings.
 cmd_setup_hyprland() {
   [[ -f $hypr_dir/hyprland.lua ]] || die "no $hypr_dir/hyprland.lua; this setup targets Lua-configured Hyprland (hyprctl version: $(hyprctl version 2>/dev/null | head -1))"
 
@@ -139,19 +124,13 @@ cmd_setup_hyprland() {
   fi
 
   cat >"$hypr_dir/oma-cast.lua" <<'LUA'
--- Written by `oma-cast setup hyprland`. Safe to edit; rerunning setup overwrites it.
--- Alt+Space reaches the plugin's global shortcut directly, so no process
--- starts per keypress. Omarchy's own menu stays on Super+Space.
 o.bind("ALT + SPACE", "oma-cast launcher", hl.dsp.global("oma-cast:toggle"))
 
--- To put oma-cast on Super+Space instead of the Omarchy menu:
--- hl.unbind("SUPER + SPACE")
--- o.bind("SUPER + SPACE", "oma-cast launcher", hl.dsp.global("oma-cast:toggle"))
 LUA
   echo "wrote $hypr_dir/oma-cast.lua"
 
   if ! grep -qE '^\s*require\("hypr\.oma-cast"\)' "$hypr_dir/hyprland.lua"; then
-    printf '\n-- oma-cast launcher bindings\nrequire("hypr.oma-cast")\n' >>"$hypr_dir/hyprland.lua"
+    printf '\nrequire("hypr.oma-cast")\n' >>"$hypr_dir/hyprland.lua"
     echo "added require(\"hypr.oma-cast\") to $hypr_dir/hyprland.lua"
   fi
   hyprctl reload >/dev/null && echo "reloaded Hyprland; Alt+Space toggles oma-cast"
@@ -159,7 +138,7 @@ LUA
 
 cmd_doctor() {
   local bad=0
-  check() { # check <label> <command...>
+  check() {
     local label=$1; shift
     if "$@" >/dev/null 2>&1; then printf '  ok    %s\n' "$label"; else printf '  FAIL  %s\n' "$label"; bad=1; fi
   }

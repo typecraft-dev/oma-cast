@@ -18,19 +18,12 @@ test("transliterate folds diacritics to ASCII", () => {
 })
 
 test("fuzzyMatch golden scores", () => {
-  // f@0 first row 4, i adjacent 2, r adjacent 2
   assert.deepEqual(R.fuzzyMatch("Firefox", "fir"), { score: 8, skipped: 0 })
-  // f@0 4, x@6 via a jump: 4 + 2 - 1
   assert.deepEqual(R.fuzzyMatch("Firefox", "fx"), { score: 5, skipped: 0 })
-  // word start after a space: 4 + (3 - 1)
   assert.deepEqual(R.fuzzyMatch("LibreOffice Writer", "lw"), { score: 6, skipped: 0 })
-  // camelCase word start O@5: 4 + (3 - 1)
   assert.deepEqual(R.fuzzyMatch("LibreOffice Writer", "lo"), { score: 6, skipped: 0 })
-  // v 4, s after space 3-1, c after space 3-1
   assert.deepEqual(R.fuzzyMatch("Visual Studio Code", "vsc"), { score: 8, skipped: 0 })
-  // separator match scores 1 (jump -1), then b at a word start, adjacent
   assert.deepEqual(R.fuzzyMatch("foo-bar", "f-b"), { score: 7, skipped: 0 })
-  // f 4, o@5 not a word start: 2 - 1 for the jump; r@... reached by jumps
   assert.deepEqual(R.fuzzyMatch("Font Viewer", "fir"), { score: 6, skipped: 0 })
   assert.deepEqual(R.fuzzyMatch("LibreOffice Writer", "fir"), { score: 5, skipped: 0 })
 })
@@ -40,27 +33,21 @@ test("fuzzyMatch exact, unmatched and separator skipping", () => {
   assert.equal(R.fuzzyMatch("abc", "cba"), "unmatched")
   assert.equal(R.fuzzyMatch("Files", "fir"), "unmatched")
   assert.equal(R.fuzzyMatch("ab", "abc"), "unmatched")
-  // an unmatched trailing separator is skipped, not fatal
   assert.deepEqual(R.fuzzyMatch("Firefox", "fire "), { score: 10, skipped: 1 })
-  // literal dots: "." must match a "." rather than any separator
   assert.equal(R.fuzzyMatch("org-gnome", "org.g", { literalQueryDots: true }), "unmatched")
   assert.notEqual(R.fuzzyMatch("org-gnome", "org.g"), "unmatched")
 })
 
 test("thresholds by sensitivity at their boundaries", () => {
   const m = (score, skipped = 0) => ({ score, skipped })
-  // medium: score >= 1.5*(n - skipped - 2) + 4 ; n=3 → 5.5
   assert.ok(R.passesThreshold(m(6), 3, "medium"))
   assert.ok(!R.passesThreshold(m(5), 3, "medium"))
   assert.ok(R.passesThreshold(m(5.5), 3, "medium"))
   assert.ok(R.passesThreshold(m(5.5), 4, "medium") === false)
   assert.ok(R.passesThreshold(m(5.5, 1), 4, "medium"))
-  // high: score > 2*(n - skipped)
   assert.ok(!R.passesThreshold(m(6), 3, "high"))
   assert.ok(R.passesThreshold(m(6.5), 3, "high"))
-  // low: anything matched
   assert.ok(R.passesThreshold(m(-3), 3, "low"))
-  // default is medium
   assert.ok(!R.passesThreshold(m(5), 3))
   assert.ok(R.passesThreshold("exact", 9, "high"))
   assert.ok(!R.passesThreshold("unmatched", 1, "low"))
@@ -68,13 +55,8 @@ test("thresholds by sensitivity at their boundaries", () => {
 
 test("query 'fir' over a realistic app list", () => {
   const apps = ["Firefox", "Files", "Fire Dragon", "Chromium", "Signal", "LibreOffice Writer", "Alacritty", "Font Viewer"].map((t) => app(t))
-  // Firefox and Fire Dragon both score 8 (equal frecency, type, heuristic),
-  // so the collator decides ("Fire Dragon" < "Firefox"); Font Viewer scores 6
-  // (passes medium's 5.5); LibreOffice Writer scores 5 and is dropped.
   assert.deepEqual(titles(R.rank(apps, "fir", { nowMs: NOW })), ["Fire Dragon", "Firefox", "Font Viewer"])
-  // With high sensitivity Font Viewer (6, needs > 6) drops out.
   assert.deepEqual(titles(R.rank(apps, "fir", { nowMs: NOW, sensitivity: "high" })), ["Fire Dragon", "Firefox"])
-  // One launch makes Firefox win the tie on frecency.
   apps[0].frecency = 101
   assert.deepEqual(titles(R.rank(apps, "fir", { nowMs: NOW })), ["Firefox", "Fire Dragon", "Font Viewer"])
 })
@@ -85,12 +67,11 @@ test("aliases: exact beats everything, prefix beats a better title", () => {
   assert.equal(R.aliasMatch("f", "ff"), "unmatched")
   const items = [
     app("Firefox", { alias: "ff" }),
-    { id: "c", type: "command", title: "ff", frecency: 500 },  // exact title, very frecent
+    { id: "c", type: "command", title: "ff", frecency: 500 },
     app("Fluffy")
   ]
   assert.equal(titles(R.rank(items, "ff", { nowMs: NOW }))[0], "Firefox")
   const prefix = [app("Fluffy Forest"), { id: "x", type: "command", title: "Xylophone", alias: "flu" }]
-  // "fl" fuzzy-matches Fluffy Forest well, but the alias prefix wins (step 8)
   assert.deepEqual(titles(R.rank(prefix, "fl", { nowMs: NOW })), ["Xylophone", "Fluffy Forest"])
 })
 
@@ -100,7 +81,6 @@ test("search terms: exact beats a stronger title, expires after 17 days", () => 
   assert.deepEqual(R.searchTermMatch(terms, "brow", 101, NOW - DAY_MS, NOW), { kind: "prefix", count: 0 })
   assert.deepEqual(R.searchTermMatch(terms, "browsers!", 101, NOW - DAY_MS, NOW), { kind: "overbounds", count: 2 })
   assert.deepEqual(R.searchTermMatch(terms, "browser1234", 101, NOW - DAY_MS, NOW), { kind: "none", count: 0 })
-  // frecency must be > 1, and the last launch within 17 days
   assert.equal(R.searchTermMatch(terms, "browser", 1, NOW - DAY_MS, NOW).kind, "none")
   assert.equal(R.searchTermMatch(terms, "browser", 101, NOW - 18 * DAY_MS, NOW).kind, "none")
 
@@ -108,8 +88,6 @@ test("search terms: exact beats a stronger title, expires after 17 days", () => 
     app("Firefox", { subtitle: "Web Browser", frecency: 101, openedAt: NOW - DAY_MS, searchTerms: ["web"] }),
     app("Web Builder")
   ]
-  // "web" is a prefix-title hit for Web Builder (score 10), but Firefox's
-  // learned exact term wins (step 6).
   assert.deepEqual(titles(R.rank(items, "web", { nowMs: NOW })), ["Firefox", "Web Builder"])
   items[0].openedAt = NOW - 18 * DAY_MS
   assert.deepEqual(titles(R.rank(items, "web", { nowMs: NOW })), ["Web Builder", "Firefox"])
@@ -120,14 +98,11 @@ test("overbounds of 3+ beats a better title score", () => {
     app("Terminal", { frecency: 50, openedAt: NOW - DAY_MS, searchTerms: ["te"] }),
     app("Tetris")
   ]
-  // "tetr": Tetris is a clean prefix (score 10); Terminal only reaches "te"
-  // and then term "te" overbounds by 2 — under 3, so the title score decides.
   assert.deepEqual(titles(R.rank(items, "tetr", { nowMs: NOW })), ["Tetris"])
   const items2 = [
     app("Kitty", { keywords: ["terminal"], frecency: 50, openedAt: NOW - DAY_MS, searchTerms: ["t"] }),
     app("Tetris")
   ]
-  // "term": Kitty matches via keyword "terminal" and term "t" overbounds by 3.
   assert.deepEqual(titles(R.rank(items2, "term", { nowMs: NOW })), ["Kitty"])
   const items3 = [
     app("Kitty", { keywords: ["terminal"], frecency: 50, openedAt: NOW - DAY_MS, searchTerms: ["t"] }),
@@ -139,10 +114,8 @@ test("overbounds of 3+ beats a better title score", () => {
 test("title boost for whole-word queries of 3+ chars", () => {
   const r = R.buildRecord(app("LibreOffice Writer"), "writer", { nowMs: NOW })
   assert.equal(r.titleScore, 4 + 5 * 2 + 0.5)
-  assert.ok(R.wholeWordIn("LibreOffice Writer", "office"))   // camelCase boundary
+  assert.ok(R.wholeWordIn("LibreOffice Writer", "office"))
   assert.ok(!R.wholeWordIn("Firefox", "fire"))
-  // "Writerly Notes App" is a raw prefix hit (4 + 5*2 = 14) but "writer" is
-  // not a whole word there; the boosted 14.5 puts the whole-word hit first.
   assert.equal(R.buildRecord(app("Writerly Notes App"), "writer", { nowMs: NOW }).titleScore, 14)
   const items = [app("Writerly Notes App"), app("LibreOffice Writer")]
   assert.deepEqual(titles(R.rank(items, "writer", { nowMs: NOW })), ["LibreOffice Writer", "Writerly Notes App"])
@@ -159,11 +132,11 @@ test("empty query orders pins first, then frecency, alias, type, title", () => {
     { id: "7", type: "quicklink", title: "Hot", frecency: 300 }
   ]
   assert.deepEqual(titles(R.rank(items, "", { nowMs: NOW })), [
-    "Pinned One", "Pinned Two", // pin priority ascending
-    "Hot",                      // frecency
-    "Gamma",                    // has an alias
-    "Alpha", "Beta",            // applications (5) by title
-    "Zeta"                      // command (4)
+    "Pinned One", "Pinned Two",
+    "Hot",
+    "Gamma",
+    "Alpha", "Beta",
+    "Zeta"
   ])
 })
 

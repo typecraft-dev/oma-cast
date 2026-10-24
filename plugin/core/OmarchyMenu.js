@@ -1,16 +1,4 @@
-// The Omarchy menu as a source of root-search commands. [D]
-//
-// Reads the same JSONC files the Omarchy menu does
-// ($OMARCHY_PATH/default/omarchy/omarchy-menu.jsonc, then the user's
-// ~/.config/omarchy/extensions/omarchy-menu.jsonc on top, by id) and follows
-// its documented format: ids are object keys, dotted ids imply the parent,
-// `action` makes a runnable row, `target` links to another submenu, anything
-// else is a submenu. `when`/`checked`/`disabled` are bash conditions.
-//
-// This is our own reading of that data format; Omarchy's MenuModel.js is not
-// imported, so a change inside the shell cannot break the launcher at load.
 
-// Full-line // comments and trailing commas, as the format allows.
 function stripJsonc(raw) {
   return String(raw || "")
     .replace(/^\s*\/\/[^\n]*(\n|$)/gm, "")
@@ -44,8 +32,6 @@ function normalizeItem(id, raw) {
   }
 }
 
-// Returns { items: [normalized], error }. A file that does not parse yields
-// no items and an error, never a throw.
 function parse(raw) {
   var stripped = stripJsonc(raw)
   if (!stripped.trim()) return { items: [], error: "" }
@@ -66,8 +52,6 @@ function parse(raw) {
   return { items: items, error: "" }
 }
 
-// Default items first, user items layered on top field by field (a user
-// entry with only `label` relabels the built-in one), new ids appended.
 function buildTree(defaultItems, userItems) {
   var byId = {}
   var order = []
@@ -83,8 +67,6 @@ function buildTree(defaultItems, userItems) {
       }
       var merged = {}
       for (var k in prior) merged[k] = prior[k]
-      // Only fields the user actually set override; normalizeItem filled
-      // every field, so compare against an empty item's defaults.
       var blank = normalizeItem(entry.id, {})
       for (var f in entry) {
         if (f === "id") continue
@@ -108,7 +90,6 @@ function buildTree(defaultItems, userItems) {
   return { items: byId, order: order, children: children }
 }
 
-// Labels from the top-level menu down to (not including) the item.
 function breadcrumb(tree, id) {
   var labels = []
   var seen = {}
@@ -126,9 +107,6 @@ function depth(tree, id) {
   return breadcrumb(tree, id).length
 }
 
-// guards: { when: {id: bool}, checked: {...}, disabled: {...} } from the
-// guard script. A `when` that has not been answered yet shows the row, as
-// the Omarchy menu does. A hidden submenu hides everything under it.
 function isVisible(tree, guards, id) {
   var seen = {}
   var current = id
@@ -146,10 +124,6 @@ function guardLine(id, tag, expression) {
   return "if { " + expression + "\n} >/dev/null 2>&1; then echo '" + id + ":" + tag + ":1'; else echo '" + id + ":" + tag + ":0'; fi\n"
 }
 
-// One bash script that answers every guard as `<id>:<w|c|d>:<0|1>` lines,
-// dealt into parallel subshells because most guards wait on process start.
-// Ids come from the menu files; anything that is not a plain id is skipped
-// so it cannot break out of the quoted echo.
 function guardScript(tree) {
   var lines = []
   for (var i = 0; i < tree.order.length; i++) {
@@ -183,9 +157,6 @@ function shellQuote(value) {
   return "'" + String(value === undefined || value === null ? "" : value).replace(/'/g, "'\\''") + "'"
 }
 
-// Runtime row sources named by `provider:` in the menu. These two are the
-// non-app providers the shipped menu uses; each script prints
-// `label\tvalue\tcurrent` per row.
 var PROVIDERS = {
   "fonts": {
     script: "current=$(omarchy-font-current 2>/dev/null); omarchy-font-list 2>/dev/null | while read -r f; do [[ -z $f ]] && continue; printf '%s\\t%s\\t%s\\n' \"$f\" \"$f\" \"$current\"; done",
@@ -203,7 +174,6 @@ function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item"
 }
 
-// Provider output → action items under menuId (same shape as parsed items).
 function providerItems(menuId, providerName, output) {
   var spec = PROVIDERS[providerName]
   if (!spec) return []
@@ -229,7 +199,6 @@ function providerItems(menuId, providerName, output) {
   return rows
 }
 
-// `omarchy-shell shell summon <id> ['<json>']` alone can run in-process.
 function summonAction(action) {
   var m = /^omarchy-shell shell summon ([A-Za-z0-9._-]+)(?: '([^']*)')?$/.exec(String(action || "").trim())
   return m ? { id: m[1], payload: m[2] || "{}" } : null

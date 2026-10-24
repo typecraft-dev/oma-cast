@@ -143,7 +143,7 @@ function matchNormalized(tn, query, options) {
   var bounds = tn.wordBoundaries
   var q = String(query === undefined || query === null ? "" : query).toLowerCase()
 
-  if (q.length === 0) return "unmatched"  // [I] callers handle the empty query before matching
+  if (q.length === 0) return "unmatched"
   if (t === q) return "exact"
 
   var qSep = new Array(q.length)
@@ -225,7 +225,7 @@ function matchNormalized(tn, query, options) {
     while (e >= 0 && e < end) {
       var cellScore
       if (chSep) cellScore = 1
-      else if (p === 0 && e === 0) cellScore = 4 // [I] "first row" = first row that matches (p == 0)
+      else if (p === 0 && e === 0) cellScore = 4
       else cellScore = (starts[e] && !seps[e]) ? 3 : 2
 
       var cell
@@ -468,7 +468,7 @@ function buildRecord(candidate, query, options) {
   var nowMs = typeof opts.nowMs === "number" ? opts.nowMs : Date.now()
   var literalDots = !!opts.literalQueryDots
   var c = candidate || {}
-  var q = String(query || "").trim().toLowerCase() // [I] surrounding whitespace is not part of the query
+  var q = String(query || "").trim().toLowerCase()
   var tq = transliterate(q)
   var frecency = typeof c.frecency === "number" && isFinite(c.frecency) ? c.frecency : 1
 
@@ -487,7 +487,7 @@ function buildRecord(candidate, query, options) {
     alias: aliasMatch(c.alias, q),
     isBoostedSearchTerm: false,
     title: "unmatched",
-    titleMatch: "none",           // exact | prefix | none
+    titleMatch: "none",
     titleScore: -MAX,
     alternates: [],
     subtitle: null,
@@ -592,7 +592,7 @@ function collate(a, b) {
 
 function heuristic(record) {
   var h = record.candidate.sortHeuristic
-  return typeof h === "number" && isFinite(h) ? h : 0 // [I] missing heuristic sorts as 0
+  return typeof h === "number" && isFinite(h) ? h : 0
 }
 
 // B4: plain tiebreak.

@@ -3,10 +3,6 @@ import Quickshell
 import Quickshell.Io
 import "../core/OmarchyMenu.js" as OmarchyMenu
 
-// Live copy of the Omarchy menu: both JSONC files (watched), the answers to
-// every `when`/`checked`/`disabled` guard, and the rows of runtime providers.
-// Guards and providers run in the background; the launcher always opens on
-// the last answers and refresh() asks for new ones.
 Item {
   id: source
 
@@ -18,7 +14,7 @@ Item {
   property var userItems: []
   property var tree: OmarchyMenu.buildTree([], [])
   property var guards: ({ when: {}, checked: {}, disabled: {} })
-  property var providerItems: ({})   // menuId -> [items]
+  property var providerItems: ({})
   property bool loading: guardProc.running || providerProc.running
   property int revision: 0
 
@@ -30,8 +26,6 @@ Item {
     source.refresh()
   }
 
-  // Re-answer guards and re-run providers; cheap enough to call on every open
-  // (about 250 ms of background work), and skipped while a run is in flight.
   function refresh() {
     if (!guardProc.running) {
       var script = OmarchyMenu.guardScript(source.tree)
@@ -88,7 +82,6 @@ Item {
     property string collected: ""
     stdout: SplitParser { onRead: function(line) { guardProc.collected += line + "\n" } }
     onExited: function(exitCode, exitStatus) {
-      // A killed batch answered only some rows; keep the last full set.
       if (exitStatus !== 0) return
       source.guards = OmarchyMenu.parseGuardOutput(guardProc.collected)
       source.revision++

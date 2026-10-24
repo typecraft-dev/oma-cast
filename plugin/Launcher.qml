@@ -1,22 +1,13 @@
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
 import Quickshell.Io
+import Quickshell.Hyprland
 import qs.Commons
 import "ui"
 
-// oma-cast: a Raycast-style launcher as an Omarchy shell plugin.
-//
-// omarchy-shell loads this once (keepLoaded) and calls open(payloadJson) on
-// summon and close() on hide. Everything else reaches it three ways, all of
-// which end in toggle()/show()/hide():
-//   - the Hyprland global shortcut oma-cast:toggle (no process per keypress)
-//   - `oma-cast toggle` -> omarchy-shell oma-cast toggle (shell socket)
-//   - `omarchy-shell shell toggle typecraft.oma-cast`
 Item {
   id: root
 
-  // Injected by the shell's panel loader.
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property var shell: null
   property var manifest: null
@@ -26,7 +17,6 @@ Item {
   property bool opened: false
   property double openedAt: 0
 
-  // ------------------------------------------------------- shell lifecycle
 
   function open(payloadJson) {
     var payload = ({})
@@ -44,10 +34,7 @@ Item {
     backend.emit("window.visibilityChanged", { visible: false })
   }
 
-  // ---------------------------------------------------------- our controls
 
-  // Route through the shell when it is there so its open-panel bookkeeping
-  // matches; it calls open()/close() back.
   function show() {
     if (root.opened) return
     if (root.shell && root.shell.summon(root.pluginId, "{}")) return
@@ -57,7 +44,6 @@ Item {
   function hide() {
     if (!root.opened) return
     if (root.shell && root.shell.hide(root.pluginId)) {
-      // The shell calls close(); make sure even if it did not.
       root.close()
       return
     }
@@ -69,10 +55,9 @@ Item {
     else root.show()
   }
 
-  // Open a command directly (`oma-cast run <id>`, later per-command
-  // hotkeys). It counts as a launch for frecency, like Raycast's hotkeys.
   function run(commandId) {
-    var r = backend.callSync("rootSearch.performAction", { id: commandId, action: "open", query: "" })
+    // `oma-cast run` is explicit, so it skips the confirmation alert.
+    var r = backend.callSync("rootSearch.performAction", { id: commandId, action: "open", query: "", confirmed: true })
     if (!r.ok) return r
     var outcome = r.data || {}
     if (outcome.push) {
@@ -92,6 +77,16 @@ Item {
     summon: function(id, payload) { return root.shell ? root.shell.summon(id, payload) : false }
   }
 
+  Connections {
+    target: backend
+    function onNotification(method, data) {
+      if (method !== "agent.launchReady") return
+      root.hide()
+      launcher.popToRoot()
+      Util.execArgv(data.argv)
+    }
+  }
+
   LauncherWindow {
     id: launcher
     shown: root.opened
@@ -100,8 +95,6 @@ Item {
     onDismissRequested: root.hide()
   }
 
-  // Bound as hl.dsp.global("oma-cast:toggle"); see `oma-cast setup hyprland`.
-  // The name is fixed: a GlobalShortcut cannot be renamed once registered.
   GlobalShortcut {
     appid: "oma-cast"
     name: "toggle"
@@ -135,19 +128,14 @@ Item {
       return "ok"
     }
 
-    // Wall-clock ms of the first frame drawn after the last show or hide;
-    // tests/smoke.sh times the hotkey path with it.
     function lastFrameAt(): string {
       return String(launcher.lastFrameAt)
     }
 
-    // Ids as rootSearch.search reports them: app:<desktop-id>,
-    // omarchy:<menu-id>, builtin:<name>.
     function run(commandId: string): string {
       return JSON.stringify(root.run(commandId))
     }
 
-    // Dispatch any backend method: oma-cast call system.healthPing '{}'.
     function call(method: string, dataJson: string): string {
       var data = null
       if (dataJson && dataJson.length > 0) {
