@@ -5,6 +5,7 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 import "../core/Agent.js" as Agent
+import "../core/LargeType.js" as LargeType
 import "../core/RootSearch.js" as RootSearch
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
@@ -62,6 +63,10 @@ PanelWindow {
   property var aboutRows: []
   property var alert: null
 
+  // Large Type (Ctrl+L): the query across the screen while the card is hidden.
+  property bool largeTypeOpen: false
+  property string largeTypeText: ""
+
   // Inline argument pills for the selected command: argFocus -1 is the
   // search field, 0.. an argument.
   property var argDefs: []
@@ -71,8 +76,9 @@ PanelWindow {
 
   // Navigation bindings (ref 04 §2.8): emacs moves with Ctrl+N (Ctrl+P is the
   // dropdown); vim-motions with Ctrl+J/K, which moves the action panel to
-  // Alt+K. Ctrl+B/F and Ctrl+H/L move a text cursor in Raycast; our search
-  // field has none, so they do nothing here. [D]
+  // Alt+K. Ctrl+B/F and Ctrl+H move a text cursor in Raycast; our search
+  // field has none, so they do nothing here, and Ctrl+L shows the query in
+  // Large Type. [D]
   readonly property bool vim: window.general.navigationBindings === "vim-motions"
   readonly property string actionPanelKeys: window.vim ? "Alt K" : "Ctrl K"
 
@@ -102,6 +108,7 @@ PanelWindow {
     window.toastPanelOpen = false
     window.aboutOpen = false
     window.alert = null
+    window.largeTypeOpen = false
   }
 
   function prepare(payload) {
@@ -283,6 +290,7 @@ PanelWindow {
     var outcome = r.data || {}
     if (outcome.confirm) { window.alert = { spec: outcome.confirm, payload: payload }; return }
     if (outcome.push) { window.push(outcome.push); return }
+    if (outcome.largeType) { window.openLargeType(outcome.largeType); return }
     if (outcome.close) {
       if (outcome.hud) window.hud(outcome.hud)
       window.dismissRequested()
@@ -299,6 +307,21 @@ PanelWindow {
     var payload = Object.assign({}, window.alert.payload, { confirmed: true })
     window.alert = null
     window.request(payload)
+  }
+
+  // Large Type shows the query as-is; blank input is a no-op instead of a
+  // blank takeover. The text is snapshotted so it can't change while shown.
+  function openLargeType(text) {
+    var display = LargeType.displayText(text)
+    if (!display) return
+    window.largeTypeText = display
+    window.largeTypeOpen = true
+  }
+
+  function closeLargeType() {
+    window.largeTypeOpen = false
+    window.largeTypeText = ""
+    keyCatcher.forceActiveFocus()
   }
 
   function performNth(n) {
@@ -525,6 +548,13 @@ PanelWindow {
     var key = event.key
     var enter = key === Qt.Key_Return || key === Qt.Key_Enter
 
+    // Large Type is topmost: Esc or Ctrl+L leaves it, and everything else is
+    // swallowed so typing can't land in the query underneath.
+    if (window.largeTypeOpen) {
+      if (key === Qt.Key_Escape || (ctrl && !shift && !alt && key === Qt.Key_L)) window.closeLargeType()
+      return true
+    }
+
     if (window.alert) {
       if (key === Qt.Key_Escape) window.alert = null
       else if (enter) window.confirmAlert()
@@ -558,6 +588,10 @@ PanelWindow {
       if (window.isActionPanelKey(ctrl, alt, shift, key)) { window.actionPanelOpen = false; return true }
       return window.handlePopupKey(event, actionPanel, ctrl, alt)
     }
+
+    // Ctrl+L shows the query in Large Type; Raycast used it to move a text
+    // cursor, which our search field has no use for (see the note above).
+    if (ctrl && !shift && !alt && !meta && key === Qt.Key_L && LargeType.displayText(window.query)) { window.openLargeType(window.query); return true }
 
     if (window.view.kind === "alias") {
       if (enter) { window.saveAlias(); return true }
@@ -624,11 +658,15 @@ PanelWindow {
 
   MouseArea {
     anchors.fill: parent
-    onClicked: if (!window.backend.config.keepVisibleOnFocusLoss) window.dismissRequested()
+    onClicked: {
+      if (window.largeTypeOpen) { window.closeLargeType(); return }
+      if (!window.backend.config.keepVisibleOnFocusLoss) window.dismissRequested()
+    }
   }
 
   BorderSurface {
     id: card
+    visible: !window.largeTypeOpen
     width: window.cardWidth
     height: window.compact ? window.headerHeight + card.borderTop + card.borderBottom : window.fullHeight
     radius: Math.max(Style.cornerRadius, window.px(8))
@@ -1099,5 +1137,13 @@ PanelWindow {
       onConfirmed: window.confirmAlert()
       onCancelled: window.alert = null
     }
+  }
+
+  LargeTypeOverlay {
+    visible: window.largeTypeOpen
+    anchors.fill: parent
+    text: window.largeTypeText
+    look: window.look
+    zoom: window.zoom
   }
 }
