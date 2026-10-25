@@ -82,6 +82,19 @@ read credentials, or make model API calls. Successful preflight checks establish
 launch prerequisites, not successful sign-in or a running terminal; those still
 need live desktop validation.
 
+## Large Type
+
+Type a message in the launcher and press **Ctrl+L** — it appears in very large
+characters across the whole screen, so someone across the room can read it.
+**Esc**, a click anywhere, or **Ctrl+L** again brings the launcher back with
+your text still in the search field, ready to edit. "Show in Large Type" also
+appears under the "Use \"<query>\" with…" fallbacks.
+
+The overlay follows your Omarchy theme, sizes the text to fit anything from a
+word to a wall of text, and renders the query as plain text — never markup.
+
+<img src="docs/screenshots/large-type.png" alt="Large Type showing 'Standup in 5 minutes' across the screen" width="760">
+
 ## Keyboard
 
 | Key | Does |
@@ -90,6 +103,7 @@ need live desktop validation.
 | `Ctrl+K` | Open the action panel |
 | `Super+V` / `Ctrl+V` / `Ctrl+Shift+V` / `Shift+Insert` | Paste text into the query (also accepts clipboard-history selections) |
 | `Ctrl+Alt+↵` | Ask the default agent using the current root-search text |
+| `Ctrl+L` | Show the query in Large Type (`Esc` dismisses) |
 | `Ctrl+1`…`9` | Pick a result |
 | `↑` on an empty search | Search history |
 | `Ctrl+↑` / `Ctrl+↓` | Jump between sections |
