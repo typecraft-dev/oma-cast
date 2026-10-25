@@ -51,14 +51,28 @@ test("a query always ends with the fallback section", () => {
   assert.equal(sections.length, 1)
   assert.equal(sections[0].id, "fallback-commands")
   assert.equal(sections[0].title, "Use “zzzz-nothing” with…")
-  assert.deepEqual(titles(sections[0]), ["Search Google", "Search DuckDuckGo", "Ask default agent"])
+  assert.deepEqual(titles(sections[0]), ["Search Google", "Search DuckDuckGo", "Ask default agent", "Show in Large Type"])
+})
+
+test("Show in Large Type is a query-level fallback with a display action", () => {
+  const row = results("meeting at noon").at(-1).rows.at(-1).candidate
+  assert.equal(row.id, "fallback:large-type")
+  assert.equal(row.title, "Show in Large Type")
+  assert.equal(row.kind, "fallback")
+  assert.ok(!row.url, "large type is not a web search")
+  assert.deepEqual(RS.actionsFor(row).map(a => a.id), ["open"])
+  assert.equal(RS.actionsFor(row)[0].title, "Show in Large Type")
+  assert.ok(results("").flatMap(s => s.rows).every(r => r.candidate.id !== row.id), "never on the empty root")
+  assert.ok(RS.submenuSections(candidates(), "trigger", "show me", ctx(), deps).flatMap(s => s.rows).every(r => r.candidate.id !== row.id), "never inside submenus")
 })
 
 test("agent hand-off is explicit, stays after apps/web search, and only appears at root with a query", () => {
   const sections = results("firefox")
   assert.equal(sections[0].rows[0].candidate.id, "app:firefox")
-  const row = sections.at(-1).rows.at(-1).candidate
-  assert.equal(row.id, "fallback:agent")
+  const rows = sections.at(-1).rows.map(r => r.candidate)
+  const row = rows.find(r => r.id === "fallback:agent")
+  assert.ok(row, "agent fallback present")
+  assert.ok(rows.indexOf(row) < rows.length - 1, "agent stays ahead of Show in Large Type")
   assert.match(row.subtitle, /Ctrl\+Alt\+Enter/)
   assert.deepEqual(RS.actionsFor(row).map(a => a.id), ["open"])
   assert.ok(!results("").flatMap(s => s.rows).some(r => r.candidate.id === row.id))

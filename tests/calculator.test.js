@@ -170,7 +170,7 @@ test("root search puts the Calculator section first; ↵ copies, Ctrl ↵ pastes
   assert.equal(sections[0].id, "calculator")
   assert.equal(sections[0].rows[0].candidate.calcResult, "4")
   assert.equal(sections.at(-1).id, "fallback-commands")
-  assert.deepEqual(sections.at(-1).rows.map((r) => r.candidate.id), ["fallback:google", "fallback:duckduckgo", "fallback:agent"])
+  assert.deepEqual(sections.at(-1).rows.map((r) => r.candidate.id), ["fallback:google", "fallback:duckduckgo", "fallback:agent", "fallback:large-type"])
   const actions = RS.actionsFor({ kind: "calculator" }).map((a) => a.id)
   assert.deepEqual(actions.slice(0, 2), ["copy-answer", "paste-answer"])
   const calcHistory = RS.rootSections(RS.BUILTINS.map(RS.builtinCandidate), "calc hist", { commands: {}, frecency: {}, nowMs: NOW }, deps)

@@ -10,6 +10,7 @@ import "core/Ranker.js" as Ranker
 import "core/Frecency.js" as Frecency
 import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
+import "core/LargeType.js" as LargeType
 import "core/Agent.js" as Agent
 import "core/Calculator.js" as Calculator
 import "services"
@@ -440,6 +441,10 @@ Item {
           if (fallback.id === Agent.FALLBACK_ID) {
             agentLauncher.start(data.query)
             return { pending: true }
+          }
+          if (fallback.largeType) {
+            // Blank input comes back empty and the window no-ops on it.
+            return { largeType: LargeType.displayText(data && data.query) }
           }
           Util.execArgv(["omarchy-launch-browser", RootSearch.fallbackUrl(fallback, data.query)])
           return { close: true }
