@@ -40,6 +40,38 @@ var BUILTINS = [
     keywords: ["calculator", "calc", "math", "history", "conversions"],
     run: { push: { kind: "calculator-history", title: "Calculator History" } },
     rootSearch: { when: "always" }
+  },
+  // Script Commands (ref 04 App. A script-commands) [O].
+  {
+    id: "builtin:search-script-commands",
+    title: "Search Script Commands",
+    subtitle: "Script Commands",
+    glyph: "\uf120",                     // nf-fa-terminal
+    keywords: ["scripts", "script commands"],
+    run: { push: { kind: "script-commands", title: "Script Commands" } }
+  },
+  {
+    id: "builtin:create-script-command",
+    title: "Create Script Command",
+    subtitle: "Script Commands",
+    glyph: "\uf067",                     // nf-fa-plus
+    keywords: ["scripts", "new script", "template"],
+    arguments: [
+      { name: "title", placeholder: "Title", required: true },
+      { name: "mode", placeholder: "Mode", required: true, options: [
+        { title: "Compact", value: "compact" }, { title: "Full Output", value: "fullOutput" },
+        { title: "Silent", value: "silent" }, { title: "Inline", value: "inline" }
+      ] }
+    ],
+    run: { createScript: true }
+  },
+  {
+    id: "builtin:reload-script-commands",
+    title: "Reload Script Commands",
+    subtitle: "Script Commands",
+    glyph: "\uf021",                     // nf-fa-refresh
+    keywords: ["scripts", "rescan"],
+    run: { reloadScripts: true }
   }
 ]
 
@@ -284,6 +316,36 @@ function submenuSections(candidates, menuId, query, ctx, deps) {
   return ranked.length ? [{ id: "results", title: "Results", rows: ranked }] : []
 }
 
+// Search Script Commands: scripts grouped by package, ranked when typing,
+// then the files that failed to parse. [I]
+function scriptSections(candidates, errors, query, ctx, deps) {
+  var q = String(query || "").trim()
+  var scripts = []
+  for (var i = 0; i < candidates.length; i++) {
+    if (candidates[i].kind === "script" && isEnabled(candidates[i], ctx)) scripts.push(decorate(candidates[i], ctx, deps))
+  }
+  var broken = (errors || []).filter(function(e) {
+    return !q || (e.title + " " + e.subtitle).toLowerCase().indexOf(q.toLowerCase()) >= 0
+  }).map(function(e) { return { candidate: e, record: null } })
+  var out = []
+  if (q) {
+    var ranked = deps.Ranker.rank(scripts, q, rankOptions(ctx))
+    if (ranked.length) out.push({ id: "results", title: "Results", rows: ranked })
+  } else {
+    var packages = {}
+    var names = []
+    scripts.forEach(function(c) {
+      var name = c.extensionTitle || ""
+      if (!packages[name]) { packages[name] = []; names.push(name) }
+      packages[name].push({ candidate: c, record: null })
+    })
+    names.sort(function(a, b) { return a.localeCompare(b) })
+    names.forEach(function(name) { out.push({ id: "package:" + name, title: name, rows: packages[name] }) })
+  }
+  if (broken.length) out.push({ id: "script-errors", title: "Invalid Scripts", rows: broken })
+  return out
+}
+
 function actionsFor(candidate) {
   if (candidate.kind === "calculator" || candidate.kind === "calculator-history") {
     // ↵ copies, Ctrl ↵ pastes (SPEC §8 Calculator) [O]; delete keys are
@@ -301,6 +363,21 @@ function actionsFor(candidate) {
     }
     return calc
   }
+  if (candidate.kind === "script-run") {
+    var run = [
+      { id: "copy-output", title: "Copy Output", shortcut: "↵", section: "primary", icon: "" },
+      { id: "run-again", title: "Run Again", shortcut: "Ctrl R", section: "primary", icon: "" }
+    ]
+    if (candidate.running) run.push({ id: "stop-script", title: "Stop Script", shortcut: "", section: "primary", icon: "" })
+    run.push({ id: "edit-script", title: "Edit Script", shortcut: "Ctrl E", section: "configure", icon: "" })
+    return run
+  }
+  if (candidate.kind === "script-error") {
+    return [
+      { id: "edit-script", title: "Edit Script", shortcut: "↵", section: "primary", icon: "" },
+      { id: "copy-path", title: "Copy Path", shortcut: "Ctrl Shift C", section: "copy", icon: "" }
+    ]
+  }
   var primary
   var list = []
   switch (candidate.kind) {
@@ -309,6 +386,7 @@ function actionsFor(candidate) {
     case "omarchy-menu":
     case "omarchy-link": primary = { id: "open", title: "Open Menu", icon: "" }; break
     case "fallback": primary = { id: "open", title: candidate.title, icon: "" }; break
+    case "script": primary = candidate.scriptMode === "inline" ? { id: "open", title: "Refresh", icon: "" } : { id: "open", title: "Run Script", icon: "" }; break
     default: primary = { id: "open", title: "Open Command", icon: "" }
   }
   primary.shortcut = "↵"
@@ -321,6 +399,10 @@ function actionsFor(candidate) {
 
   if (candidate.kind === "app") list.push({ id: "copy-id", title: "Copy Desktop ID", shortcut: "Ctrl Shift C", section: "copy", icon: "" })
   if (candidate.kind === "omarchy-action") list.push({ id: "copy-command", title: "Copy Command", shortcut: "Ctrl Shift C", section: "copy", icon: "" })
+  if (candidate.kind === "script") {
+    list.push({ id: "edit-script", title: "Edit Script", shortcut: "Ctrl E", section: "primary", icon: "" })
+    list.push({ id: "copy-path", title: "Copy Path", shortcut: "Ctrl Shift C", section: "copy", icon: "" })
+  }
 
   if (candidate.favoriteOrder === null || candidate.favoriteOrder === undefined) {
     list.push({ id: "favorite-add", title: "Add to Favorites", shortcut: "Ctrl Shift F", section: "favorites", icon: "" })
@@ -407,13 +489,25 @@ function aboutFor(c, nowMs) {
   }
   add("Title", c.title)
   add("Type", c.typeLabel)
-  if (c.kind !== "fallback") add("Location", c.subtitle)
+  if (c.kind === "script-error") {
+    add("File", c.scriptPath)
+    add("Error", c.subtitle)
+    return rows
+  }
+  if (c.kind !== "fallback" && c.kind !== "script") add("Location", c.subtitle)
+  if (c.kind === "script") {
+    add("Package", c.extensionTitle)
+    add("File", c.scriptPath)
+    add("Mode", c.scriptMode)
+    add("Description", c.description)
+    add("Author", c.author)
+  }
   add("ID", c.id)
   if (c.kind === "app") add("Desktop Entry", c.appId + ".desktop")
   if (c.kind === "omarchy-action") add("Command", c.action)
   if (c.kind === "omarchy-link") add("Opens", c.target)
   add("URL", c.url || (c.run && c.run.url))
-  add("Arguments", (c.arguments || []).map(function(a) { return a.name + (a.required ? "" : " (optional)") }).join(", "))
+  add("Arguments", (c.arguments || []).map(function(a) { return (a.placeholder || a.name) + (a.required ? "" : " (optional)") }).join(", "))
   add("Keywords", (c.keywords || []).join(", "))
   add("Alias", c.alias)
   if (typeof c.favoriteOrder === "number") add("Favorite", "#" + (c.favoriteOrder + 1))
@@ -443,6 +537,7 @@ if (typeof module !== "undefined") {
     decorate: decorate,
     rootSections: rootSections,
     submenuSections: submenuSections,
+    scriptSections: scriptSections,
     actionsFor: actionsFor,
     reorderFavorites: reorderFavorites,
     fallbackUrl: fallbackUrl

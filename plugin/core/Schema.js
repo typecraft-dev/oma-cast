@@ -73,7 +73,10 @@ var configDefaults = {
   remToPxRate: 16,
   workHoursPerDay: 8,
   // "auto" follows the Qt locale; "12h" or "24h" forces a clock. [D]
-  clockFormat: "auto"
+  clockFormat: "auto",
+  // Script command folders scanned besides <config>/script-commands
+  // (Raycast's searchDirectories, ref 03 §5). Absolute or ~/ paths. [D]
+  scriptCommandDirectories: []
 }
 
 // Values a config key or general setting may take, beyond its type.
@@ -89,6 +92,7 @@ var generalChoices = {
 }
 
 function validConfigValue(key, value) {
+  if (Array.isArray(configDefaults[key])) return Array.isArray(value) && value.every(function(v) { return typeof v === "string" })
   if (typeof value !== typeof configDefaults[key]) return false
   if (configChoices[key]) return configChoices[key].indexOf(value) >= 0
   if (typeof value === "number") return isFinite(value) && value > 0

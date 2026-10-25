@@ -73,27 +73,28 @@ test("failure, crash and timeout never prepare a terminal launch", () => {
   assert.deepEqual(h.events, [{ message: "Agent launch check timed out. Try again." }])
 })
 
-test("showing refreshes calculator data and hiding cancels an agent hand-off", () => {
+test("showing refreshes calculator data and scripts, and hiding cancels an agent hand-off", () => {
   const text = fs.readFileSync(path.join(__dirname, "../plugin/Backend.qml"), "utf8")
   const events = []
   const context = vm.createContext({
     method: "window.visibilityChanged", data: { visible: true },
     menuSource: { refresh: () => events.push("menu") },
     calculatorData: { refresh: () => events.push("calculator") },
+    scriptSource: { scan: () => events.push("scripts") },
     agentLauncher: { cancel: () => events.push("cancel") }
   })
   const notify = body(text, "onNotification: function(method, data)", 2)
   vm.runInContext(notify, context)
-  assert.deepEqual(events, ["menu", "calculator"])
+  assert.deepEqual(events, ["menu", "calculator", "scripts"])
   context.data = { visible: false }
   vm.runInContext(notify, context)
-  assert.deepEqual(events, ["menu", "calculator", "cancel"])
+  assert.deepEqual(events, ["menu", "calculator", "scripts", "cancel"])
   context.data = null
   vm.runInContext(notify, context)
   context.method = "calculator.historyStateChanged"
   context.data = { visible: true }
   vm.runInContext(notify, context)
-  assert.equal(events.length, 3)
+  assert.equal(events.length, 4)
 })
 
 test("entry point dismisses and clears the launcher before starting the terminal", () => {

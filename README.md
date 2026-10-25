@@ -82,6 +82,39 @@ read credentials, or make model API calls. Successful preflight checks establish
 launch prerequisites, not successful sign-in or a running terminal; those still
 need live desktop validation.
 
+## Script Commands
+
+Put an executable script with Raycast's `@raycast.*` header comments in
+`~/.config/oma-cast/script-commands`, and it shows up in root search:
+
+```bash
+#!/bin/bash
+# @raycast.schemaVersion 1
+# @raycast.title Restart Waybar
+# @raycast.mode compact
+# @raycast.argument1 { "type": "text", "placeholder": "Profile", "optional": true }
+```
+
+Scripts from the [`raycast/script-commands`](https://github.com/raycast/script-commands)
+repo use the same format, but many of them call macOS-only tools.
+
+- **Modes:** `compact` shows the last line of output in a toast, `silent`
+  closes the launcher and shows it in the OSD, `fullOutput` opens a view that
+  streams the output, and `inline` shows the first line as the row's subtitle,
+  refreshed every `refreshTime` (10 s or more).
+- **Arguments:** up to three (`text`, `password` or `dropdown`), typed in pills
+  after the search text. Tab moves between them and ↑/↓ steps through a
+  dropdown's options.
+- **Commands:** *Search Script Commands* lists your scripts by package, plus any
+  files with a broken header. *Create Script Command* writes a script from a
+  template and opens it in your editor. *Reload Script Commands* rescans the
+  folders (oma-cast also rescans every time it opens).
+- **Actions:** Edit Script (`Ctrl+E`) and Copy Path (`Ctrl+Shift+C`). In the
+  output view, ↵ copies the output and `Ctrl+R` runs the script again.
+
+To scan more folders, add them to `~/.config/oma-cast/config.json`:
+`"scriptCommandDirectories": ["~/bin/raycast"]`.
+
 ## Keyboard
 
 | Key | Does |
@@ -114,7 +147,7 @@ oma-cast doctor
 oma-cast is early. Search, ranking and the Omarchy integration are done. Coming next:
 
 - [ ] Settings window
-- [ ] Script Commands
+- [x] Script Commands
 - [ ] Clipboard history, snippets, quicklinks, calculator
 - [ ] Running Raycast extensions built from the open-source [`raycast/extensions`](https://github.com/raycast/extensions) repo
 - [ ] Window management

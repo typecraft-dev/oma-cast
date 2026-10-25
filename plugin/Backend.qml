@@ -12,6 +12,7 @@ import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
 import "core/Agent.js" as Agent
 import "core/Calculator.js" as Calculator
+import "core/ScriptCommands.js" as ScriptCommands
 import "services"
 
 Item {
@@ -35,7 +36,7 @@ Item {
   property var candidates: []
   property var candidatesById: ({})
   property int candidatesRevision: 0
-  readonly property bool loading: menuSource.loading || agentLauncher.checking
+  readonly property bool loading: menuSource.loading || agentLauncher.checking || scriptSource.foregroundRuns > 0
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
@@ -76,6 +77,10 @@ Item {
     for (var i = 0; i < apps.length; i++) if (apps[i] && apps[i].id) next.push(RootSearch.appCandidate(apps[i]))
     next = next.concat(RootSearch.menuCandidates(menuSource.tree, menuSource.guards, menuSource.providerItems, backend.deps))
     for (var b = 0; b < RootSearch.BUILTINS.length; b++) next.push(RootSearch.builtinCandidate(RootSearch.BUILTINS[b]))
+    for (var s = 0; s < scriptSource.scripts.length; s++) {
+      var script = scriptSource.scripts[s]
+      next.push(ScriptCommands.candidate(script, scriptSource.inline[script.id] || null))
+    }
     var byId = ({})
     for (var j = 0; j < next.length; j++) byId[next[j].id] = next[j]
     backend.candidates = next
@@ -179,6 +184,83 @@ Item {
     return null
   }
 
+  // ------------------------------------------------------- script commands
+
+  function scriptFor(id) {
+    var script = scriptSource.byId[id]
+    if (!script) throw new Error("Script not found. Reload Script Commands and try again.")
+    return script
+  }
+
+  // ↵ on a script: validate its arguments, confirm if it asks to, then run
+  // it in its mode (SPEC §9.9).
+  function runScript(candidate, data) {
+    var script = backend.scriptFor(candidate.id)
+    var args = ScriptCommands.argumentValues(script.arguments, (data && data.arguments) || {})
+    if (script.needsConfirmation && !(data && data.confirmed))
+      return { confirm: { title: script.title, message: "Are you sure you want to run this script?", primary: "Run Script", destructive: false } }
+    backend.recordVisit(candidate.id, String(data && data.query || "").trim())
+    var runId = scriptSource.start(script, args, script.mode)
+    if (script.mode === "fullOutput") return { push: { kind: "script-output", runId: runId, title: script.title } }
+    if (script.mode === "silent") return { close: true }
+    return { toast: { style: "running", title: (script.mode === "inline" ? "Refreshing " : "Running ") + script.title + "…", actions: [
+      { id: "cancel", title: "Cancel", done: "Cancelled", call: { method: "scriptCommands.cancelScript", data: { runId: runId } } }
+    ] } }
+  }
+
+  function scriptRunAction(rowId, action) {
+    var runId = String(rowId).slice("script-run:".length)
+    var run = scriptSource.run(runId)
+    if (!run) throw new Error("That run is gone")
+    switch (action) {
+      case "open":
+      case "copy-output":
+        Util.execArgv(["wl-copy", "--", ScriptCommands.stripAnsi(run.output)])
+        return { close: true, hud: "Copied to Clipboard" }
+      case "run-again":
+        var script = backend.scriptFor(run.scriptId)
+        scriptSource.cancel(runId)
+        var next = scriptSource.start(script, run.args, run.mode)
+        return { replace: { kind: "script-output", runId: next, title: script.title } }
+      case "stop-script":
+        scriptSource.cancel(runId)
+        return { toast: { style: "success", title: "Stopped " + run.title } }
+      case "edit-script":
+        Util.execArgv(["omarchy-launch-editor", run.path])
+        return { close: true }
+    }
+    throw new Error("Unknown action " + action)
+  }
+
+  function scriptErrorFor(rowId) {
+    var found = scriptSource.errors.filter(function(e) { return e.id === rowId })[0]
+    if (!found) throw new Error("Script not found. Reload Script Commands and try again.")
+    return ScriptCommands.errorCandidate(found)
+  }
+
+  function scriptFileAction(path, action) {
+    if (action === "edit-script" || action === "open") {
+      Util.execArgv(["omarchy-launch-editor", path])
+      return { close: true }
+    }
+    if (action === "copy-path") {
+      Util.execArgv(["wl-copy", "--", path])
+      return { close: true, hud: "Copied to Clipboard" }
+    }
+    throw new Error("Unknown action " + action)
+  }
+
+  function runInfo(runId) {
+    var run = scriptSource.run(runId)
+    if (!run) return null
+    var status = run.running ? "Running…"
+      : run.cancelled ? "Stopped"
+      : run.crashed ? "Stopped by a signal"
+      : run.exitCode === 0 ? "Finished" : "Failed with exit code " + run.exitCode
+    return { runId: run.id, title: run.title, running: run.running, exitCode: run.exitCode, status: status,
+             output: (run.truncated ? "…\n" : "") + ScriptCommands.stripAnsi(run.output) }
+  }
+
   // ------------------------------------------------------------- execution
 
   function summonPlugin(id, payload) {
@@ -247,7 +329,23 @@ Item {
           var target = menuSource.tree.items[candidate.target]
           if (!target) return { toast: { style: "failure", title: "Menu " + candidate.target + " not found" } }
           return { push: { kind: "menu", menuId: target.id, title: target.label } }
+        case "script":
+          return backend.runScript(candidate, data)
         case "builtin":
+          if (candidate.run.createScript) {
+            var spec = (data && data.arguments) || {}
+            var missingArg = RootSearch.missingArgument(candidate.arguments, spec)
+            if (missingArg >= 0) throw new Error("Type a " + candidate.arguments[missingArg].placeholder.toLowerCase() + " first")
+            var mode = ScriptCommands.optionValue(candidate.arguments[1], spec.mode)
+            backend.recordVisit(id, query)
+            scriptSource.create(backend.paths.scriptCommands, String(spec.title), mode)
+            return {}
+          }
+          if (candidate.run.reloadScripts) {
+            backend.recordVisit(id, query)
+            scriptSource.scan(true)
+            return {}
+          }
           if (candidate.run.url) {
             var values = (data && data.arguments) || {}
             var missing = RootSearch.missingArgument(candidate.arguments, values)
@@ -266,6 +364,9 @@ Item {
       }
       throw new Error("Cannot open " + id)
     }
+
+    if (candidate.kind === "script" && (action === "edit-script" || action === "copy-path"))
+      return backend.scriptFileAction(candidate.scriptPath, action)
 
     switch (action) {
       case "open-in-omarchy-menu":
@@ -389,6 +490,8 @@ Item {
         var sections
         if (view && view.kind === "menu") sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
+        else if (view && view.kind === "script-commands") sections = RootSearch.scriptSections(backend.candidates, scriptSource.errors.map(ScriptCommands.errorCandidate), query, ctx, backend.deps)
+        else if (view && view.kind === "script-output") sections = []
         else {
           ctx.filter = String(data && data.filter || "all")
           if (query.trim() && ctx.filter === "all") ctx.calculation = backend.calculate(query)
@@ -402,6 +505,11 @@ Item {
         var rowId = String(data && data.id || "")
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
+        if (rowId.indexOf("script-run:") === 0) {
+          var run = scriptSource.run(rowId.slice("script-run:".length))
+          return RootSearch.actionsFor({ kind: "script-run", running: !!(run && run.running) })
+        }
+        if (rowId.indexOf(ScriptCommands.ERROR_PREFIX) === 0) return RootSearch.actionsFor({ kind: "script-error" })
         var candidate = backend.decorated(rowId)
         if (!candidate) {
           var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === data.id })[0]
@@ -421,6 +529,8 @@ Item {
           var entry = backend.historyEntry(rowId)
           return entry ? RootSearch.aboutFor(RootSearch.historyCandidate(entry, nowMs), nowMs) : []
         }
+        if (rowId.indexOf(ScriptCommands.ERROR_PREFIX) === 0) return RootSearch.aboutFor(backend.scriptErrorFor(rowId), nowMs)
+        if (rowId.indexOf("script-run:") === 0) return []
         var candidate = backend.decorated(rowId)
         if (!candidate) {
           var f = RootSearch.FALLBACKS.filter(function(x) { return x.id === rowId })[0]
@@ -455,6 +565,9 @@ Item {
           if (!entry) throw new Error("No such history entry")
           return backend.calculatorAction(String(data.action || "open"), entry, entry.id)
         }
+        if (data && String(data.id).indexOf("script-run:") === 0) return backend.scriptRunAction(data.id, String(data.action || "open"))
+        if (data && String(data.id).indexOf(ScriptCommands.ERROR_PREFIX) === 0)
+          return backend.scriptFileAction(backend.scriptErrorFor(data.id).scriptPath, String(data.action || "open"))
         return backend.performAction(data)
       },
       getSearchHistory: function() { return frecencyStore.loaded ? frecencyStore.doc.searchHistory : [] }
@@ -481,6 +594,32 @@ Item {
           fetchedAt: calculatorData.ratesFetchedAt || null,
           zones: Object.keys(calculatorData.zones).length
         }
+      }
+    })
+
+    // Names from Raycast's scriptCommands namespace (ref 02 §2).
+    Rpc.register(backend.registry, "scriptCommands", {
+      getScripts: function() {
+        return {
+          directories: scriptSource.directories,
+          scripts: scriptSource.scripts.map(function(s) {
+            return { id: s.id, title: s.title, mode: s.mode, path: s.path, packageName: s.packageName, inline: scriptSource.inline[s.id] || null }
+          }),
+          errors: scriptSource.errors
+        }
+      },
+      reload: function() { scriptSource.scan(true); return null },
+      runScript: function(data) {
+        return backend.performAction({ id: String(data && data.id || ""), action: "open", arguments: (data && data.arguments) || {}, confirmed: true })
+      },
+      cancelScript: function(data) {
+        if (!scriptSource.cancel(String(data && data.runId || ""))) throw new Error("That script is not running")
+        return null
+      },
+      getRun: function(data) {
+        var info = backend.runInfo(String(data && data.runId || ""))
+        if (!info) throw new Error("That run is gone")
+        return info
       }
     })
 
@@ -517,6 +656,7 @@ Item {
     if (method === "window.visibilityChanged" && data && data.visible) {
       menuSource.refresh()
       calculatorData.refresh()
+      scriptSource.scan(false)
     }
     if (method === "window.visibilityChanged" && data && !data.visible) agentLauncher.cancel()
   }
@@ -534,6 +674,20 @@ Item {
     onExited: function(exitCode) {
       if (exitCode !== 0) backend.log("error", "paths", "could not create data directories", { exitCode: exitCode })
       backend.directoriesReady = true
+    }
+  }
+
+  ScriptCommandsSource {
+    id: scriptSource
+    directories: backend.directoriesReady ? ScriptCommands.directories(backend.paths.scriptCommands, backend.config.scriptCommandDirectories, backend.paths.home) : []
+    onRevisionChanged: rebuildTimer.restart()
+    onMessage: function(level, text, metadata) { backend.log(level, "script-commands", text, metadata) }
+    onReloaded: function(count, errorCount) { backend.emit("scriptCommands.reloaded", { count: count, errors: errorCount }) }
+    onRunOutput: function(runId) { backend.emit("scriptCommands.output", { runId: runId }) }
+    onRunFinished: function(runId, result) { backend.emit("scriptCommands.finished", result) }
+    onCreated: function(ok, path, text) {
+      if (ok) Util.execArgv(["omarchy-launch-editor", path])
+      backend.emit("scriptCommands.created", { ok: ok, path: path, message: text })
     }
   }
 

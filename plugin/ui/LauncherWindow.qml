@@ -69,6 +69,9 @@ PanelWindow {
   property int argFocus: -1
   property string argsForId: ""
 
+  // The fullOutput view's run (scriptCommands.getRun).
+  property var scriptRun: null
+
   // Navigation bindings (ref 04 §2.8): emacs moves with Ctrl+N (Ctrl+P is the
   // dropdown); vim-motions with Ctrl+J/K, which moves the action panel to
   // Alt+K. Ctrl+B/F and Ctrl+H/L move a text cursor in Raycast; our search
@@ -81,6 +84,8 @@ PanelWindow {
   readonly property string placeholder: window.view.kind === "alias" ? "Type an alias, then press ↵"
     : window.view.kind === "menu" ? "Search " + window.view.title + "…"
     : window.view.kind === "calculator-history" ? "Search calculations…"
+    : window.view.kind === "script-commands" ? "Search script commands…"
+    : window.view.kind === "script-output" ? window.view.title
     : "Search for apps and commands…"
 
   readonly property int cardWidth: Math.min(px(750), width - Style.gapsOut * 2)
@@ -126,7 +131,17 @@ PanelWindow {
     onTriggered: window.popToRoot()
   }
 
+  // Leaving a fullOutput view stops its script: nothing else shows its output. [I]
+  function stopScriptRuns(views) {
+    for (var i = 0; i < views.length; i++) {
+      if (views[i].kind !== "script-output") continue
+      var r = window.backend.callSync("scriptCommands.getRun", { runId: views[i].runId })
+      if (r.ok && r.data.running) window.backend.callSync("scriptCommands.cancelScript", { runId: views[i].runId })
+    }
+  }
+
   function popToRoot() {
+    window.stopScriptRuns(window.stack.slice(1))
     window.stack = [{ kind: "root", title: "oma-cast", query: "" }]
     window.query = ""
     window.rootFilter = "all"
@@ -140,10 +155,26 @@ PanelWindow {
     window.stack = saved.concat([next])
     window.query = next.kind === "alias" ? (next.value || "") : ""
     window.rebuild(true)
+    window.refreshScriptRun()
+  }
+
+  // Swaps the top view, as Run Again does with a new run.
+  function replace(next) {
+    window.stack = window.stack.slice(0, -1).concat([next])
+    window.query = ""
+    window.rebuild(true)
+    window.refreshScriptRun()
+  }
+
+  function refreshScriptRun() {
+    if (window.view.kind !== "script-output") { window.scriptRun = null; return }
+    var r = window.backend.callSync("scriptCommands.getRun", { runId: window.view.runId })
+    window.scriptRun = r.ok ? r.data : null
   }
 
   function pop() {
     if (window.atRoot) return
+    window.stopScriptRuns([window.view])
     var next = window.stack.slice(0, -1)
     var top = next[next.length - 1]
     window.stack = next
@@ -215,12 +246,18 @@ PanelWindow {
     window.selectedRow = index >= 0 && index < rows.count ? rows.get(index) : null
     // Argument values belong to one command; a different row starts empty.
     var id = window.selectedRow ? window.selectedRow.itemId : ""
+    window.argDefs = window.selectedRow && window.selectedRow.argsJson ? JSON.parse(window.selectedRow.argsJson) : []
     if (id !== window.argsForId) {
       window.argsForId = id
-      window.argValues = ({})
+      // A required dropdown starts on its first option, as Raycast's does. [I]
+      var values = ({})
+      for (var i = 0; i < window.argDefs.length; i++) {
+        var def = window.argDefs[i]
+        if (def.required && def.options && def.options.length) values[def.name] = def.options[0].title
+      }
+      window.argValues = values
       window.argFocus = -1
     }
-    window.argDefs = window.selectedRow && window.selectedRow.argsJson ? JSON.parse(window.selectedRow.argsJson) : []
     if (index >= 0) list.positionViewAtIndex(index, ListView.Contain)
     if (index === window.nextSelectable(-1, 1)) list.positionViewAtBeginning()
   }
@@ -259,22 +296,30 @@ PanelWindow {
   }
 
 
+  // What actions apply to: the selected row, or the run in an output view.
+  function targetId() {
+    if (window.view.kind === "script-output") return "script-run:" + window.view.runId
+    return window.selectedRow ? window.selectedRow.itemId : ""
+  }
+
   function actionsForSelected() {
-    if (!window.selectedRow) return []
-    var r = window.backend.callSync("rootSearch.getActions", { id: window.selectedRow.itemId })
+    var id = window.targetId()
+    if (!id) return []
+    var r = window.backend.callSync("rootSearch.getActions", { id: id })
     return r.ok ? r.data : []
   }
 
   function perform(actionId, index) {
     if (index !== undefined && index >= 0) window.select(index)
-    if (!window.selectedRow) return
+    var id = window.targetId()
+    if (!id) return
     window.actionPanelOpen = false
     // ↵ on a command with an empty required argument focuses that pill.
     if (actionId === "open" && window.argDefs.length) {
       var missing = RootSearch.missingArgument(window.argDefs, window.argValues)
       if (missing >= 0) { window.argFocus = missing; return }
     }
-    window.request({ id: window.selectedRow.itemId, action: actionId, query: window.query, arguments: window.argValues })
+    window.request({ id: id, action: actionId, query: window.query, arguments: window.argValues })
   }
 
   function request(payload) {
@@ -283,16 +328,18 @@ PanelWindow {
     var outcome = r.data || {}
     if (outcome.confirm) { window.alert = { spec: outcome.confirm, payload: payload }; return }
     if (outcome.push) { window.push(outcome.push); return }
-    if (outcome.close) {
-      if (outcome.hud) window.hud(outcome.hud)
-      window.dismissRequested()
-      window.argValues = ({})
-      window.argFocus = -1
-      if (window.atRoot) window.setQuery("")
-      return
-    }
+    if (outcome.replace) { window.replace(outcome.replace); return }
+    if (outcome.close) { window.closeAfterAction(outcome.hud); return }
     if (outcome.toast) window.showToast(outcome.toast.style, outcome.toast.title, outcome.toast.actions)
     window.rebuild(false)
+  }
+
+  function closeAfterAction(hudText) {
+    if (hudText) window.hud(hudText)
+    window.dismissRequested()
+    window.argValues = ({})
+    window.argFocus = -1
+    if (window.atRoot) window.setQuery("")
   }
 
   function confirmAlert() {
@@ -343,7 +390,11 @@ PanelWindow {
   }
 
   function toggleToastPanel() {
-    if (window.toastPanelOpen) { window.toastPanelOpen = false; toastTimer.restart(); return }
+    if (window.toastPanelOpen) {
+      window.toastPanelOpen = false
+      if (window.toast && window.toast.style !== "running") toastTimer.restart()
+      return
+    }
     if (!window.toast || !window.toast.actions.length) return
     toastPanel.filter = ""
     window.toastPanelOpen = true
@@ -368,7 +419,17 @@ PanelWindow {
     if (action.done) window.showToast("success", action.done)
   }
 
-  // Typing, Tab and Backspace while an argument pill has focus.
+  // An argument with options steps through them with ↑/↓ [D].
+  function stepOption(def, value, direction) {
+    var options = def.options
+    var current = String(value || "").toLowerCase()
+    var at = -1
+    for (var i = 0; i < options.length; i++) if (options[i].title.toLowerCase() === current || options[i].value.toLowerCase() === current) at = i
+    var next = at < 0 ? (direction > 0 ? 0 : options.length - 1) : (at + direction + options.length) % options.length
+    return options[next].title
+  }
+
+  // Typing, Tab, Backspace and option ↑/↓ while an argument pill has focus.
   function handleArgumentKey(event, shift) {
     var def = window.argDefs[window.argFocus]
     var value = window.argValues[def.name] || ""
@@ -377,6 +438,10 @@ PanelWindow {
       var values = Object.assign({}, window.argValues)
       values[def.name] = next
       window.argValues = values
+    }
+    if (def.options && def.options.length && (key === Qt.Key_Up || key === Qt.Key_Down) && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) {
+      set(window.stepOption(def, value, key === Qt.Key_Down ? 1 : -1))
+      return true
     }
     if (key === Qt.Key_Tab || key === Qt.Key_Backtab) {
       var step = shift || key === Qt.Key_Backtab ? -1 : 1
@@ -412,7 +477,27 @@ PanelWindow {
     window.toastPanelOpen = false
     window.toast = { style: style, title: String(title || ""), actions: list }
     toastTimer.interval = list.length ? 6000 : 2500
-    toastTimer.restart()
+    // A running script's toast stays until the script finishes.
+    if (style === "running") toastTimer.stop()
+    else toastTimer.restart()
+  }
+
+  function scriptFinished(data) {
+    if (window.view.kind === "script-output" && window.view.runId === data.runId) { window.refreshScriptRun(); return }
+    // Drop this run's "Running…" toast, even when the result goes to the HUD.
+    var running = window.toast && window.toast.style === "running" ? window.toast.actions.filter(function(a) { return a.id === "cancel" })[0] : null
+    if (running && running.call.data.runId === data.runId) { window.toast = null; window.toastPanelOpen = false }
+    if (data.cancelled || data.mode === "fullOutput") return
+    if (window.shown && data.mode !== "silent") {
+      window.showToast(data.ok ? "success" : "failure", data.message || (data.ok ? "Ran " + data.title : data.title + " failed"))
+    } else if (data.message || !data.ok) {
+      window.hud(data.ok ? data.message : data.title + " failed: " + data.message)
+    }
+  }
+
+  function scriptCreated(data) {
+    if (!data.ok) { window.showToast("failure", data.message); return }
+    window.closeAfterAction("Created " + data.path.slice(data.path.lastIndexOf("/") + 1))
   }
 
   Timer {
@@ -568,6 +653,7 @@ PanelWindow {
       if (window.isActionPanelKey(ctrl, alt, shift, key)) { window.toggleActionPanel(); return true }
       if (ctrl && !shift && key === Qt.Key_P) { window.toggleDropdown(); return true }
       if (ctrl && !shift && key === Qt.Key_T) { window.toggleToastPanel(); return true }
+      if (window.view.kind === "script-output" && window.handleOutputKey(event, ctrl, alt)) return true
       if (enter && ctrl && shift) { window.performNth(2); return true }
       if (enter && ctrl) { window.performNth(1); return true }
       if (enter) { window.performNth(0); return true }
@@ -589,7 +675,8 @@ PanelWindow {
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer"]); return true }
+      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-path"]); return true }
+      if (ctrl && !shift && key === Qt.Key_E) { window.performIfOffered(["edit-script"]); return true }
       if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries"]); return true }
       if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry"]); return true }
       if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }
@@ -602,7 +689,20 @@ PanelWindow {
 
     if (Util.editsFilter(event, window.query)) { window.setQuery(Util.editedFilter(event, window.query)); return true }
     if (key === Qt.Key_Backspace && !window.query && !window.atRoot) { window.pop(); return true }
+    if (window.view.kind === "script-output") return false
     if (window.isTyping(event)) { window.setQuery(window.query + event.text); return true }
+    return false
+  }
+
+  // The output view has no search: arrows and pages scroll, Ctrl+R reruns.
+  function handleOutputKey(event, ctrl, alt) {
+    var key = event.key
+    var line = Math.round(Style.font.body * window.zoom * 1.4)
+    if (ctrl && !alt && key === Qt.Key_R) { window.performIfOffered(["run-again"]); return true }
+    var dir = window.direction(event, ctrl, alt, false)
+    if (dir) { outputView.scrollBy(dir * line); return true }
+    if (key === Qt.Key_PageUp || key === Qt.Key_PageDown) { outputView.scrollBy((key === Qt.Key_PageDown ? 1 : -1) * outputView.height * 0.9); return true }
+    if (ctrl && (key === Qt.Key_Home || key === Qt.Key_End)) { outputView.scrollBy(key === Qt.Key_End ? outputView.contentHeight : -outputView.contentHeight); return true }
     return false
   }
 
@@ -616,6 +716,11 @@ PanelWindow {
     function onCandidatesRevisionChanged() { if (window.shown && !window.actionPanelOpen && !window.alert) window.rebuild(false) }
     function onNotification(method, data) {
       if (method === "agent.launchFailed" && window.shown) window.showToast("failure", data.message)
+      if (method === "scriptCommands.finished") window.scriptFinished(data)
+      if (method === "scriptCommands.output" && window.view.kind === "script-output" && window.view.runId === data.runId) window.refreshScriptRun()
+      if (method === "scriptCommands.created") window.scriptCreated(data)
+      if (method === "scriptCommands.reloaded" && window.shown)
+        window.showToast(data.errors ? "failure" : "success", data.count + (data.count === 1 ? " script command" : " script commands") + (data.errors ? ", " + data.errors + " invalid" : ""))
     }
     // Exchange rates or zone offsets arrived: re-evaluate a calculation on screen.
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
@@ -708,7 +813,7 @@ PanelWindow {
         anchors.verticalCenter: parent.verticalCenter
         x: queryText.x + (window.query ? Math.min(queryText.contentWidth, queryText.width) + Style.space(1) : 0)
         color: window.look.accent
-        visible: window.shown && !window.actionPanelOpen && window.argFocus < 0
+        visible: window.shown && !window.actionPanelOpen && window.argFocus < 0 && window.view.kind !== "script-output"
 
         SequentialAnimation on opacity {
           running: window.shown
@@ -751,7 +856,8 @@ PanelWindow {
               anchors.rightMargin: window.px(10)
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: pill.value || (pill.modelData.placeholder + (pill.modelData.required ? "" : " (optional)"))
+              text: pill.value ? (pill.modelData.secure ? "•".repeat(pill.value.length) : pill.value)
+                : (pill.modelData.placeholder + (pill.modelData.required ? "" : " (optional)"))
               opacity: pill.value ? 1 : 0.5
               color: window.look.foreground
               elide: Text.ElideLeft
@@ -862,7 +968,7 @@ PanelWindow {
         anchors.fill: parent
         anchors.topMargin: window.px(4)
         anchors.bottomMargin: window.px(4)
-        visible: window.view.kind !== "alias"
+        visible: window.view.kind !== "alias" && window.view.kind !== "script-output"
         clip: true
         model: rows
         boundsBehavior: Flickable.StopAtBounds
@@ -877,10 +983,49 @@ PanelWindow {
         }
       }
 
+      // Script output (fullOutput mode): plain text, following the tail
+      // until scrolled up. ANSI colours are stripped. [D]
+      Flickable {
+        id: outputView
+        anchors.fill: parent
+        anchors.margins: window.px(8)
+        visible: window.view.kind === "script-output"
+        clip: true
+        contentWidth: width
+        contentHeight: outputText.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
+        property bool follow: true
+
+        function scrollBy(delta) {
+          outputView.contentY = Math.max(0, Math.min(outputView.contentHeight - outputView.height, outputView.contentY + delta))
+          outputView.follow = outputView.contentY >= outputView.contentHeight - outputView.height - 1
+        }
+
+        onContentHeightChanged: if (outputView.follow) outputView.contentY = Math.max(0, outputView.contentHeight - outputView.height)
+        onMovementEnded: outputView.follow = outputView.atYEnd
+        onVisibleChanged: outputView.follow = true
+
+        TextEdit {
+          id: outputText
+          width: outputView.width
+          readOnly: true
+          selectByMouse: true
+          activeFocusOnPress: false
+          textFormat: TextEdit.PlainText
+          wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
+          text: window.scriptRun ? window.scriptRun.output : ""
+          color: window.look.foreground
+          selectionColor: Util.alpha(window.look.accent, 0.35)
+          font.family: window.look.fontFamily
+          font.pixelSize: Math.round(Style.font.body * window.zoom)
+        }
+      }
+
       Column {
         anchors.centerIn: parent
         spacing: window.px(8)
-        visible: window.view.kind === "alias" || rows.count === 0
+        visible: window.view.kind === "alias" || (rows.count === 0 && window.view.kind !== "script-output")
+          || (window.view.kind === "script-output" && !!window.scriptRun && !window.scriptRun.output && !window.scriptRun.running)
 
         Text {
           anchors.horizontalCenter: parent.horizontalCenter
@@ -895,6 +1040,8 @@ PanelWindow {
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? window.view.title
             : window.view.kind === "calculator-history" && !window.query ? "No Calculations Yet"
+            : window.view.kind === "script-commands" && !window.query ? "No Script Commands"
+            : window.view.kind === "script-output" ? "No Output"
             : (window.backend.ready ? "No results" : "Loading…")
           color: window.look.foreground
           font.family: window.look.fontFamily
@@ -904,7 +1051,9 @@ PanelWindow {
           anchors.horizontalCenter: parent.horizontalCenter
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? "Typing the alias exactly in the root search puts this command on top. Leave it empty to remove it."
-            : window.view.kind === "calculator-history" && !window.query ? "Type a calculation in the root search, then copy or paste the answer." : ""
+            : window.view.kind === "calculator-history" && !window.query ? "Type a calculation in the root search, then copy or paste the answer."
+            : window.view.kind === "script-commands" && !window.query ? "Put executable scripts with @raycast headers in " + window.backend.paths.scriptCommands.replace(window.backend.paths.home, "~") + ", or run Create Script Command."
+            : ""
           visible: text.length > 0
           color: window.look.foreground
           opacity: 0.55
@@ -943,15 +1092,26 @@ PanelWindow {
         Text {
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
-          text: window.toast ? (window.toast.style === "failure" ? "" : "") : ""
+          id: toastIcon
+          text: window.toast ? (window.toast.style === "failure" ? "" : window.toast.style === "running" ? "\uf110" : "") : ""
           font.family: window.toast ? window.look.fontFamily : "omarchy"
           font.pixelSize: window.toast ? window.px(12) : window.px(11)
           color: window.toast && window.toast.style === "failure" ? "#e06c75" : window.look.accent
+
+          NumberAnimation on rotation {
+            running: !!window.toast && window.toast.style === "running" && window.shown
+            from: 0
+            to: 360
+            duration: 1000
+            loops: Animation.Infinite
+            onRunningChanged: if (!running) toastIcon.rotation = 0
+          }
         }
         Text {
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
-          text: window.toast ? window.toast.title : window.view.title
+          text: window.toast ? window.toast.title
+            : window.view.kind === "script-output" && window.scriptRun ? window.scriptRun.status : window.view.title
           color: window.look.foreground
           opacity: window.toast ? 0.9 : 0.6
           elide: Text.ElideRight
@@ -977,6 +1137,7 @@ PanelWindow {
 
         readonly property var primary: {
           window.selectedRow
+          window.scriptRun
           window.backend.storeRevision
           if (window.view.kind === "alias") return { title: "Save Alias", shortcut: "↵" }
           var list = window.actionsForSelected()

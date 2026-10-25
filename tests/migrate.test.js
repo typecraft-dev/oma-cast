@@ -95,3 +95,10 @@ test("config rejects out-of-range calculator values and unknown choices", () => 
   assert.equal(Schema.withConfigDefaults({ clockFormat: "36h" }).clockFormat, "auto")
   assert.deepEqual(Schema.generalChoices.navigationBindings, ["emacs", "vim-motions"])
 })
+
+test("config takes a list of script command folders, and only strings", () => {
+  assert.deepEqual(Schema.withConfigDefaults({ scriptCommandDirectories: ["~/scripts"] }).scriptCommandDirectories, ["~/scripts"])
+  assert.deepEqual(Schema.withConfigDefaults({ scriptCommandDirectories: "~/scripts" }).scriptCommandDirectories, [])
+  assert.deepEqual(Schema.withConfigDefaults({ scriptCommandDirectories: [1] }).scriptCommandDirectories, [])
+  assert.deepEqual(Schema.withConfigDefaults({ scriptCommandDirectories: {} }).scriptCommandDirectories, [])
+})
