@@ -17,6 +17,7 @@ Omarchy's built-in menu is great at what it does. oma-cast adds what Raycast use
 
 * **Learns your habits.** Results are ranked with a port of Raycast's root-search algorithm, plus frecency and learned search terms. The things you actually use float to the top, and if you type `ff` and pick Firefox, `ff` keeps meaning Firefox.
 * **One search for everything.** Your apps, all ~400 Omarchy menu actions (with breadcrumbs and live ✓ state), web-search fallbacks, and an explicit hand-off to your default coding agent.
+* **Bible references.** Type `John 3:16`, `John3:16`, or `1Cor13:4-7` for a public-domain World English Bible result. Ranges preview their first verse; Enter opens the source passage in eBible.org's interactive study reader. Type `bible` by itself to open the reader's book picker and passage field.
 * **Your shortcuts.** Give anything an alias, pin favorites, and hide the commands you never touch.
 * **Keyboard-first.** A Ctrl+K action panel, Ctrl+1–9 quick picks, search history on ↑, section jumping, and emacs-style navigation.
 * **Native to Omarchy.** It runs inside `omarchy-shell` as a plugin, with no Electron, no Node and no extra daemons. It opens in about 40 ms and follows your theme live when you run `omarchy theme set`.
@@ -38,6 +39,24 @@ Omarchy's built-in menu is great at what it does. oma-cast adds what Raycast use
   <img src="docs/screenshots/fallbacks.png" alt="Web-search fallbacks under the results" width="49%">
 </p>
 <p align="center"><b>No match? Send the query to Google or DuckDuckGo</b></p>
+
+### Bible reference search
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/bible-verse.png" alt="A World English Bible verse displayed in an expanded oma-cast result card"></td>
+    <td width="50%"><img src="docs/screenshots/bible-range.png" alt="A Bible verse range displayed as its first verse followed by an ellipsis"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Single verse lookup</b></td>
+    <td align="center"><b>Verse-range preview</b></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/bible-command.png" alt="The Bible command opens the interactive eBible study reader" width="760">
+  <br><b>Open the interactive study reader</b>
+</p>
 
 ### Follows your Omarchy theme
 

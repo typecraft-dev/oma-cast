@@ -47,6 +47,7 @@ PanelWindow {
   readonly property var view: window.stack[window.stack.length - 1]
   property string query: ""
   property int selectedIndex: -1
+  property bool selectionExplicit: false
   property var selectedRow: null
   property bool actionPanelOpen: false
   property var actions: []
@@ -109,6 +110,7 @@ PanelWindow {
     if (typeof payload.query === "string") window.query = payload.query
     window.closePopups()
     window.historyIndex = -1
+    window.selectionExplicit = false
     window.rebuild(true)
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -130,6 +132,7 @@ PanelWindow {
     window.stack = [{ kind: "root", title: "oma-cast", query: "" }]
     window.query = ""
     window.rootFilter = "all"
+    window.selectionExplicit = false
     window.rebuild(true)
   }
 
@@ -139,6 +142,7 @@ PanelWindow {
     saved[saved.length - 1] = Object.assign({}, window.view, { query: window.query, selectedIndex: window.selectedIndex })
     window.stack = saved.concat([next])
     window.query = next.kind === "alias" ? (next.value || "") : ""
+    window.selectionExplicit = false
     window.rebuild(true)
   }
 
@@ -148,6 +152,7 @@ PanelWindow {
     var top = next[next.length - 1]
     window.stack = next
     window.query = top.query || ""
+    window.selectionExplicit = false
     window.rebuild(false)
     if (top.selectedIndex >= 0) window.select(top.selectedIndex)
   }
@@ -171,7 +176,7 @@ PanelWindow {
       for (var r = 0; r < section.rows.length; r++) {
         var c = section.rows[r]
         if (c.id === keepId) keepIndex = rows.count
-        rows.append(window.rowData(c, c.kind === "calculator" ? "calculator" : "item"))
+        rows.append(window.rowData(c, c.kind === "calculator" ? "calculator" : (c.kind === "bible" ? "bible" : "item")))
       }
     }
     window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1))
@@ -201,7 +206,7 @@ PanelWindow {
 
   function isSelectable(index) {
     var kind = rows.get(index).rowKind
-    return kind === "item" || kind === "calculator"
+    return kind === "item" || kind === "calculator" || kind === "bible"
   }
 
   function nextSelectable(from, direction) {
@@ -227,6 +232,7 @@ PanelWindow {
 
   function move(delta) {
     pointerGate.reset()
+    window.selectionExplicit = true
     if (window.selectedIndex < 0) { window.select(window.nextSelectable(-1, 1)); return }
     var step = delta > 0 ? 1 : -1
     var target = window.selectedIndex
@@ -239,6 +245,7 @@ PanelWindow {
   }
 
   function jumpSection(direction) {
+    window.selectionExplicit = true
     var i = window.selectedIndex
     for (i += direction; i >= 0 && i < rows.count; i += direction)
       if (rows.get(i).rowKind === "section") break
@@ -429,6 +436,7 @@ PanelWindow {
   function setQuery(next) {
     if (window.query === next) return
     window.query = next
+    window.selectionExplicit = false
     window.historyIndex = -1
     window.rebuild(true)
   }
@@ -589,7 +597,7 @@ PanelWindow {
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer"]); return true }
+      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-verse"]); return true }
       if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries"]); return true }
       if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry"]); return true }
       if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }
@@ -619,6 +627,14 @@ PanelWindow {
     }
     // Exchange rates or zone offsets arrived: re-evaluate a calculation on screen.
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
+    // The verse arrives after the fallback rows. Select it so Enter opens the
+    // passage instead of retaining the previously selected web fallback.
+    function onBibleRevisionChanged() {
+      if (!window.shown || window.actionPanelOpen || !window.query) return
+      var fallbackSelected = window.selectedRow && window.selectedRow.itemId.indexOf("fallback:") === 0
+      var selectVerse = window.backend.bibleResultMatches(window.query) && fallbackSelected && !window.selectionExplicit
+      window.rebuild(selectVerse)
+    }
   }
 
 
@@ -872,7 +888,9 @@ PanelWindow {
           look: window.look
           appLibrary: window.appLibrary
           zoom: window.zoom
-          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i) }
+          onHovered: function(i, item, mouse) {
+            if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) { window.selectionExplicit = true; window.select(i) }
+          }
           onClicked: function(i) { window.perform("open", i) }
         }
       }

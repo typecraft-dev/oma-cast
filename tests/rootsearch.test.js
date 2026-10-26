@@ -54,6 +54,21 @@ test("a query always ends with the fallback section", () => {
   assert.deepEqual(titles(sections[0]), ["Search Google", "Search DuckDuckGo", "Ask default agent"])
 })
 
+test("a Bible result appears first and offers source and copy actions", () => {
+  const bible = { reference: "John 3:16–18", text: "For God so loved the world …", copy: "For God so loved the world", translation: "World English Bible (WEB)", sourceUrl: "https://ebible.org/study/?w1=bible&t1=local%3Aeng-web&v1=JN3_16" }
+  const sections = results("John 3:16-18", ctx({ bible }))
+  assert.equal(sections[0].id, "bible")
+  assert.equal(sections[0].rows[0].candidate.subtitle, "John 3:16–18 · WEB")
+  assert.deepEqual(RS.actionsFor(sections[0].rows[0].candidate).map(a => a.id), ["open-source", "copy-verse"])
+})
+
+test("the bare Bible query opens the WEB study reader", () => {
+  const row = results("bible")[0].rows[0].candidate
+  assert.equal(row.id, "builtin:bible-study")
+  assert.equal(row.run.url, "https://ebible.org/study/?w1=bible&t1=local%3Aeng-web")
+  assert.deepEqual(RS.actionsFor(row).map(a => a.id)[0], "open")
+})
+
 test("agent hand-off is explicit, stays after apps/web search, and only appears at root with a query", () => {
   const sections = results("firefox")
   assert.equal(sections[0].rows[0].candidate.id, "app:firefox")

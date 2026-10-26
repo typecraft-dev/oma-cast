@@ -12,6 +12,7 @@ import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
 import "core/Agent.js" as Agent
 import "core/Calculator.js" as Calculator
+import "core/Bible.js" as Bible
 import "services"
 
 Item {
@@ -39,6 +40,7 @@ Item {
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
+  readonly property int bibleRevision: bibleData.revision
 
   signal notification(string method, var data)
 
@@ -129,6 +131,11 @@ Item {
       backend.log("error", "calculator", "evaluating failed: " + e, { query: query })
       return null
     }
+  }
+
+  function bibleResultMatches(query) {
+    var ref = Bible.parseReference(query)
+    return !!ref && (bibleData.has(ref.key) || (bibleData.lastSucceeded && bibleData.lastCompletedKey === ref.key))
   }
 
   function saveCalculation(entry) {
@@ -391,7 +398,10 @@ Item {
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else {
           ctx.filter = String(data && data.filter || "all")
-          if (query.trim() && ctx.filter === "all") ctx.calculation = backend.calculate(query)
+          if (query.trim() && ctx.filter === "all") {
+            ctx.bible = bibleData.lookup(query)
+            ctx.calculation = backend.calculate(query)
+          }
           sections = RootSearch.rootSections(backend.candidates, query, ctx, backend.deps)
         }
         return sections.map(function(s) {
@@ -401,6 +411,7 @@ Item {
       getActions: function(data) {
         var rowId = String(data && data.id || "")
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
+        if (rowId === RootSearch.BIBLE_ID) return RootSearch.actionsFor({ kind: "bible" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
         var candidate = backend.decorated(rowId)
         if (!candidate) {
@@ -416,6 +427,10 @@ Item {
         if (rowId === RootSearch.CALCULATOR_ID) {
           var calc = backend.calculate(String(data.query || ""))
           return calc ? RootSearch.aboutFor(RootSearch.calculatorCandidate(calc), nowMs) : []
+        }
+        if (rowId === RootSearch.BIBLE_ID) {
+          var bible = bibleData.lookup(String(data.query || ""))
+          return bible ? RootSearch.aboutFor(RootSearch.bibleCandidate(bible), nowMs) : []
         }
         if (rowId.indexOf("calculator-history:") === 0) {
           var entry = backend.historyEntry(rowId)
@@ -449,6 +464,14 @@ Item {
           var calc = backend.calculate(String(data.query || ""))
           if (!calc) throw new Error("Nothing to calculate")
           return backend.calculatorAction(String(data.action || "open"), { query: calc.input, result: calc.result, copy: calc.copy, kind: calc.kind }, "")
+        }
+        if (data && data.id === RootSearch.BIBLE_ID) {
+          var verse = bibleData.lookup(String(data.query || ""))
+          if (!verse) throw new Error("Bible verse is still loading")
+          if (String(data.action || "open-source") === "copy-verse") {
+            Util.execArgv(["wl-copy", "--", verse.copy]); return { close: true, hud: "Copied to Clipboard" }
+          }
+          Util.execArgv(["omarchy-launch-browser", verse.sourceUrl]); return { close: true }
         }
         if (data && String(data.id).indexOf("calculator-history:") === 0) {
           var entry = backend.historyEntry(data.id)
@@ -572,6 +595,12 @@ Item {
     cacheDir: backend.directoriesReady ? backend.paths.cache : ""
     ratesEnabled: backend.config.currencyRates
     onMessage: function(level, text, metadata) { backend.log(level, "calculator", text, metadata) }
+  }
+
+  BibleData {
+    id: bibleData
+    cacheDir: backend.directoriesReady ? backend.paths.cache : ""
+    onMessage: function(level, text, metadata) { backend.log(level, "bible", text, metadata) }
   }
 
   readonly property int dataRevision: candidatesRevision + (settingsStore.loaded ? 1 : 0) + (frecencyStore.loaded ? 1 : 0)

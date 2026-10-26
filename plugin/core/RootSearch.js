@@ -25,6 +25,15 @@ var BUILTINS = [
   webSearch(FALLBACKS[0], []),
   webSearch(FALLBACKS[1], ["ddg"]),
   {
+    id: "builtin:bible-study",
+    title: "Bible",
+    subtitle: "Open the eBible study reader",
+    glyph: "\uf02d",                    // nf-fa-book
+    keywords: ["bible study", "scripture", "verse"],
+    run: { url: "https://ebible.org/study/?w1=bible&t1=local%3Aeng-web" },
+    rootSearch: { when: "searching" }
+  },
+  {
     id: "builtin:omarchy-menu",
     title: "Omarchy Menu",
     subtitle: "Open the original Omarchy menu",
@@ -170,6 +179,14 @@ function fallbackRows(query) {
 // Calculator.evaluate() result. Not a stored candidate: its actions re-run
 // the query.
 var CALCULATOR_ID = "calculator:result"
+var BIBLE_ID = "bible:result"
+
+function bibleCandidate(result) {
+  return { id: BIBLE_ID, type: "command", kind: "bible", title: result.text,
+    subtitle: result.reference + " · WEB" + (result.cached ? " · Cached" : ""),
+    typeLabel: "Bible", glyph: "\uf02d", sourceUrl: result.sourceUrl, bibleReference: result.reference,
+    bibleTranslation: result.translation, bibleCopy: result.copy, rootSearch: { when: "searching" } }
+}
 
 function calculatorCandidate(calc) {
   return {
@@ -240,6 +257,7 @@ function rootSections(candidates, query, ctx, deps) {
     var searchable = decorated.filter(function(c) { return c.rootSearch.when !== "empty" })
     var results = deps.Ranker.rank(searchable, q, opts)
     var sections = []
+    if (ctx.bible && !filtered) sections.push({ id: "bible", title: "Bible", rows: [{ candidate: bibleCandidate(ctx.bible), record: null }] })
     if (ctx.calculation && !filtered) sections.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
     if (results.length > 0) sections.push({ id: "results", title: "Results", rows: results })
     if (!filtered) sections.push({ id: "fallback-commands", title: "Use “" + q + "” with…", rows: fallbackRows(q) })
@@ -285,6 +303,10 @@ function submenuSections(candidates, menuId, query, ctx, deps) {
 }
 
 function actionsFor(candidate) {
+  if (candidate.kind === "bible") return [
+    { id: "open-source", title: "Open Source Page", shortcut: "↵", section: "primary", icon: "" },
+    { id: "copy-verse", title: "Copy Verse", shortcut: "Ctrl Shift C", section: "copy", icon: "" }
+  ]
   if (candidate.kind === "calculator" || candidate.kind === "calculator-history") {
     // ↵ copies, Ctrl ↵ pastes (SPEC §8 Calculator) [O]; delete keys are
     // the Windows `clear` shortcuts (ref 04 §2.8).
@@ -405,6 +427,10 @@ function aboutFor(c, nowMs) {
     add("Saved", c.typeLabel)
     return rows
   }
+  if (c.kind === "bible") {
+    add("Reference", c.bibleReference); add("Translation", c.bibleTranslation); add("Source", c.sourceUrl)
+    return rows
+  }
   add("Title", c.title)
   add("Type", c.typeLabel)
   if (c.kind !== "fallback") add("Location", c.subtitle)
@@ -437,6 +463,8 @@ if (typeof module !== "undefined") {
     menuCandidates: menuCandidates,
     builtinCandidate: builtinCandidate,
     CALCULATOR_ID: CALCULATOR_ID,
+    BIBLE_ID: BIBLE_ID,
+    bibleCandidate: bibleCandidate,
     calculatorCandidate: calculatorCandidate,
     historyCandidate: historyCandidate,
     historySections: historySections,

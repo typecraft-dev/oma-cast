@@ -33,10 +33,59 @@ Item {
 
   readonly property bool isSection: row.rowKind === "section"
   readonly property bool isCalculator: row.rowKind === "calculator"
+  readonly property bool isBible: row.rowKind === "bible"
   function px(v) { return Math.round(Style.space(v) * row.zoom) }
 
   width: ListView.view ? ListView.view.width : 0
-  height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(118) : px(42))
+  height: row.isSection ? (row.title ? px(30) : px(6)) : ((row.isCalculator || row.isBible) ? px(118) : px(42))
+
+  // Bible results use the same expanded footprint as calculator/conversion
+  // results, with enough room to read a complete verse.
+  Rectangle {
+    visible: row.isBible
+    anchors.fill: parent
+    radius: Math.max(Style.cornerRadius, row.px(6))
+    color: row.selected ? row.look.selectedBackground : Util.alpha(row.look.foreground, 0.04)
+    border.width: 1
+    border.color: Util.alpha(row.look.foreground, row.selected ? 0 : 0.08)
+
+    Text {
+      id: bibleText
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      anchors.margins: row.px(14)
+      textFormat: Text.PlainText
+      text: row.title
+      color: row.look.foreground
+      font.family: row.look.fontFamily
+      font.pixelSize: Math.round(Style.font.heading * 1.1 * row.zoom)
+      wrapMode: Text.Wrap
+      maximumLineCount: 3
+      elide: Text.ElideRight
+      horizontalAlignment: Text.AlignHCenter
+    }
+
+    Rectangle {
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.bottom: parent.bottom
+      anchors.bottomMargin: row.px(10)
+      width: Math.min(bibleCaption.implicitWidth + row.px(18), parent.width - row.px(28))
+      height: bibleCaption.implicitHeight + row.px(6)
+      radius: height / 2
+      color: Util.alpha(row.look.foreground, 0.08)
+      Text {
+        id: bibleCaption
+        anchors.centerIn: parent
+        textFormat: Text.PlainText
+        text: row.subtitle
+        color: row.selected ? row.look.accent : row.look.foreground
+        opacity: row.selected ? 1 : 0.7
+        font.family: row.look.fontFamily
+        font.pixelSize: Math.round(Style.font.caption * row.zoom)
+      }
+    }
+  }
 
   // The inline calculator (ref 04 §1 Calculator): question on the left,
   // answer on the right, each with a caption, an arrow between them.
@@ -139,7 +188,7 @@ Item {
   }
 
   Rectangle {
-    visible: !row.isSection && !row.isCalculator
+    visible: !row.isSection && !row.isCalculator && !row.isBible
     anchors.fill: parent
     radius: Math.max(Style.cornerRadius, row.px(6))
     color: row.selected ? row.look.selectedBackground : "transparent"
