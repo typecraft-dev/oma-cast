@@ -1393,6 +1393,18 @@ function filterHistory(history, query) {
   return list.filter(function(h) { return (h.query + " " + h.result).toLowerCase().indexOf(q) >= 0 })
 }
 
+// Data ages for services/CalculatorData.qml (exchange rates, time zones). A
+// time more than CLOCK_SKEW_MS in the future counts as stale too: a fetchedAt
+// written while the clock ran ahead would otherwise never age, and a clock
+// set back would hold off refreshes until it caught up. [D]
+var CLOCK_SKEW_MS = 5 * 60 * 1000
+
+function isStale(at, nowMs, maxAgeMs) {
+  var age = nowMs - at
+  // Written as "not fresh" so a NaN time counts as stale too.
+  return !(age <= maxAgeMs && age >= -CLOCK_SKEW_MS)
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     evaluate: evaluate,
@@ -1401,6 +1413,8 @@ if (typeof module !== "undefined") {
     zoneList: zoneList,
     pushHistory: pushHistory,
     filterHistory: filterHistory,
+    isStale: isStale,
+    CLOCK_SKEW_MS: CLOCK_SKEW_MS,
     HISTORY_LIMIT: HISTORY_LIMIT,
     HISTORY_MAX_AGE_MS: HISTORY_MAX_AGE_MS,
     CURRENCIES: CURRENCIES,

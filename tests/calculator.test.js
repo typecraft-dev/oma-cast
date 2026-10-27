@@ -176,3 +176,29 @@ test("root search puts the Calculator section first; ↵ copies, Ctrl ↵ pastes
   const calcHistory = RS.rootSections(RS.BUILTINS.map(RS.builtinCandidate), "calc hist", { commands: {}, frecency: {}, nowMs: NOW }, deps)
   assert.equal(calcHistory[0].rows[0].candidate.title, "Calculator History")
 })
+
+// Data ages for CalculatorData.qml, where a fetchedAt from the future used to
+// keep cached exchange rates from ever going stale.
+const HOUR = 3600 * 1000
+const staleNow = Date.parse("2026-10-27T12:00:00Z")
+
+test("isStale: older than the limit is stale, younger is not", () => {
+  assert.equal(C.isStale(staleNow - 13 * HOUR, staleNow, 12 * HOUR), true)
+  assert.equal(C.isStale(staleNow - HOUR, staleNow, 12 * HOUR), false)
+  assert.equal(C.isStale(0, staleNow, 12 * HOUR), true)
+})
+
+test("isStale: a time from the future is stale, so a bad fetchedAt can't block refreshes", () => {
+  assert.equal(C.isStale(staleNow + 365 * 24 * HOUR, staleNow, 12 * HOUR), true)
+  assert.equal(C.isStale(staleNow + C.CLOCK_SKEW_MS + 1, staleNow, Infinity), true)
+})
+
+test("isStale: a few minutes of clock skew still counts as fresh", () => {
+  assert.equal(C.isStale(staleNow + 60 * 1000, staleNow, 12 * HOUR), false)
+  assert.equal(C.isStale(staleNow + C.CLOCK_SKEW_MS, staleNow, Infinity), false)
+})
+
+test("isStale: a time that isn't a number is stale", () => {
+  assert.equal(C.isStale(NaN, staleNow, 12 * HOUR), true)
+  assert.equal(C.isStale(Number(undefined), staleNow, 12 * HOUR), true)
+})

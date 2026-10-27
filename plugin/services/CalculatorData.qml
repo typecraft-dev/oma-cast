@@ -32,9 +32,9 @@ Item {
   // Cheap; called on every launcher open.
   function refresh() {
     var now = Date.now()
-    if (now - data.zonesAt > data.zonesMaxAgeMs && !zoneProcess.running) zoneProcess.running = true
+    if (Calculator.isStale(data.zonesAt, now, data.zonesMaxAgeMs) && !zoneProcess.running) zoneProcess.running = true
     if (data.ratesEnabled && data.cacheRead && !data.request
-        && now - data.ratesFetchedAt > data.ratesMaxAgeMs && now - data.ratesTriedAt > data.retryAfterMs)
+        && Calculator.isStale(data.ratesFetchedAt, now, data.ratesMaxAgeMs) && Calculator.isStale(data.ratesTriedAt, now, data.retryAfterMs))
       data.fetchRates()
   }
 
@@ -92,7 +92,9 @@ Item {
         var parsed = data.validRates(doc)
         if (parsed) {
           data.rates = parsed
-          data.ratesFetchedAt = Number(doc.fetchedAt) || 0
+          // A fetchedAt from the future is of unknown age; don't keep it.
+          var fetchedAt = Number(doc.fetchedAt) || 0
+          data.ratesFetchedAt = fetchedAt > Date.now() + Calculator.CLOCK_SKEW_MS ? 0 : fetchedAt
         }
       } catch (e) {
         data.message("warning", "ignoring unreadable exchange-rate cache", null)
