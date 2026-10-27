@@ -126,7 +126,7 @@ Item {
     var out = []
     for (var i = 0; i < source.tree.order.length; i++) {
       var item = source.tree.items[source.tree.order[i]]
-      if (item.provider && OmarchyMenu.PROVIDERS[item.provider]) out.push(item.id)
+      if (OmarchyMenu.providerSpec(item.provider)) out.push(item.id)
     }
     return out
   }
@@ -143,7 +143,7 @@ Item {
     }
     var menuId = source.providerQueue[0]
     source.providerQueue = source.providerQueue.slice(1)
-    var spec = OmarchyMenu.PROVIDERS[source.tree.items[menuId].provider]
+    var spec = OmarchyMenu.providerSpec(source.tree.items[menuId].provider)
     providerProc.menuId = menuId
     providerProc.collected = ""
     providerProc.command = ["bash", "-lc", spec.script]
