@@ -18,6 +18,14 @@ var settingsMigrations = [
       doc.commands = {}
       return doc
     }
+  },
+  {
+    version: 2,
+    name: "translate-settings",
+    up: function(doc) {
+      doc.general.translateTargetLanguage = "English"
+      return doc
+    }
   }
 ]
 

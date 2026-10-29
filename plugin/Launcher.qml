@@ -16,6 +16,19 @@ Item {
 
   property bool opened: false
   property double openedAt: 0
+  property bool translateOpen: false
+
+  function openTranslate(text) {
+    if (root.opened) root.hide()
+    root.translateOpen = true
+    translateWindow.load(String(text || ""))
+  }
+
+  function closeTranslate() {
+    if (!root.translateOpen) return
+    root.translateOpen = false
+    backend.callSync("translate.cancel", null)
+  }
 
 
   function open(payloadJson) {
@@ -36,6 +49,7 @@ Item {
 
 
   function show() {
+    if (root.translateOpen) root.closeTranslate()
     if (root.opened) return
     if (root.shell && root.shell.summon(root.pluginId, "{}")) return
     root.open("{}")
@@ -80,11 +94,19 @@ Item {
   Connections {
     target: backend
     function onNotification(method, data) {
+      if (method === "translate.open") { root.openTranslate(data.text || ""); return }
       if (method !== "agent.launchReady") return
       root.hide()
       launcher.popToRoot()
       Util.execArgv(data.argv)
     }
+  }
+
+  TranslateWindow {
+    id: translateWindow
+    backend: backend
+    shown: root.translateOpen
+    onDismissRequested: root.closeTranslate()
   }
 
   LauncherWindow {
@@ -100,6 +122,13 @@ Item {
     name: "toggle"
     description: "Toggle oma-cast"
     onPressed: root.toggle()
+  }
+
+  GlobalShortcut {
+    appid: "oma-cast"
+    name: "translate"
+    description: "Translate text"
+    onPressed: root.openTranslate("")
   }
 
   IpcHandler {
@@ -130,6 +159,11 @@ Item {
 
     function run(commandId: string): string {
       return JSON.stringify(root.run(commandId))
+    }
+
+    function translate(text: string): string {
+      root.openTranslate(text)
+      return "shown"
     }
 
     function call(method: string, dataJson: string): string {

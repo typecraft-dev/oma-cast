@@ -92,7 +92,7 @@ PanelWindow {
   // Alt+K. Ctrl+B/F and Ctrl+H/L move a text cursor in Raycast; our search
   // field has none, so they do nothing here. [D]
   readonly property bool vim: window.general.navigationBindings === "vim-motions"
-  readonly property string actionPanelKeys: window.vim ? "Alt K" : "Ctrl K"
+  readonly property string actionPanelKeys: window.vim ? "Alt+K" : "Ctrl+K"
 
   readonly property bool atRoot: window.stack.length === 1
   readonly property bool compact: window.general.windowMode === "compact" && window.atRoot && !window.query
@@ -993,7 +993,7 @@ PanelWindow {
         KeyHint {
           visible: !!window.toast && window.toast.actions.length > 0
           anchors.verticalCenter: parent.verticalCenter
-          keys: "Ctrl T"
+          keys: "Ctrl+T"
           color: window.look.foreground
           zoom: window.zoom
         }

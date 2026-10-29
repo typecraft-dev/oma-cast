@@ -46,6 +46,16 @@ test("fir finds Firefox first (Phase 1 accept)", () => {
   assert.equal(titles(sections[0])[0], "Firefox")
 })
 
+test("Translate outranks Omarchy's Transcode for a shared prefix", () => {
+  const transcode = {
+    id: "omarchy:trigger.transcode", type: "command", kind: "omarchy-action",
+    title: "Transcode", subtitle: "Omarchy", keywords: ["transcode"],
+    typeLabel: "Command", rootSearch: { when: "always" }
+  }
+  const rows = RS.rootSections(candidates().concat([transcode]), "trans", ctx(), deps)[0].rows
+  assert.deepEqual(rows.slice(0, 2).map((r) => r.candidate.title), ["Translate", "Transcode"])
+})
+
 test("a query always ends with the fallback section", () => {
   const sections = results("zzzz-nothing")
   assert.equal(sections.length, 1)
@@ -207,5 +217,5 @@ test("app windows: picks the most recently focused mapped window", () => {
 test("actions: apps offer Open New Window on Shift+Enter", () => {
   const app = RS.decorate(RS.appCandidate(apps[0]), ctx(), deps)
   const openNew = RS.actionsFor(app).find((a) => a.id === "open-new")
-  assert.equal(openNew.shortcut, "Shift ↵")
+  assert.equal(openNew.shortcut, "Shift+↵")
 })

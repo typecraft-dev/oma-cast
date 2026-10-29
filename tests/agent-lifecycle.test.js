@@ -80,20 +80,21 @@ test("showing refreshes calculator data and hiding cancels an agent hand-off", (
     method: "window.visibilityChanged", data: { visible: true },
     menuSource: { refresh: () => events.push("menu") },
     calculatorData: { refresh: () => events.push("calculator") },
-    agentLauncher: { cancel: () => events.push("cancel") }
+    agentLauncher: { cancel: () => events.push("cancel") },
+    translateService: { cancel: () => events.push("translate-cancel") }
   })
   const notify = body(text, "onNotification: function(method, data)", 2)
   vm.runInContext(notify, context)
   assert.deepEqual(events, ["menu", "calculator"])
   context.data = { visible: false }
   vm.runInContext(notify, context)
-  assert.deepEqual(events, ["menu", "calculator", "cancel"])
+  assert.deepEqual(events, ["menu", "calculator", "cancel", "translate-cancel"])
   context.data = null
   vm.runInContext(notify, context)
   context.method = "calculator.historyStateChanged"
   context.data = { visible: true }
   vm.runInContext(notify, context)
-  assert.equal(events.length, 3)
+  assert.equal(events.length, 4)
 })
 
 test("entry point dismisses and clears the launcher before starting the terminal", () => {

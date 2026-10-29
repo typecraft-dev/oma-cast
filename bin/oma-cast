@@ -28,6 +28,7 @@ Usage: oma-cast <command> [args]
 Launcher
   toggle                 Show or hide the launcher
   show | hide            Show or hide it
+  translate [text]       Open the translate window, with optional source text
   run <commandId>        Open a command directly
   call <method> [json]   Call a backend method, e.g. oma-cast call system.info
 
@@ -152,6 +153,11 @@ cmd_doctor() {
   check "omarchy-shell is installed" command -v omarchy-shell
   check "omarchy-shell is running" omarchy-shell shell ping
   check "socat is installed (fast shell IPC)" command -v socat
+  if command -v trans >/dev/null 2>&1; then
+    printf '  ok    translate-shell (trans) is installed\n'
+  else
+    printf '  info  translate-shell is missing; install it for Translate\n'
+  fi
   check "Hyprland socket is reachable" hyprctl version
   check "plugin is linked into $plugins_dir" test -n "$(current_link)"
   check "plugin is enabled" bash -c "omarchy plugin list --json 2>/dev/null | grep -q '\"id\":\"$PLUGIN_ID\"[^}]*\"enabled\":true'"
@@ -168,6 +174,7 @@ cmd_doctor() {
 case "${1:-}" in
   toggle|show|hide) need_shell; ipc "$1" >/dev/null ;;
   run) need_shell; [[ -n ${2:-} ]] || die "usage: oma-cast run <commandId>"; ipc run "$2" ;;
+  translate) need_shell; shift; ipc translate "$*" ;;
   call) need_shell; [[ -n ${2:-} ]] || die "usage: oma-cast call <method> [json]"; ipc call "$2" "${3:-}" ;;
   ping) need_shell; ipc ping ;;
   build-search) "$repo/bin/build-search" ;;

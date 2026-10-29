@@ -33,6 +33,16 @@ var BUILTINS = [
     rootSearch: { when: "always" }
   },
   {
+    id: "builtin:translate",
+    title: "Translate",
+    subtitle: "Text between languages",
+    glyph: "󰗊",                     // nf-md-translate
+    keywords: ["translate", "translation", "translator", "language", "languages"],
+    sortHeuristic: -1,              // ahead of Omarchy's "Transcode" for a "trans" query
+    run: { translate: true },
+    rootSearch: { when: "always" }
+  },
+  {
     id: "builtin:calculator-history",
     title: "Calculator History",
     subtitle: "Calculator",
@@ -158,6 +168,7 @@ function builtinCandidate(def) {
     glyphFont: def.glyph ? "" : "omarchy",
     run: def.run,
     arguments: def.arguments || [],
+    sortHeuristic: def.sortHeuristic,
     rootSearch: def.rootSearch || { when: "always" }
   }
 }
@@ -341,14 +352,14 @@ function actionsFor(candidate) {
     // the Windows `clear` shortcuts (ref 04 §2.8).
     var calc = [
       { id: "copy-answer", title: "Copy Answer", shortcut: "↵", section: "primary", icon: "" },
-      { id: "paste-answer", title: "Paste Answer", shortcut: "Ctrl ↵", section: "primary", icon: "" },
-      { id: "copy-question-answer", title: "Copy Question and Answer", shortcut: "Ctrl Shift C", section: "copy", icon: "" }
+      { id: "paste-answer", title: "Paste Answer", shortcut: "Ctrl+↵", section: "primary", icon: "" },
+      { id: "copy-question-answer", title: "Copy Question and Answer", shortcut: "Ctrl+Shift+C", section: "copy", icon: "" }
     ]
     if (candidate.kind === "calculator") {
       calc.push({ id: "open-history", title: "Open Calculator History", shortcut: "", section: "configure", icon: "" })
     } else {
-      calc.push({ id: "delete-entry", title: "Delete Entry", shortcut: "Ctrl D", section: "delete", icon: "" })
-      calc.push({ id: "delete-all-entries", title: "Delete All Entries", shortcut: "Ctrl Shift D", section: "delete", icon: "" })
+      calc.push({ id: "delete-entry", title: "Delete Entry", shortcut: "Ctrl+D", section: "delete", icon: "" })
+      calc.push({ id: "delete-all-entries", title: "Delete All Entries", shortcut: "Ctrl+Shift+D", section: "delete", icon: "" })
     }
     return calc
   }
@@ -367,24 +378,24 @@ function actionsFor(candidate) {
   list.push(primary)
 
   if (candidate.kind && candidate.kind.indexOf("omarchy-") === 0)
-    list.push({ id: "open-in-omarchy-menu", title: "Open in Omarchy Menu", shortcut: "Ctrl ↵", section: "primary", icon: "" })
+    list.push({ id: "open-in-omarchy-menu", title: "Open in Omarchy Menu", shortcut: "Ctrl+↵", section: "primary", icon: "" })
   if (candidate.kind === "fallback") return list
 
-  if (candidate.kind === "app") list.push({ id: "open-new", title: "Open New Window", shortcut: "Shift ↵", section: "primary", icon: "" })
-  if (candidate.kind === "app") list.push({ id: "copy-id", title: "Copy Desktop ID", shortcut: "Ctrl Shift C", section: "copy", icon: "" })
-  if (candidate.kind === "omarchy-action") list.push({ id: "copy-command", title: "Copy Command", shortcut: "Ctrl Shift C", section: "copy", icon: "" })
+  if (candidate.kind === "app") list.push({ id: "open-new", title: "Open New Window", shortcut: "Shift+↵", section: "primary", icon: "" })
+  if (candidate.kind === "app") list.push({ id: "copy-id", title: "Copy Desktop ID", shortcut: "Ctrl+Shift+C", section: "copy", icon: "" })
+  if (candidate.kind === "omarchy-action") list.push({ id: "copy-command", title: "Copy Command", shortcut: "Ctrl+Shift+C", section: "copy", icon: "" })
 
   if (candidate.favoriteOrder === null || candidate.favoriteOrder === undefined) {
-    list.push({ id: "favorite-add", title: "Add to Favorites", shortcut: "Ctrl Shift F", section: "favorites", icon: "" })
+    list.push({ id: "favorite-add", title: "Add to Favorites", shortcut: "Ctrl+Shift+F", section: "favorites", icon: "" })
   } else {
-    list.push({ id: "favorite-remove", title: "Remove from Favorites", shortcut: "Ctrl Shift F", section: "favorites", icon: "" })
-    list.push({ id: "favorite-up", title: "Move Up in Favorites", shortcut: "Ctrl Alt ↑", section: "favorites", icon: "" })
-    list.push({ id: "favorite-down", title: "Move Down in Favorites", shortcut: "Ctrl Alt ↓", section: "favorites", icon: "" })
+    list.push({ id: "favorite-remove", title: "Remove from Favorites", shortcut: "Ctrl+Shift+F", section: "favorites", icon: "" })
+    list.push({ id: "favorite-up", title: "Move Up in Favorites", shortcut: "Ctrl+Alt+↑", section: "favorites", icon: "" })
+    list.push({ id: "favorite-down", title: "Move Down in Favorites", shortcut: "Ctrl+Alt+↓", section: "favorites", icon: "" })
   }
   list.push({ id: "set-alias", title: candidate.alias ? "Change Alias" : "Set Alias", shortcut: "", section: "configure", icon: "" })
   if (candidate.alias) list.push({ id: "remove-alias", title: "Remove Alias", shortcut: "", section: "configure", icon: "" })
   if (candidate.frecency > 1) list.push({ id: "reset-ranking", title: "Reset Ranking", shortcut: "", section: "configure", icon: "" })
-  list.push({ id: "disable", title: "Disable Command", shortcut: "Alt Shift D", section: "delete", icon: "" })
+  list.push({ id: "disable", title: "Disable Command", shortcut: "Alt+Shift+D", section: "delete", icon: "" })
   return list
 }
 

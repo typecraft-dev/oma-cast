@@ -13,6 +13,8 @@ import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
 import "core/Agent.js" as Agent
 import "core/Calculator.js" as Calculator
+import "core/Translate.js" as Translate
+import "core/Languages.js" as Languages
 import "services"
 
 Item {
@@ -120,6 +122,10 @@ Item {
       nowMs: Date.now(),
       sensitivity: settingsStore.loaded ? settingsStore.doc.general.rootSearchSensitivity : "medium"
     }
+  }
+
+  function translateTarget() {
+    return settingsStore.loaded ? Translate.target(settingsStore.doc.general.translateTargetLanguage) : Translate.DEFAULT_TARGET
   }
 
   function decorated(id) {
@@ -284,6 +290,10 @@ Item {
           if (!target) return { toast: { style: "failure", title: "Menu " + candidate.target + " not found" } }
           return backend.openMenu(target)
         case "builtin":
+          if (candidate.run.translate) {
+            backend.emit("translate.open", { text: "" })
+            return { close: true }
+          }
           if (candidate.run.url) {
             var values = (data && data.arguments) || {}
             var missing = RootSearch.missingArgument(candidate.arguments, values)
@@ -501,6 +511,34 @@ Item {
       getSearchHistory: function() { return frecencyStore.loaded ? frecencyStore.doc.searchHistory : [] }
     })
 
+    // Names from Raycast's translator namespace (ref 02 §2).
+    Rpc.register(backend.registry, "translate", {
+      getTarget: function() { return backend.translateTarget() },
+      setTarget: function(data) {
+        var language = String(data && data.language || "").trim()
+        if (!Languages.known(language)) throw new Error("Unknown language " + language)
+        settingsStore.update(function(doc) { doc.general.translateTargetLanguage = language })
+        backend.emit("settings.generalSettingsChanged", settingsStore.doc.general)
+        return language
+      },
+      translate: function(data) {
+        var phrase = Translate.validText(data && data.text)
+        var language = Translate.target((data && data.target) || backend.translateTarget())
+        var source = Translate.source(data && data.source)
+        if (source !== Translate.AUTO && !Languages.known(source)) throw new Error("Unknown source language " + source)
+        var code = Languages.codeFor(language) || language
+        var sourceCode = source === Translate.AUTO ? "" : (Languages.codeFor(source) || "")
+        if (translateService.running) translateService.cancel()
+        translateService.start(phrase, code, sourceCode)
+        if (!sourceCode) translateService.detect(phrase)
+        return { target: language, source: source }
+      },
+      cancel: function() {
+        translateService.cancel()
+        return null
+      }
+    })
+
     // Names from Raycast's calculator namespace (ref 02 §2).
     Rpc.register(backend.registry, "calculator", {
       calculate: function(data) { return backend.calculate(String(data && data.query || "")) },
@@ -559,7 +597,7 @@ Item {
       menuSource.refresh()
       calculatorData.refresh()
     }
-    if (method === "window.visibilityChanged" && data && !data.visible) agentLauncher.cancel()
+    if (method === "window.visibilityChanged" && data && !data.visible) { agentLauncher.cancel(); translateService.cancel() }
   }
 
   AppFocuser {
@@ -571,6 +609,21 @@ Item {
     id: agentLauncher
     onPrepared: function(argv) { backend.emit("agent.launchReady", { argv: argv }) }
     onFailed: function(message) { backend.emit("agent.launchFailed", { message: message }) }
+  }
+
+  TranslateService {
+    id: translateService
+    onFinished: function(text) {
+      backend.log("info", "translate", "translated " + text.length + " characters")
+      backend.emit("translate.ready", { text: text })
+    }
+    onFailed: function(message) {
+      backend.log("error", "translate", message)
+      backend.emit("translate.failed", { message: message })
+    }
+    onDetected: function(code, text) {
+      backend.emit("translate.detected", { code: code, language: Languages.nameFor(code), text: text })
+    }
   }
 
 

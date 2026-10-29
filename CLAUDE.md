@@ -52,10 +52,10 @@ plugin/                  # the Omarchy shell plugin (what gets linked into ~/.co
   manifest.json          #   id typecraft.oma-cast, kind "menu" (so the shell passes shell.appLibrary), keepLoaded
   Launcher.qml           #   entry point: open()/close() from the shell, IpcHandler "oma-cast", GlobalShortcut oma-cast:toggle
   Backend.qml            #   in-process backend: paths, config.json, stores, method registry, notifications
-  ui/                    #   launcher surface and (later) views
-  services/              #   QML services that do I/O (JsonStore, OmarchyMenuSource; later clipboard, …)
+  ui/                    #   launcher surface, action panel, Translate window
+  services/              #   QML services that do I/O (JsonStore, OmarchyMenuSource, TranslateService; later clipboard, …)
   core/*.js              #   pure logic, no Qt imports: shared by QML and node tests (module.exports guard)
-                         #   Ranker, Frecency (ref 02 §4, port exactly), OmarchyMenu, RootSearch, Schema, Migrate, Rpc, Paths, Log
+                         #   Ranker, Frecency (ref 02 §4, port exactly), OmarchyMenu, RootSearch, Schema, Migrate, Rpc, Paths, Log, Translate, Languages
 bin/oma-cast             # bash CLI
 tests/*.test.js          # node --test unit tests for plugin/core (ranker, frecency, Omarchy menu, root search, …)
 tests/smoke.sh           # live acceptance check against the running shell
@@ -77,6 +77,7 @@ bin/oma-cast dev             # reload on every save under plugin/ (needs inotify
 bin/oma-cast uninstall
 
 oma-cast toggle | show | hide
+oma-cast translate [text]            # open the Translate window, with optional source text
 oma-cast run <commandId>             # Phase 1+
 oma-cast call <method> [json]        # any backend method, e.g. oma-cast call system.info
 oma-cast doctor
@@ -92,7 +93,7 @@ qs log -n -p "$OMARCHY_PATH/shell" -t 50    # shell log; our lines start with [o
 Check each of these on the machine instead of assuming it; Omarchy changes often.
 
 - **Hyprland config is Lua** (Hyprland 0.56). `~/.config/hypr/hyprland.lua` `require`s `default.hypr.omarchy` and the user's `hypr.bindings` etc. Bindings use `o.bind("ALT + SPACE", "desc", dispatcher)`. `oma-cast setup hyprland` writes only `~/.config/hypr/oma-cast.lua` and appends one `require("hypr.oma-cast")`. Never edit Omarchy's files.
-- **Hotkey.** Super+Space is the Omarchy menu and Super+Alt+Space is the dock's app grid. oma-cast defaults to **Alt+Space** through `hl.dsp.global("oma-cast:toggle")`, so the plugin's GlobalShortcut fires with no process spawn. Users can change their binding in `oma-cast.lua`; never force a Super+Space swap.
+- **Hotkey.** Super+Space is the Omarchy menu and Super+Alt+Space is the dock's app grid. oma-cast defaults to **Alt+Space** through `hl.dsp.global("oma-cast:toggle")`, so the plugin's GlobalShortcut fires with no process spawn. Users can change their binding in `oma-cast.lua`; never force a Super+Space swap. The Translate window has its own GlobalShortcut, `oma-cast:translate`, which `oma-cast setup hyprland` does not bind; add it to `oma-cast.lua` by hand.
 - **IPC.** `omarchy-shell <target> <fn> args…` answers over the shell's socket (needs `socat`), falling back to `qs ipc`. Our target is `oma-cast`. `IpcHandler` (Quickshell.Io; 4.0.x dropped `ShellIpc`) functions must have typed params and return a string.
 - **Theme.** Bind colours to `Commons.Color.menu.*` and sizes to `Style.*`. They follow `omarchy theme set` live; no theme parsing.
 - **App launching.** Use `shell.appLibrary.launch(id, name)`. It goes through `uwsm-app -- gtk-launch`, sends terminal apps to `omarchy-launch-tui`, and shows Omarchy's launch OSD. The shell only provides `appLibrary` to `menu`-kind plugins.
@@ -144,7 +145,9 @@ Works:
 
   ↵ copies the answer (HUD), Ctrl+↵ pastes it through `omarchy-clipboard-paste-text`, Ctrl+Shift+C copies "question = answer". Each one saves to **Calculator History** (`db/calculator.json`, 4096 rows / 90 days): a built-in command and pushed view, searchable, Ctrl+D deletes an entry, Ctrl+Shift+D deletes all. RPC: `calculator.calculate|historyGetAll|historyDelete|historyDeleteAll|refreshCurrencies|getCurrencies`. A bare number, word or quantity (`42`, `firefox`, `5 kg`) never produces a row, because the section takes ↵.
 - **Latency:** show → mapped in 59–66 ms, hide in 24–42 ms on Omarchy 4.0.6 (`tests/smoke.sh`; it was 37–44 ms on the old `OverlayWindow`).
-- **Tests:** root search, calculator and default-agent hand-off coverage (`node --test tests/*.test.js`).
+- **Tests:** root search, calculator, translate and default-agent hand-off coverage (`node --test tests/*.test.js`).
+
+**Translate window (2026-10-25):** `ui/TranslateWindow.qml` is a second overlay with the layer namespace `oma-cast-translate`. The left pane holds the source text, the right pane holds the target language and the result. It opens from the `oma-cast:translate` shortcut, `oma-cast translate [text]`, the built-in Translate command, or RPC. `services/TranslateService.qml` runs translate-shell: `trans -b -no-ansi -to <code> [-from <code>] -- <text>` translates, and `trans -id` detects. One translation runs at a time, detections are serialized, and closing the window cancels both processes. `core/Translate.js` holds the defaults and the 8000 character limit. `core/Languages.js` maps 40 display names to translate-shell codes. The target language lives in `db/settings.json` as `general.translateTargetLanguage` (migration 2, default English). Dependencies are `translate-shell`, which uses its own network engine, and `wl-clipboard` for Super+Enter. Auto-detect replaces Auto with the detected language once a detection succeeds.
 
 **Default-agent hand-off (fork, 2026-10-20):** user-authorized addition outside the original phase plan. The root fallback "Ask default agent" and Ctrl+Alt+Enter pass the query to `omarchy-agent --prompt` as a literal argv element. `AgentLauncher.qml` checks the configured agent/terminal with a bounded, question-free preflight, prevents overlapping submissions and cancels on hide/unload. `Launcher.qml` dismisses the overlay before launching through `Util.execArgv`. Errors leave the query visible. There are no new dependencies, model APIs, credentials or question-history writes. Existing CLI approval behaviour is inherited. Portable checks do not establish live terminal focus, authentication, or provider compatibility; verify those on Omarchy.
 

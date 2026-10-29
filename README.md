@@ -48,6 +48,7 @@ There's no theme config. oma-cast binds to Omarchy's own colours, so it changes 
 ## Install
 
 Requires Omarchy 4 (Hyprland 0.56+, `omarchy-shell`) and `socat`, which Omarchy already ships.
+The Translate window also needs `translate-shell` and `wl-clipboard`.
 
 ```sh
 git clone https://github.com/typecraft-dev/oma-cast.git
@@ -90,6 +91,48 @@ read credentials, or make model API calls. Successful preflight checks establish
 launch prerequisites, not successful sign-in or a running terminal; those still
 need live desktop validation.
 
+## Translate
+
+Super+Shift+T opens a two-pane Translate window. Type or paste text on the left,
+press Enter, and the translation appears on the right. `oma-cast translate "hola"`
+does the same from a terminal, and the built-in Translate command opens the
+window with an empty box.
+
+<img src="docs/screenshots/translate.png" alt="Translating Hello world! from English to Spanish" width="760">
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/translate-languages.png" alt="Filtering the target language list"></td>
+    <td width="50%"><img src="docs/screenshots/translate-swap.png" alt="After swapping Spanish and English"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Filter the language list</b></td>
+    <td align="center"><b>Swap with Ctrl+S</b></td>
+  </tr>
+</table>
+
+- Auto-detect: the source starts as Auto. The first successful detection replaces
+  it, so the next translation keeps the same source.
+- Languages: Ctrl+L picks the target, Ctrl+Shift+L picks the source. Type to
+  filter the list. The target is saved in
+  `~/.local/share/oma-cast/db/settings.json` and used next time.
+- Swap: Ctrl+S moves the translation into the source box and translates back.
+  When the source was Auto, the detected language becomes the new target.
+- Copy: Super+Enter or Ctrl+Shift+C copies the translation through `wl-copy` and
+  closes the window. Esc closes it without copying.
+
+The window needs `translate-shell` (the `trans` command) and `wl-clipboard`.
+`oma-cast doctor` reports whether `trans` is installed. translate-shell sends the
+text to its own engine, Google by default, so the text leaves your machine. Set
+another engine in translate-shell's own configuration.
+
+Add this line to `~/.config/hypr/oma-cast.lua` to bind the window. `oma-cast
+setup hyprland` writes only the launcher binding.
+
+```lua
+o.bind("SUPER + SHIFT + T", "oma-cast translate", hl.dsp.global("oma-cast:translate"))
+```
+
 ## Keyboard
 
 | Key | Does |
@@ -114,6 +157,7 @@ need live desktop validation.
 ```sh
 oma-cast toggle | show | hide
 oma-cast run <commandId>         # e.g. app:com.mitchellh.ghostty, omarchy:appearance.theme
+oma-cast translate [text]        # open the Translate window, with optional text
 oma-cast call <method> [json]    # call any backend method
 oma-cast doctor
 ```
