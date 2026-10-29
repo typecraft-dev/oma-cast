@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "oma-cast.camera-preview",
+  "name": "Camera preview",
+  "version": "0.1.0",
+  "description": "Check your camera before a meeting, without recording or audio",
+  "kinds": [
+    "panel"
+  ],
+  "entryPoints": {
+    "panel": "CameraPreview.qml"
+  },
+  "keepLoaded": true
+}
