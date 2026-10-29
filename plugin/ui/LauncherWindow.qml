@@ -97,10 +97,12 @@ PanelWindow {
 
   readonly property bool atRoot: window.stack.length === 1
   readonly property bool compact: window.general.windowMode === "compact" && window.atRoot && !window.query
-  // Editor views take the header text as input instead of searching.
+  // Editor views (alias, quicklink form, import) take the header text as
+  // input instead of searching; a form edits its focused field there.
   readonly property bool editor: ["alias", "quicklink-form", "quicklink-import"].indexOf(window.view.kind) >= 0
   readonly property bool formActive: window.view.kind === "quicklink-form"
   readonly property var focusedField: window.formActive ? window.view.fields[window.view.focus] : null
+  // The Open With field filters installed apps instead of taking text.
   readonly property bool pickingApp: !!(window.focusedField && window.focusedField.picker)
   readonly property bool pickedSelected: window.pickingApp && !!window.selectedRow && window.selectedRow.itemId === (window.focusedField.value || "")
   readonly property string placeholder: {
@@ -150,6 +152,7 @@ PanelWindow {
     window.searchSerial++
     window.backend.cancelSearch()
     window.searchPending = false
+    window.pendingPrompt = null
     window.closePopups()
     var seconds = Number(window.general.popToRootTimeout)
     if (!(seconds > 0)) window.popToRoot()
@@ -425,6 +428,7 @@ PanelWindow {
     if (action.done) window.showToast("success", action.done)
   }
 
+  // Focus the first required argument still empty; true when there is one.
   function focusMissingArgument() {
     if (!window.argDefs.length) return false
     var missing = RootSearch.missingArgument(window.argDefs, window.argValues)
@@ -433,6 +437,7 @@ PanelWindow {
     return true
   }
 
+  // A quicklink argument with options steps through them with ↑/↓ [D].
   function stepOption(def, value, direction) {
     var options = def.options
     var current = String(value || "").toLowerCase()
@@ -442,7 +447,7 @@ PanelWindow {
     return options[next].title
   }
 
-  // Typing, Tab, Backspace and option steps while an argument pill has focus.
+  // Typing, Tab, Backspace and option ↑/↓ while an argument pill has focus.
   function handleArgumentKey(event, shift) {
     var def = window.argDefs[window.argFocus]
     var value = window.argValues[def.name] || ""
@@ -463,7 +468,7 @@ PanelWindow {
       return true
     }
     if (key === Qt.Key_Backspace && !value) { window.argFocus--; return true }
-    // editsFilter ignores an empty value, so Ctrl+U there would clear the search text.
+    // editsFilter skips an empty value; an edit key there must not fall through to the search text.
     if (Util.editsFilter(event, value || " ")) { if (value) set(Util.editedFilter(event, value)); return true }
     if (window.isTyping(event)) { set(value + event.text); return true }
     return false
@@ -474,7 +479,10 @@ PanelWindow {
     if (!r.ok) window.showToast("failure", r.error)
   }
 
+  // --------------------------------------------------------------- forms
 
+  // The header text for a field: its value, except the picker, which starts
+  // with an empty search.
   function fieldText(field) {
     return field && !field.picker ? String(field.value || "") : ""
   }
@@ -485,6 +493,7 @@ PanelWindow {
     window.stack = stack
   }
 
+  // Copy the header into the focused field's value.
   function stashField() {
     if (!window.formActive || window.pickingApp) return
     var fields = window.view.fields.map(function(f) { return Object.assign({}, f) })
@@ -500,6 +509,7 @@ PanelWindow {
     window.rebuild(true)
   }
 
+  // Fill a new, untouched Create Quicklink form from the clipboard.
   function autofillQuicklink(suggested) {
     if (!window.formActive || window.view.quicklinkId) return
     window.stashField()
@@ -531,6 +541,7 @@ PanelWindow {
     window.select(!window.query && keep >= 0 ? keep : window.nextSelectable(-1, 1))
   }
 
+  // ↵ in Open With picks the highlighted app; ↵ on the app already chosen saves.
   function chooseOpenWith() {
     if (!window.selectedRow) return
     if (window.pickedSelected) { window.saveQuicklink(); return }
@@ -557,6 +568,8 @@ PanelWindow {
     window.rebuild(false)
   }
 
+  // `oma-cast run quicklink:<id>` for a link with arguments: find its row
+  // and put the cursor in its first empty pill.
   function promptArguments(target) {
     window.pendingPrompt = { id: String(target.id || ""), title: String(target.title || "") }
     if (window.query === window.pendingPrompt.title) window.rebuild(true)
@@ -584,6 +597,7 @@ PanelWindow {
   function isTab(event) { return event.key === Qt.Key_Tab && !(event.modifiers & Qt.ShiftModifier) }
   function isBacktab(event) { return event.key === Qt.Key_Backtab || (event.key === Qt.Key_Tab && (event.modifiers & Qt.ShiftModifier) !== 0) }
 
+  // Keys inside an editor view; true when handled.
   function handleEditorKey(event, key, ctrl, enter) {
     var kind = window.view.kind
     if (kind === "alias") {
@@ -753,6 +767,7 @@ PanelWindow {
 
     if (window.alert) {
       if (key === Qt.Key_Escape) window.alert = null
+      // A held Enter that opened the alert must not also confirm it.
       else if (enter && !event.isAutoRepeat) window.confirmAlert()
       return true
     }
@@ -1074,7 +1089,7 @@ PanelWindow {
       anchors.leftMargin: card.borderLeft + window.px(8)
       anchors.rightMargin: card.borderRight + window.px(8)
 
-
+      // The form's fields; the focused one shows the header text.
       Column {
         id: formColumn
         visible: window.formActive
@@ -1158,6 +1173,7 @@ PanelWindow {
           look: window.look
           appLibrary: window.appLibrary
           zoom: window.zoom
+          // Hover doesn't move the selection while a pill is being typed in.
           onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && window.argFocus < 0 && pointerGate.moved(item, mouse)) window.select(i) }
           onClicked: function(i) {
             if (window.pickingApp) { window.select(i); window.chooseOpenWith() }
