@@ -2,9 +2,12 @@
 var SUGGESTIONS_LIMIT = 6
 
 var FALLBACKS = [
-  { id: "fallback:google", title: "Search Google", icon: "", url: "https://www.google.com/search?q={query}" },
-  { id: "fallback:duckduckgo", title: "Search DuckDuckGo", icon: "", url: "https://duckduckgo.com/?q={query}" },
-  { id: "fallback:agent", title: "Ask default agent", icon: "󰚩", subtitle: "New terminal session · Ctrl+Alt+Enter" }
+  { id: "fallback:google", title: "Search Google", icon: "", url: "https://www.google.com/search?q={query}" },
+  { id: "fallback:duckduckgo", title: "Search DuckDuckGo", icon: "", url: "https://duckduckgo.com/?q={query}" },
+  { id: "fallback:agent", title: "Ask default agent", icon: "󰚩", subtitle: "New terminal session · Ctrl+Alt+Enter" },
+  // Not a web search: Backend's performAction answers it with a `largeType`
+  // outcome for the window (core/LargeType.js holds the display policy).
+  { id: "fallback:large-type", title: "Show in Large Type", icon: "\uf034", subtitle: "Display the query across the screen · Ctrl+L", largeType: true }
 ]
 
 // Web searches as root commands with an inline argument pill (ref 04 §2.2
