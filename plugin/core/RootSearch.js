@@ -40,7 +40,12 @@ var BUILTINS = [
     keywords: ["calculator", "calc", "math", "history", "conversions"],
     run: { push: { kind: "calculator-history", title: "Calculator History" } },
     rootSearch: { when: "always" }
-  }
+  },
+  // Quicklinks (SPEC §8.4), named as in Raycast [O].
+  { id: "builtin:create-quicklink", title: "Create Quicklink", subtitle: "Quicklinks", keywords: ["link", "bookmark", "url"], glyph: "", run: { quicklinks: "create" } },
+  { id: "builtin:search-quicklinks", title: "Search Quicklinks", subtitle: "Quicklinks", keywords: ["link", "bookmark"], glyph: "", run: { quicklinks: "search" } },
+  { id: "builtin:import-quicklinks", title: "Import Quicklinks", subtitle: "Quicklinks", keywords: ["link", "json"], glyph: "", run: { quicklinks: "import" } },
+  { id: "builtin:export-quicklinks", title: "Export Quicklinks", subtitle: "Quicklinks", keywords: ["link", "json", "backup"], glyph: "", run: { quicklinks: "export" } }
 ]
 
 function words(value) {
@@ -205,6 +210,19 @@ function rankOptions(ctx) {
   return { sensitivity: ctx.sensitivity || "medium", nowMs: ctx.nowMs, fleaHits: ctx.fleaHits || null }
 }
 
+// [O] A query that is a web address offers to open it or save it.
+function urlRows(url) {
+  return [
+    { id: "url:open", kind: "url-open", title: "Open in Browser" },
+    { id: "url:create", kind: "url-create", title: "Create Quicklink" }
+  ].map(function(r) {
+    return {
+      candidate: { id: r.id, type: "command", kind: r.kind, title: r.title, subtitle: url, typeLabel: "Link", glyph: "", url: url, rootSearch: { when: "searching" } },
+      record: null
+    }
+  })
+}
+
 function fallbackRows(query) {
   return FALLBACKS.map(function(f) {
     return {
@@ -293,6 +311,8 @@ function rootSections(candidates, query, ctx, deps) {
     var sections = []
     if (ctx.calculation && !filtered) sections.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
     if (results.length > 0) sections.push({ id: "results", title: "Results", rows: results })
+    var url = deps.Quicklinks && !filtered ? deps.Quicklinks.webAddress(q) : ""
+    if (url) sections.push({ id: "url", title: "Link", rows: urlRows(url) })
     if (!filtered) sections.push({ id: "fallback-commands", title: "Use “" + q + "” with…", rows: fallbackRows(q) })
     return sections
   }
@@ -335,6 +355,19 @@ function submenuSections(candidates, menuId, query, ctx, deps) {
   return ranked.length ? [{ id: "results", title: "Results", rows: ranked }] : []
 }
 
+// Search Quicklinks: every quicklink by name, or ranked while searching.
+function quicklinkSections(candidates, query, ctx, deps) {
+  var q = String(query || "").trim()
+  var inside = []
+  for (var i = 0; i < candidates.length; i++) if (candidates[i].type === "quicklink") inside.push(decorate(candidates[i], ctx, deps))
+  if (!q) {
+    inside.sort(function(a, b) { return a.title.toLowerCase() < b.title.toLowerCase() ? -1 : (a.title.toLowerCase() > b.title.toLowerCase() ? 1 : 0) })
+    return inside.length ? [{ id: "quicklinks", title: "", rows: inside.map(function(c) { return { candidate: c, record: null } }) }] : []
+  }
+  var ranked = deps.Ranker.rank(inside, q, rankOptions(ctx))
+  return ranked.length ? [{ id: "results", title: "Results", rows: ranked }] : []
+}
+
 function actionsFor(candidate) {
   if (candidate.kind === "calculator" || candidate.kind === "calculator-history") {
     // ↵ copies, Ctrl ↵ pastes (SPEC §8 Calculator) [O]; delete keys are
@@ -359,6 +392,9 @@ function actionsFor(candidate) {
     case "omarchy-action": primary = { id: "open", title: "Run", icon: "" }; break
     case "omarchy-menu":
     case "omarchy-link": primary = { id: "open", title: "Open Menu", icon: "" }; break
+    case "quicklink": primary = { id: "open", title: "Open Quicklink", icon: "" }; break
+    case "url-open":
+    case "url-create": primary = { id: "open", title: candidate.title, icon: "" }; break
     case "fallback": primary = { id: "open", title: candidate.title, icon: "" }; break
     default: primary = { id: "open", title: "Open Command", icon: "" }
   }
@@ -368,10 +404,14 @@ function actionsFor(candidate) {
 
   if (candidate.kind && candidate.kind.indexOf("omarchy-") === 0)
     list.push({ id: "open-in-omarchy-menu", title: "Open in Omarchy Menu", shortcut: "Ctrl ↵", section: "primary", icon: "" })
-  if (candidate.kind === "fallback") return list
+  if (candidate.kind === "fallback" || candidate.kind === "url-open" || candidate.kind === "url-create") return list
 
   if (candidate.kind === "app") list.push({ id: "open-new", title: "Open New Window", shortcut: "Shift ↵", section: "primary", icon: "" })
   if (candidate.kind === "app") list.push({ id: "copy-id", title: "Copy Desktop ID", shortcut: "Ctrl Shift C", section: "copy", icon: "" })
+  if (candidate.kind === "quicklink") {
+    list.push({ id: "edit-quicklink", title: "Edit Quicklink", shortcut: "Ctrl E", section: "primary", icon: "" })
+    list.push({ id: "copy-link", title: "Copy Link", shortcut: "Ctrl Shift C", section: "copy", icon: "" })
+  }
   if (candidate.kind === "omarchy-action") list.push({ id: "copy-command", title: "Copy Command", shortcut: "Ctrl Shift C", section: "copy", icon: "" })
 
   if (candidate.favoriteOrder === null || candidate.favoriteOrder === undefined) {
@@ -384,7 +424,8 @@ function actionsFor(candidate) {
   list.push({ id: "set-alias", title: candidate.alias ? "Change Alias" : "Set Alias", shortcut: "", section: "configure", icon: "" })
   if (candidate.alias) list.push({ id: "remove-alias", title: "Remove Alias", shortcut: "", section: "configure", icon: "" })
   if (candidate.frecency > 1) list.push({ id: "reset-ranking", title: "Reset Ranking", shortcut: "", section: "configure", icon: "" })
-  list.push({ id: "disable", title: "Disable Command", shortcut: "Alt Shift D", section: "delete", icon: "" })
+  if (candidate.kind === "quicklink") list.push({ id: "delete-quicklink", title: "Delete Quicklink", shortcut: "Ctrl D", section: "delete", icon: "" })
+  else list.push({ id: "disable", title: "Disable Command", shortcut: "Alt Shift D", section: "delete", icon: "" })
   return list
 }
 
@@ -498,6 +539,7 @@ if (typeof module !== "undefined") {
     decorate: decorate,
     rootSections: rootSections,
     submenuSections: submenuSections,
+    quicklinkSections: quicklinkSections,
     actionsFor: actionsFor,
     reorderFavorites: reorderFavorites,
     fallbackUrl: fallbackUrl

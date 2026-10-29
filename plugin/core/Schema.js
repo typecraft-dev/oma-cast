@@ -46,6 +46,19 @@ var calculatorMigrations = [
   }
 ]
 
+// Saved quicklinks (SPEC §8.4), in the shape Quicklinks.js reads:
+// items [{id, name, link, iconName, openWith, createdAt, updatedAt}].
+var quicklinksMigrations = [
+  {
+    version: 1,
+    name: "quicklinks",
+    up: function(doc) {
+      doc.items = Array.isArray(doc.items) ? doc.items : []
+      return doc
+    }
+  }
+]
+
 var SEARCH_HISTORY_LIMIT = 20
 
 function pushSearchHistory(history, query) {
@@ -60,7 +73,8 @@ function pushSearchHistory(history, query) {
 var documents = {
   settings: { file: "settings.json", migrations: settingsMigrations },
   frecency: { file: "frecency.json", migrations: frecencyMigrations },
-  calculator: { file: "calculator.json", migrations: calculatorMigrations }
+  calculator: { file: "calculator.json", migrations: calculatorMigrations },
+  quicklinks: { file: "quicklinks.json", migrations: quicklinksMigrations }
 }
 
 var configDefaults = {
@@ -110,6 +124,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     settingsMigrations: settingsMigrations,
     frecencyMigrations: frecencyMigrations,
+    quicklinksMigrations: quicklinksMigrations,
     calculatorMigrations: calculatorMigrations,
     pushSearchHistory: pushSearchHistory,
     SEARCH_HISTORY_LIMIT: SEARCH_HISTORY_LIMIT,

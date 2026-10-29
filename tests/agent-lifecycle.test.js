@@ -124,6 +124,8 @@ test("agent shortcut is limited to root search and preserves normal Enter action
     atRoot: true, actionPanelOpen: false, view: { kind: "root" },
     askAgent: () => events.push("agent"), performNth: n => events.push(n),
     saveAlias: () => events.push("save-alias"),
+    get editor() { return this.view.kind === "alias" },
+    handleEditorKey: (event, key, ctrl, enter) => { if (enter) window.saveAlias(); return true },
     argFocus: -1, argDefs: [],
     isActionPanelKey: () => false,
     direction: () => 0

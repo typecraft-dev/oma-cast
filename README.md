@@ -105,6 +105,8 @@ need live desktop validation.
 | `Ctrl+N` / `Ctrl+P` | Next / previous |
 | `Ctrl+Shift+F` | Add to favorites (`Ctrl+Alt+↑↓` to reorder) |
 | `Ctrl+Shift+C` | Copy |
+| `Tab` / `Shift+Tab` | Move into and between a quicklink's arguments |
+| `Ctrl+E` / `Ctrl+D` | Edit / delete a quicklink |
 | `Alt+Shift+D` | Disable a command |
 | `Esc` / `Shift+Esc` | Back / back to root |
 | `Ctrl +` / `Ctrl −` / `Ctrl 0` | Zoom |
@@ -124,7 +126,9 @@ oma-cast is early. Search, ranking and the Omarchy integration are done. Coming 
 
 - [ ] Settings window
 - [ ] Script Commands
-- [ ] Clipboard history, snippets, quicklinks, calculator
+- [x] Quicklinks
+- [x] Calculator
+- [ ] Clipboard history, snippets
 - [ ] Running Raycast extensions built from the open-source [`raycast/extensions`](https://github.com/raycast/extensions) repo
 - [ ] Window management
 - [ ] Importing your `.rayconfig` from macOS

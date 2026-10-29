@@ -120,7 +120,7 @@ Works:
   - **Ctrl+P** opens the root dropdown (All / Applications / Commands); emacs Ctrl+P = up only works inside popups.
   - **Ctrl+T** opens the toast's actions (Copy Error Message on failures, Undo after Disable Command). **Ctrl+Shift+K** opens the About panel for the selected row.
   - **Argument pills:** "Search Google" / "Search DuckDuckGo" take a query in a pill after the search text (Tab in, Shift+Tab out).
-  - **Alerts:** Shut Down, Restart, Log Out and Delete All Entries ask first (↵ confirms, Esc cancels). `oma-cast run` skips the alert.
+  - **Alerts:** Shut Down, Restart, Log Out, Delete All Entries and Delete Quicklink ask first (↵ confirms, Esc cancels). `oma-cast run` skips the alert.
 - **Feedback:** toasts in the footer and a HUD through Omarchy's OSD when the window closes; static footer "Loading…" appears only after 500 ms of visible loading, yields to toasts and resets on hide. The header divider stays still.
 - **Window behaviour:**
   - The `escapeKeyBehavior` setting works both ways.
@@ -143,6 +143,7 @@ Works:
   config.json sets `remToPxRate` (16), `workHoursPerDay` (8) and `clockFormat` (`auto` follows the Qt locale, or `12h` / `24h`).
 
   ↵ copies the answer (HUD), Ctrl+↵ pastes it through `omarchy-clipboard-paste-text`, Ctrl+Shift+C copies "question = answer". Each one saves to **Calculator History** (`db/calculator.json`, 4096 rows / 90 days): a built-in command and pushed view, searchable, Ctrl+D deletes an entry, Ctrl+Shift+D deletes all. RPC: `calculator.calculate|historyGetAll|historyDelete|historyDeleteAll|refreshCurrencies|getCurrencies`. A bare number, word or quantity (`42`, `firefox`, `5 kg`) never produces a row, because the section takes ↵.
+- **Quicklinks** (SPEC §8.4): Create / Search / Import / Export Quicklinks, Create Quicklink or Open in Browser for a typed web address, arguments in the same pills as the web searches (Tab into them, ↑/↓ steps an option, ↵ opens), Create Quicklink filled from a URL or path on the clipboard, Open With from installed apps, and Edit (Ctrl+E), Copy Link (Ctrl+Shift+C) and Delete (Ctrl+D, the Linux key in SPEC §10.3, confirmed through the alert) actions. Placeholders follow SPEC §8.3 except clipboard history, snippets and the calculator.
 - **Latency:** show → mapped in 59–66 ms, hide in 24–42 ms on Omarchy 4.0.6 (`tests/smoke.sh`; it was 37–44 ms on the old `OverlayWindow`).
 - **Tests:** root search, calculator and default-agent hand-off coverage (`node --test tests/*.test.js`).
 

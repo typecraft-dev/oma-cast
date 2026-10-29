@@ -64,6 +64,10 @@ Item {
       root.show()
       launcher.popToRoot()
       launcher.push(outcome.push)
+    } else if (outcome.arguments) {
+      root.show()
+      launcher.popToRoot()
+      launcher.promptArguments(outcome.arguments)
     } else if (outcome.close) {
       root.hide()
       if (outcome.hud) launcher.hud(outcome.hud)

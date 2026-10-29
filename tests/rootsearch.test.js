@@ -145,6 +145,28 @@ test("fallback URLs encode the query", () => {
   assert.equal(RS.fallbackUrl(RS.FALLBACKS[0], " a&b c "), "https://www.google.com/search?q=a%26b%20c")
 })
 
+test("a web address offers Open in Browser and Create Quicklink before the fallbacks", () => {
+  const Quicklinks = require("../plugin/core/Quicklinks.js")
+  const sections = RS.rootSections(candidates(), "github.com/x", ctx(), Object.assign({ Quicklinks }, deps))
+  const link = sections.find((s) => s.id === "url")
+  assert.deepEqual(titles(link), ["Open in Browser", "Create Quicklink"])
+  assert.equal(link.rows[0].candidate.url, "https://github.com/x")
+  assert.equal(sections[sections.length - 1].id, "fallback-commands")
+  assert.equal(RS.rootSections(candidates(), "vs.code", ctx(), Object.assign({ Quicklinks }, deps)).some((s) => s.id === "url"), false)
+})
+
+test("quicklinks are searched from the root and listed by name in Search Quicklinks", () => {
+  const Quicklinks = require("../plugin/core/Quicklinks.js")
+  const links = [{ id: "a", name: "Maps", link: "x.com" }, { id: "b", name: "GitHub", link: "github.com" }].map(Quicklinks.toCandidate)
+  const all = candidates().concat(links)
+  assert.equal(RS.rootSections(all, "", ctx(), deps).some((s) => s.rows.some((r) => r.candidate.type === "quicklink")), false)
+  assert.equal(titles(RS.rootSections(all, "github", ctx(), deps)[0])[0], "GitHub")
+  assert.deepEqual(titles(RS.quicklinkSections(all, "", ctx(), deps)[0]), ["GitHub", "Maps"])
+  assert.deepEqual(titles(RS.quicklinkSections(all, "map", ctx(), deps)[0]), ["Maps"])
+  const actions = RS.actionsFor(RS.decorate(links[0], ctx(), deps)).map((a) => a.id)
+  assert.deepEqual(actions, ["open", "edit-quicklink", "copy-link", "favorite-add", "set-alias", "delete-quicklink"])
+})
+
 test("web searches take an inline argument", () => {
   const google = results("google")[0].rows[0].candidate
   assert.equal(google.id, "builtin:google-search")

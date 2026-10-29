@@ -530,6 +530,7 @@ Grammar: `{keyword opt="v" opt2='v' | modifier | modifier}`. Quotes accepted: `"
 - Shown in root search with inline argument pills. Can be a fallback command.
 - Settings: Show Link Previews, Pass Selected Text as Argument.
 - **Import/Export** JSON: `[{name, link, openWith?}]` [I, keep compatible with Raycast's documented format].
+- Quickshell build [D, 2026-10-20]: `db/quicklinks.json`, `core/Quicklinks.js`. Arguments use the same argument pills as the web-search builtins (§12 Phase 1 leftovers): a quicklink candidate's `arguments` carry `{name, placeholder, required}` plus `defaultValue` and `options`; an argument with a default is optional and shows the default as its placeholder; an option argument steps through its options with ↑/↓ [D]. Delete Quicklink goes through the confirm alert. Web links open through `omarchy-launch-browser`, other links through `xdg-open`, a chosen app through `gtk-launch`. Create Quicklink fills an untouched form from a URL or path on the clipboard. localhost, loopback and private IPv4 hosts open as http. Values in a file-path link (`/…`, `~/…`) are not encoded. `{selection}` is the primary selection. `{clipboard offset=N}` waits for clipboard history; `{browser-tab}` is refused. No favicons, tags or link previews yet. Export writes `~/Downloads/oma-cast-quicklinks-<date>.json` and copies it; import reads a file path or the clipboard.
 
 ### 8.5 Window management maths [O command list, I geometry]
 - Work area = monitor geometry minus reserved space (Hyprland `monitors -j` `reserved`; KDE/X11 `_NET_WORKAREA`).
@@ -808,7 +809,7 @@ Repo layout [D]:
     - **Ctrl+P dropdown.** Ctrl+P is always `toggleFilter`, so emacs Ctrl+P = up is dropped in the list (it still moves up inside popups). Raycast's root has no dropdown; ours filters root search by type (All / Applications / Commands, `RootSearch.FILTERS`), hides the Calculator and fallback sections while filtered, and resets on pop-to-root.
     - **Ctrl+T** opens the toast's actions. Failure toasts offer "Copy Error Message"; "Disable Command" offers "Undo".
     - **Ctrl+Shift+K** About panel: `rootSearch.getItemInfo` → `RootSearch.aboutFor`.
-    - **Argument pills.** Builtins may declare `arguments` (`{name, placeholder, required}`). "Search Google" and "Search DuckDuckGo" are root commands with a `query` argument. Tab enters the pills, Shift+Tab / Backspace on an empty pill goes back, ↵ with an empty required argument focuses it.
+    - **Argument pills.** Builtins and quicklinks may declare `arguments` (`{name, placeholder, required}`). "Search Google" and "Search DuckDuckGo" are root commands with a `query` argument. Tab enters the pills, Shift+Tab / Backspace on an empty pill goes back, ↵ with an empty required argument focuses it.
     - **Alerts.** `rootSearch.performAction` returns `{confirm}` for Shut Down / Restart / Log Out and Delete All Entries until called with `confirmed: true`. `oma-cast run` is explicit and skips it.
     - **Keystroke buffering: won't do.** A parked surface conflicts with Omarchy's remap-on-open design (note above).
   - **"fir" → Firefox:** on a list where another title starts with "Fire", the literal port ties at score 8 and the collator decides until Firefox has been launched once (`tests/ranker.test.js`).
