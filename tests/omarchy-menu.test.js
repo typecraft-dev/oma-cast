@@ -1,6 +1,7 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
+const path = require("node:path")
 const { execFileSync } = require("node:child_process")
 const M = require("../plugin/core/OmarchyMenu.js")
 
@@ -74,11 +75,12 @@ test("only a bare summon is run in-process", () => {
   assert.equal(M.summonAction("omarchy-shell shell summon x; rm -rf ~"), null)
 })
 
-const shipped = "/usr/share/omarchy/default/omarchy/omarchy-menu.jsonc"
+const shipped = path.join(process.env.OMARCHY_PATH || "/usr/share/omarchy", "default/omarchy/omarchy-menu.jsonc")
 test("the installed Omarchy menu parses completely", { skip: !fs.existsSync(shipped) }, () => {
   const r = M.parse(fs.readFileSync(shipped, "utf8"))
   assert.equal(r.error, "")
   assert.ok(r.items.length > 300, "expected the full menu, got " + r.items.length)
   const tree = M.buildTree(r.items, [])
-  for (const id of ["apps", "system", "style", "setup", "install", "remove", "update"]) assert.ok(tree.children.root.includes(id), id)
+  for (const id of ["apps", "system", "setup", "install", "remove", "update"]) assert.ok(tree.children.root.includes(id), id)
+  assert.ok(tree.children.root.includes("style") || tree.children.root.includes("appearance"))
 })

@@ -25,7 +25,7 @@ function harness(text) {
     rebuild: reset => changes.push(reset), isTyping: () => false,
     isActionPanelKey: () => false, direction: () => 0
   }
-  const actionPanel = { filter: "" }
+  const actionPanel = { item: { filter: "" } }
   const clipboardInput = { text: "", clear() { this.text = "" }, paste() { this.text = text } }
   const context = vm.createContext({ Qt, window, actionPanel, clipboardInput, Util: { editsFilter: () => false } })
   window.setQuery = next => {
@@ -97,9 +97,9 @@ test("clipboard paste also works in submenu queries and alias editing", () => {
 test("action-panel paste edits its filter without changing the query", () => {
   const h = harness("Copy\nResult")
   h.window.actionPanelOpen = true
-  h.actionPanel.filter = "Find "
+  h.actionPanel.item.filter = "Find "
   h.press("V", h.Qt.ControlModifier)
-  assert.equal(h.actionPanel.filter, "Find Copy Result")
+  assert.equal(h.actionPanel.item.filter, "Find Copy Result")
   assert.equal(h.window.query, "prefix ")
   assert.deepEqual(h.changes, [])
 })

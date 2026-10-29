@@ -32,6 +32,7 @@ Launcher
   call <method> [json]   Call a backend method, e.g. oma-cast call system.info
 
 Setup
+  build-search           Build the optional flea-search helper (needs Rust/cargo)
   install                Link the plugin into omarchy-shell, enable it, and link this CLI into ~/.local/bin
   uninstall              Disable and unlink the plugin
   reload                 Make the shell reload the plugin after editing it
@@ -52,6 +53,11 @@ need_shell() {
 cmd_install() {
   need_shell
   [[ -f $plugin_src/manifest.json ]] || die "plugin source missing at $plugin_src"
+  if command -v cargo >/dev/null; then
+    "$repo/bin/build-search" || die "search helper build failed; plugin was not installed"
+  else
+    echo "Rust not found; skipping the helper build (using an existing helper or the built-in matcher)"
+  fi
   mkdir -p "$plugins_dir"
   if [[ -e $plugin_link && ! -L $plugin_link ]]; then
     die "$plugin_link exists and is not a symlink; move it away first"
@@ -164,6 +170,7 @@ case "${1:-}" in
   run) need_shell; [[ -n ${2:-} ]] || die "usage: oma-cast run <commandId>"; ipc run "$2" ;;
   call) need_shell; [[ -n ${2:-} ]] || die "usage: oma-cast call <method> [json]"; ipc call "$2" "${3:-}" ;;
   ping) need_shell; ipc ping ;;
+  build-search) "$repo/bin/build-search" ;;
   install) cmd_install ;;
   uninstall) cmd_uninstall ;;
   reload) cmd_reload ;;

@@ -1,0 +1,17 @@
+// Selected unchanged rows from omacom/omarchy v4.5.0-rc2, default/omarchy/omarchy-menu.jsonc.
+{
+  "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"provider":"apps","action":"omarchy-shell omarchy.dock apps"},
+  "appearance": {"icon":"󰏘","label":"Appearance","aliases":["style"]},
+  "trigger": {"icon":"󱓞","label":"Trigger"},
+  "setup": {"icon":"","label":"Setup","aliases":["settings"]},
+  "install": {"icon":"󰉉","label":"Install"},
+  "remove": {"icon":"󰭌","label":"Remove","aliases":["uninstall"]},
+  "update": {"icon":"","label":"Update","aliases":["restart","refresh"]},
+  "system": {"icon":"","label":"System","aliases":["power-menu"]},
+  "appearance.font": {"icon":"","label":"Font","provider":"fonts"},
+  "trigger.toggle": {"icon":"󰔎","label":"Toggle","aliases":["toggle","toggles"]},
+  "trigger.toggle.nightlight-on": {"icon":"󰔎","label":"Nightlight On","when":"[[ $(omarchy-toggle-nightlight --status) != *'\"enabled\":true'* ]]","action":"omarchy-toggle-nightlight"},
+  "trigger.toggle.nightlight-off": {"icon":"󰔎","label":"Nightlight Off","when":"[[ $(omarchy-toggle-nightlight --status) == *'\"enabled\":true'* ]]","action":"omarchy-toggle-nightlight"},
+  "setup.language": {"icon":"","label":"Language","provider":"languages"},
+  "update.kernel": {"icon":"","label":"Kernel","when":"(( $(omarchy-kernel list | wc -l) > 1 ))","provider":"kernels"}
+}

@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+
+repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+command -v cargo >/dev/null || { echo "oma-cast: building search needs Rust (cargo)" >&2; exit 1; }
+target_dir=${CARGO_TARGET_DIR:-$repo/search/target}
+[[ $target_dir == /* ]] || target_dir="$PWD/$target_dir"
+cargo build --locked --release --manifest-path "$repo/search/Cargo.toml" --target-dir "$target_dir"
+mkdir -p "$repo/plugin/bin"
+temporary=$(mktemp "$repo/plugin/bin/.search.XXXXXXXX")
+trap 'rm -f -- "$temporary"' EXIT
+cp "$target_dir/release/oma-cast-search" "$temporary"
+chmod 755 "$temporary"
+mv -f -- "$temporary" "$repo/plugin/bin/oma-cast-search"
+echo "built $repo/plugin/bin/oma-cast-search"

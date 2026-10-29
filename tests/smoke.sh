@@ -18,7 +18,7 @@ $cli call settings.getGeneralSettings | grep -q '"popToRootTimeout"' && pass "se
 echo "root search (Phase 1)"
 search() { $cli call rootSearch.search "{\"query\":\"$1\"}"; }
 first() { search "$1" | python3 -I -c 'import json,sys; d=json.load(sys.stdin); print(d["data"][0]["rows"][0]["title"] if d["ok"] and d["data"] else "")'; }
-[[ $(first nightlight) == "Nightlight" ]] && pass "Omarchy menu items are searchable (nightlight)" || bad "Omarchy menu items are searchable (nightlight)"
+[[ $(first nightlight) =~ ^Nightlight(\ On|\ Off)?$ ]] && pass "Omarchy menu items are searchable (nightlight)" || bad "Omarchy menu items are searchable (nightlight)"
 [[ $(first "") != "" ]] && pass "empty root has sections" || bad "empty root has sections"
 search zzzz-no-match | grep -q '"id":"fallback-commands"' && pass "fallback section for unmatched queries" || bad "fallback section for unmatched queries"
 count=$($cli call system.info | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["data"]["candidates"])')

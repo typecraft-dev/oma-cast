@@ -1,0 +1,14 @@
+// Selected unchanged rows from omacom/omarchy v4.0.0, default/omarchy/omarchy-menu.jsonc.
+{
+  "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"provider":"apps"},
+  "trigger": {"icon":"󱓞","label":"Trigger"},
+  "style": {"icon":"","label":"Style"},
+  "setup": {"icon":"","label":"Setup","aliases":["settings"]},
+  "install": {"icon":"󰉉","label":"Install"},
+  "remove": {"icon":"󰭌","label":"Remove","aliases":["uninstall"]},
+  "update": {"icon":"","label":"Update","aliases":["restart","refresh"]},
+  "system": {"icon":"","label":"System","aliases":["power-menu"]},
+  "trigger.toggle": {"icon":"󰔎","label":"Toggle","aliases":["toggle","toggles"]},
+  "trigger.toggle.nightlight": {"icon":"󰔎","label":"Nightlight","action":"omarchy-toggle-nightlight"},
+  "style.font": {"icon":"","label":"Font","provider":"fonts"}
+}

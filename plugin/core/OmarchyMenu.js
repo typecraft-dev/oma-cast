@@ -158,6 +158,11 @@ function shellQuote(value) {
 }
 
 var PROVIDERS = {
+  "kernels": {
+    script: "current=$(omarchy-kernel get 2>/dev/null); omarchy-kernel list 2>/dev/null | while read -r k; do [[ -z $k ]] && continue; printf '%s\\t%s\\t%s\\n' \"$k\" \"$k\" \"$current\"; done",
+    icon: "",
+    actionFor: function(value) { return "omarchy-kernel set " + shellQuote(value) }
+  },
   "fonts": {
     script: "current=$(omarchy-font-current 2>/dev/null); omarchy-font-list 2>/dev/null | while read -r f; do [[ -z $f ]] && continue; printf '%s\\t%s\\t%s\\n' \"$f\" \"$f\" \"$current\"; done",
     icon: "",

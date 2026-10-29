@@ -233,11 +233,6 @@ function buildRecord(candidate, query, options) {
   var tq = transliterate(q)
   var frecency = typeof c.frecency === "number" && isFinite(c.frecency) ? c.frecency : 1
 
-  var title = transliterate(String(c.title || ""))
-  if (tq.charAt(0) === "/") title = title.replace("/", " ")
-  var titleLower = title.toLowerCase()
-  var alternates = Array.isArray(c.alternateTitles) ? c.alternateTitles.map(function(a) { return String(a || "") }) : []
-
   var record = {
     candidate: c,
     query: q,
@@ -265,6 +260,12 @@ function buildRecord(candidate, query, options) {
     return String(term || "").toLowerCase() === q
   })
 
+  if (opts.fleaHits) return fleaRecord(record, opts.fleaHits[c.id], frecency, nowMs)
+
+  var title = transliterate(String(c.title || ""))
+  if (tq.charAt(0) === "/") title = title.replace("/", " ")
+  var titleLower = title.toLowerCase()
+  var alternates = Array.isArray(c.alternateTitles) ? c.alternateTitles.map(function(a) { return String(a || "") }) : []
   record.title = fuzzyMatch(title, tq, { literalQueryDots: literalDots })
   if (record.title === "exact") record.titleMatch = "exact"
   else if (titleLower.indexOf(q) === 0 || alternates.some(function(a) { return a.toLowerCase().indexOf(q) === 0 }))
@@ -316,6 +317,35 @@ function buildRecord(candidate, query, options) {
   return record
 }
 
+
+var FLEA_EXACT = 5000000
+var FLEA_PREFIX = 4000000
+var FLEA_WORD = 3500000
+
+function fleaMatch(score) {
+  return score === null ? "unmatched" : score === FLEA_EXACT ? "exact" : { score: score, skipped: 0 }
+}
+
+function fleaRecord(record, hit, frecency, nowMs) {
+  var c = record.candidate, q = record.query
+  record.flea = true
+  record.keywordScore = -MAX
+  record.searchTerm = searchTermMatch(c.searchTerms, q, frecency, c.openedAt, nowMs)
+  if (hit) {
+    record.keywordScore = matchScore(fleaMatch(hit.keyword))
+    record.title = fleaMatch(hit.title)
+    record.titleScore = matchScore(record.title)
+    record.subtitle = fleaMatch(hit.subtitle)
+    record.subtitleExact = record.subtitle === "exact"
+    record.subtitleScore = matchScore(record.subtitle)
+    if (hit.title === FLEA_EXACT || hit.alternate === FLEA_EXACT) record.titleMatch = "exact"
+    else if (hit.title === FLEA_PREFIX || hit.alternate === FLEA_PREFIX) record.titleMatch = "prefix"
+    if (hit.alternate !== null) record.titleScore = Math.max(record.titleScore, matchScore(fleaMatch(hit.alternate)))
+  }
+  record.textMatched = record.alias !== "unmatched" || !!hit
+  record.isMatching = !!c.alwaysMatching || record.textMatched
+  return record
+}
 
 function collate(a, b) {
   return String(a || "").localeCompare(String(b || ""), undefined, { numeric: true, sensitivity: "base" })
@@ -413,8 +443,14 @@ function compareMatched(a, b, ctx) {
   var aBest = Math.max(a.titleScore, a.subtitleScore)
   var bBest = Math.max(b.titleScore, b.subtitleScore)
   if (aBest !== bBest) return bBest - aBest
+  if (a.flea && b.flea && aBest === -MAX && a.keywordScore !== b.keywordScore)
+    return b.keywordScore - a.keywordScore
 
   if (a.frecency !== b.frecency) return b.frecency - a.frecency
+  if (a.flea && (aBest === FLEA_PREFIX || aBest === FLEA_WORD)) {
+    var shorter = String(a.candidate.title || "").length - String(b.candidate.title || "").length
+    if (shorter !== 0) return shorter
+  }
   if (a.titleScore !== b.titleScore) return b.titleScore - a.titleScore
   if (a.typePriority !== b.typePriority) return b.typePriority - a.typePriority
   var h = heuristic(a) - heuristic(b)

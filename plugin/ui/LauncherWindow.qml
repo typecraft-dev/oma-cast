@@ -6,6 +6,7 @@ import qs.Commons as Commons
 import qs.Ui
 import "../core/Agent.js" as Agent
 import "../core/RootSearch.js" as RootSearch
+import "../core/Rows.js" as Rows
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
 // overlay layer the shell's own emoji picker uses.
@@ -15,6 +16,21 @@ PanelWindow {
   required property var backend
   property var appLibrary: null
   property bool shown: false
+  readonly property bool busy: window.shown && window.backend.loading
+  readonly property int loadingFeedbackDelay: 500
+  property bool loadingVisible: false
+
+  onBusyChanged: {
+    window.loadingVisible = false
+    if (window.busy) loadingDelay.restart()
+    else loadingDelay.stop()
+  }
+
+  Timer {
+    id: loadingDelay
+    interval: window.loadingFeedbackDelay
+    onTriggered: window.loadingVisible = window.busy
+  }
 
   signal dismissRequested()
 
@@ -48,6 +64,8 @@ PanelWindow {
   property string query: ""
   property int selectedIndex: -1
   property var selectedRow: null
+  property int searchSerial: 0
+  property bool searchPending: false
   property bool actionPanelOpen: false
   property var actions: []
   property var toast: null
@@ -68,6 +86,7 @@ PanelWindow {
   property var argValues: ({})
   property int argFocus: -1
   property string argsForId: ""
+  property var pendingPrompt: null
 
   // Navigation bindings (ref 04 §2.8): emacs moves with Ctrl+N (Ctrl+P is the
   // dropdown); vim-motions with Ctrl+J/K, which moves the action panel to
@@ -78,13 +97,12 @@ PanelWindow {
 
   readonly property bool atRoot: window.stack.length === 1
   readonly property bool compact: window.general.windowMode === "compact" && window.atRoot && !window.query
-  // Editor views (alias, quicklink form, import) take the header text as
-  // input instead of searching; a form edits its focused field there.
+  // Editor views take the header text as input instead of searching.
   readonly property bool editor: ["alias", "quicklink-form", "quicklink-import"].indexOf(window.view.kind) >= 0
   readonly property bool formActive: window.view.kind === "quicklink-form"
   readonly property var focusedField: window.formActive ? window.view.fields[window.view.focus] : null
-  // The Open With field filters installed apps instead of taking text.
   readonly property bool pickingApp: !!(window.focusedField && window.focusedField.picker)
+  readonly property bool pickedSelected: window.pickingApp && !!window.selectedRow && window.selectedRow.itemId === (window.focusedField.value || "")
   readonly property string placeholder: {
     var kind = window.view.kind
     if (kind === "alias") return "Type an alias, then press ↵"
@@ -129,6 +147,9 @@ PanelWindow {
 
   onShownChanged: {
     if (window.shown) return
+    window.searchSerial++
+    window.backend.cancelSearch()
+    window.searchPending = false
     window.closePopups()
     var seconds = Number(window.general.popToRootTimeout)
     if (!(seconds > 0)) window.popToRoot()
@@ -162,34 +183,50 @@ PanelWindow {
     var top = next[next.length - 1]
     window.stack = next
     window.query = top.query || ""
-    window.rebuild(false)
-    if (top.selectedIndex >= 0) window.select(top.selectedIndex)
+    window.rebuild(false, top.selectedIndex)
   }
 
 
-  function rebuild(resetSelection) {
+  function rebuild(resetSelection, restoreIndex) {
+    var serial = ++window.searchSerial
+    window.backend.cancelSearch()
     pointerGate.reset()
     var keepId = !resetSelection && window.selectedRow ? window.selectedRow.itemId : ""
-    rows.clear()
+    window.searchPending = false
     if (window.pickingApp) { window.fillOpenWithRows(); return }
-    if (window.editor) { window.select(-1); return }
-    var result = window.backend.callSync("rootSearch.search", { query: window.query, view: window.view, filter: window.atRoot ? window.rootFilter : "all" })
+    if (window.editor) { Rows.update(rows, []); window.select(-1); return }
+    window.searchPending = true
+    var revision = window.backend.candidatesRevision
+    window.backend.searchAsync({ query: window.query, view: window.view, filter: window.atRoot ? window.rootFilter : "all" }, function(result) {
+      if (serial !== window.searchSerial || revision !== window.backend.candidatesRevision) return
+      window.applySearch(result, keepId, restoreIndex)
+      window.searchPending = false
+    })
+  }
+
+  function applySearch(result, keepId, restoreIndex) {
+    if (window.pendingPrompt && window.query !== window.pendingPrompt.title) window.pendingPrompt = null
     if (!result.ok) {
+      window.pendingPrompt = null
+      Rows.update(rows, [])
       window.showToast("failure", result.error)
       window.select(-1)
       return
     }
-    var keepIndex = -1
+    var keepIndex = -1, next = []
     for (var s = 0; s < result.data.length; s++) {
       var section = result.data[s]
-      if (section.title || s > 0) rows.append(window.rowData({ id: "section:" + section.id, title: section.title }, "section"))
+      if (section.title || s > 0) next.push(window.rowData({ id: "section:" + section.id, title: section.title }, "section"))
       for (var r = 0; r < section.rows.length; r++) {
         var c = section.rows[r]
-        if (c.id === keepId) keepIndex = rows.count
-        rows.append(window.rowData(c, c.kind === "calculator" ? "calculator" : "item"))
+        if (c.id === keepId) keepIndex = next.length
+        next.push(window.rowData(c, c.kind === "calculator" ? "calculator" : "item"))
       }
     }
-    window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1))
+    Rows.update(rows, next)
+    if (restoreIndex >= 0 && restoreIndex < rows.count && window.isSelectable(restoreIndex)) window.select(restoreIndex)
+    else window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1))
+    window.takePendingPrompt()
   }
 
   function rowData(c, kind) {
@@ -226,8 +263,14 @@ PanelWindow {
   }
 
   function select(index) {
+    if (index !== window.selectedIndex) {
+      var previous = list.itemAtIndex(window.selectedIndex)
+      if (previous) previous.selected = false
+    }
     window.selectedIndex = index
-    window.selectedRow = index >= 0 && index < rows.count ? rows.get(index) : null
+    var current = list.itemAtIndex(index)
+    if (current) current.selected = true
+    window.selectedRow = Rows.snapshot(rows, index)
     // Argument values belong to one command; a different row starts empty.
     var id = window.selectedRow ? window.selectedRow.itemId : ""
     if (id !== window.argsForId) {
@@ -275,12 +318,13 @@ PanelWindow {
 
 
   function actionsForSelected() {
-    if (!window.selectedRow) return []
+    if (window.searchPending || !window.selectedRow) return []
     var r = window.backend.callSync("rootSearch.getActions", { id: window.selectedRow.itemId })
     return r.ok ? r.data : []
   }
 
   function perform(actionId, index) {
+    if (window.searchPending) return
     if (index !== undefined && index >= 0) window.select(index)
     if (!window.selectedRow) return
     window.actionPanelOpen = false
@@ -328,16 +372,16 @@ PanelWindow {
   function toggleActionPanel() {
     if (window.actionPanelOpen) { window.actionPanelOpen = false; return }
     window.actions = window.actionsForSelected()
-    actionPanel.filter = ""
     window.actionPanelOpen = window.actions.length > 0
+    if (actionPanel.item) actionPanel.item.filter = ""
   }
 
   function toggleDropdown() {
     if (window.dropdownOpen || !window.atRoot) { window.dropdownOpen = false; return }
-    dropdown.filter = ""
     window.dropdownOpen = true
+    dropdown.item.filter = ""
     var at = RootSearch.FILTERS.map(function(f) { return f.id }).indexOf(window.rootFilter)
-    dropdown.selectedIndex = Math.max(0, at)
+    dropdown.item.selectedIndex = Math.max(0, at)
   }
 
   function setRootFilter(id) {
@@ -358,8 +402,8 @@ PanelWindow {
   function toggleToastPanel() {
     if (window.toastPanelOpen) { window.toastPanelOpen = false; toastTimer.restart(); return }
     if (!window.toast || !window.toast.actions.length) return
-    toastPanel.filter = ""
     window.toastPanelOpen = true
+    toastPanel.item.filter = ""
     toastTimer.stop()
   }
 
@@ -381,7 +425,6 @@ PanelWindow {
     if (action.done) window.showToast("success", action.done)
   }
 
-  // Focus the first required argument still empty; true when there is one.
   function focusMissingArgument() {
     if (!window.argDefs.length) return false
     var missing = RootSearch.missingArgument(window.argDefs, window.argValues)
@@ -390,7 +433,6 @@ PanelWindow {
     return true
   }
 
-  // A quicklink argument with options steps through them with ↑/↓ [D].
   function stepOption(def, value, direction) {
     var options = def.options
     var current = String(value || "").toLowerCase()
@@ -400,7 +442,7 @@ PanelWindow {
     return options[next].title
   }
 
-  // Typing, Tab, Backspace and option ↑/↓ while an argument pill has focus.
+  // Typing, Tab, Backspace and option steps while an argument pill has focus.
   function handleArgumentKey(event, shift) {
     var def = window.argDefs[window.argFocus]
     var value = window.argValues[def.name] || ""
@@ -421,7 +463,7 @@ PanelWindow {
       return true
     }
     if (key === Qt.Key_Backspace && !value) { window.argFocus--; return true }
-    // editsFilter skips an empty value; an edit key there must not fall through to the search text.
+    // editsFilter ignores an empty value, so Ctrl+U there would clear the search text.
     if (Util.editsFilter(event, value || " ")) { if (value) set(Util.editedFilter(event, value)); return true }
     if (window.isTyping(event)) { set(value + event.text); return true }
     return false
@@ -432,10 +474,7 @@ PanelWindow {
     if (!r.ok) window.showToast("failure", r.error)
   }
 
-  // --------------------------------------------------------------- forms
 
-  // The header text for a field: its value, except the picker, which starts
-  // with an empty search.
   function fieldText(field) {
     return field && !field.picker ? String(field.value || "") : ""
   }
@@ -446,7 +485,6 @@ PanelWindow {
     window.stack = stack
   }
 
-  // Copy the header into the focused field's value.
   function stashField() {
     if (!window.formActive || window.pickingApp) return
     var fields = window.view.fields.map(function(f) { return Object.assign({}, f) })
@@ -462,7 +500,6 @@ PanelWindow {
     window.rebuild(true)
   }
 
-  // Fill a new, untouched Create Quicklink form from the clipboard.
   function autofillQuicklink(suggested) {
     if (!window.formActive || window.view.quicklinkId) return
     window.stashField()
@@ -484,16 +521,15 @@ PanelWindow {
     var current = window.focusedField.value || ""
     var r = window.backend.callSync("quicklinks.openWithChoices", { query: window.query, current: current })
     var choices = r.ok ? r.data : []
+    var next = []
     var keep = -1
     for (var i = 0; i < choices.length; i++) {
-      if (choices[i].id === current) keep = rows.count
-      rows.append(window.rowData(choices[i], "item"))
+      if (choices[i].id === current) keep = next.length
+      next.push(window.rowData(choices[i], "item"))
     }
+    Rows.update(rows, next)
     window.select(!window.query && keep >= 0 ? keep : window.nextSelectable(-1, 1))
   }
-
-  // ↵ in Open With picks the highlighted app; ↵ on the app already chosen saves.
-  readonly property bool pickedSelected: window.pickingApp && !!window.selectedRow && window.selectedRow.itemId === (window.focusedField.value || "")
 
   function chooseOpenWith() {
     if (!window.selectedRow) return
@@ -521,10 +557,16 @@ PanelWindow {
     window.rebuild(false)
   }
 
-  // `oma-cast run quicklink:<id>` for a link with arguments: find its row
-  // and put the cursor in its first empty pill.
   function promptArguments(target) {
-    window.setQuery(String(target.title || ""))
+    window.pendingPrompt = { id: String(target.id || ""), title: String(target.title || "") }
+    if (window.query === window.pendingPrompt.title) window.rebuild(true)
+    else window.setQuery(window.pendingPrompt.title)
+  }
+
+  function takePendingPrompt() {
+    var target = window.pendingPrompt
+    if (!target) return
+    window.pendingPrompt = null
     for (var i = 0; i < rows.count; i++) {
       if (rows.get(i).itemId === target.id) { window.select(i); window.focusMissingArgument(); return }
     }
@@ -542,7 +584,6 @@ PanelWindow {
   function isTab(event) { return event.key === Qt.Key_Tab && !(event.modifiers & Qt.ShiftModifier) }
   function isBacktab(event) { return event.key === Qt.Key_Backtab || (event.key === Qt.Key_Tab && (event.modifiers & Qt.ShiftModifier) !== 0) }
 
-  // Keys inside an editor view; true when handled.
   function handleEditorKey(event, key, ctrl, enter) {
     var kind = window.view.kind
     if (kind === "alias") {
@@ -567,7 +608,12 @@ PanelWindow {
         else window.move(-1)
         return true
       }
-      return false
+      if (Util.editsFilter(event, window.query || " ")) {
+        if (window.query) window.setQuery(Util.editedFilter(event, window.query))
+        return true
+      }
+      if (window.isTyping(event)) { window.setQuery(window.query + event.text); return true }
+      return true
     }
     if (enter) { if (focus >= last) window.saveQuicklink(); else window.setFormFocus(focus + 1); return true }
     if (key === Qt.Key_Down) { window.setFormFocus(focus + 1); return true }
@@ -619,7 +665,7 @@ PanelWindow {
     var text = clipboardInput.text.replace(/[\r\n\u2028\u2029]+/g, " ")
     clipboardInput.clear()
     if (!text) return
-    if (window.actionPanelOpen) actionPanel.filter += text
+    if (window.actionPanelOpen) actionPanel.item.filter += text
     else if (window.argFocus >= 0) {
       var name = window.argDefs[window.argFocus].name
       var values = Object.assign({}, window.argValues)
@@ -707,7 +753,6 @@ PanelWindow {
 
     if (window.alert) {
       if (key === Qt.Key_Escape) window.alert = null
-      // A held Enter that opened the alert must not also confirm it.
       else if (enter && !event.isAutoRepeat) window.confirmAlert()
       return true
     }
@@ -729,15 +774,15 @@ PanelWindow {
     }
     if (window.dropdownOpen) {
       if (ctrl && !shift && key === Qt.Key_P) { window.dropdownOpen = false; return true }
-      return window.handlePopupKey(event, dropdown, ctrl, alt)
+      return window.handlePopupKey(event, dropdown.item, ctrl, alt)
     }
     if (window.toastPanelOpen) {
       if (ctrl && key === Qt.Key_T) { window.toggleToastPanel(); return true }
-      return window.handlePopupKey(event, toastPanel, ctrl, alt)
+      return window.handlePopupKey(event, toastPanel.item, ctrl, alt)
     }
     if (window.actionPanelOpen) {
       if (window.isActionPanelKey(ctrl, alt, shift, key)) { window.actionPanelOpen = false; return true }
-      return window.handlePopupKey(event, actionPanel, ctrl, alt)
+      return window.handlePopupKey(event, actionPanel.item, ctrl, alt)
     }
 
     if (window.editor) {
@@ -748,6 +793,8 @@ PanelWindow {
       if (window.isActionPanelKey(ctrl, alt, shift, key)) { window.toggleActionPanel(); return true }
       if (ctrl && !shift && key === Qt.Key_P) { window.toggleDropdown(); return true }
       if (ctrl && !shift && key === Qt.Key_T) { window.toggleToastPanel(); return true }
+      // Shift+Enter opens a new window for apps; Enter focuses an open one.
+      if (enter && shift && !ctrl && !alt && window.performIfOffered(["open-new"])) return true
       if (enter && ctrl && shift) { window.performNth(2); return true }
       if (enter && ctrl) { window.performNth(1); return true }
       if (enter) { window.performNth(0); return true }
@@ -1014,22 +1061,6 @@ PanelWindow {
         height: Style.spacing.hairline
         color: Util.alpha(window.look.foreground, 0.12)
         visible: !window.compact
-
-        Rectangle {
-          id: loader
-          visible: window.backend.loading && window.shown
-          height: Math.max(2, Style.space(2))
-          width: parent.width / 4
-          anchors.verticalCenter: parent.verticalCenter
-          color: window.look.accent
-          NumberAnimation on x {
-            running: loader.visible
-            loops: Animation.Infinite
-            from: -loader.width
-            to: header.width
-            duration: 900
-          }
-        }
       }
     }
 
@@ -1043,7 +1074,7 @@ PanelWindow {
       anchors.leftMargin: card.borderLeft + window.px(8)
       anchors.rightMargin: card.borderRight + window.px(8)
 
-      // The form's fields; the focused one shows the header text.
+
       Column {
         id: formColumn
         visible: window.formActive
@@ -1117,14 +1148,16 @@ PanelWindow {
         visible: !window.editor || window.pickingApp
         clip: true
         model: rows
+        reuseItems: true
         boundsBehavior: Flickable.StopAtBounds
 
         delegate: ResultRow {
-          selected: index === window.selectedIndex
+          Component.onCompleted: selected = index === window.selectedIndex
+          ListView.onReused: selected = index === window.selectedIndex
+          ListView.onPooled: selected = false
           look: window.look
           appLibrary: window.appLibrary
           zoom: window.zoom
-          // Hover doesn't move the selection while a pill is being typed in.
           onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && window.argFocus < 0 && pointerGate.moved(item, mouse)) window.select(i) }
           onClicked: function(i) {
             if (window.pickingApp) { window.select(i); window.chooseOpenWith() }
@@ -1213,9 +1246,10 @@ PanelWindow {
           color: window.toast && window.toast.style === "failure" ? "#e06c75" : window.look.accent
         }
         Text {
+          id: footerStatus
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
-          text: window.toast ? window.toast.title : window.view.title
+          text: window.toast ? window.toast.title : window.loadingVisible ? "Loading…" : window.view.title
           color: window.look.foreground
           opacity: window.toast ? 0.9 : 0.6
           elide: Text.ElideRight
@@ -1293,78 +1327,88 @@ PanelWindow {
       }
     }
 
-    ActionPanel {
+    Loader {
       id: actionPanel
-      visible: window.actionPanelOpen
+      active: window.actionPanelOpen
       z: 10
       anchors.right: parent.right
       anchors.rightMargin: card.borderRight + window.px(10)
       anchors.bottom: footer.top
       anchors.bottomMargin: window.px(6)
-      actions: window.actions
-      look: window.look
-      zoom: window.zoom
-      onActivated: function(actionId) { window.perform(actionId) }
+      sourceComponent: ActionPanel {
+        actions: window.actions
+        look: window.look
+        zoom: window.zoom
+        onActivated: function(actionId) { window.perform(actionId) }
+      }
     }
 
-    ActionPanel {
+    Loader {
       id: dropdown
-      visible: window.dropdownOpen
+      active: window.dropdownOpen
       z: 10
       width: window.px(240)
       anchors.right: parent.right
       anchors.rightMargin: card.borderRight + window.px(10)
       anchors.top: header.bottom
       anchors.topMargin: window.px(4)
-      placeholder: "Filter…"
-      actions: RootSearch.FILTERS.map(function(f) {
-        return { id: f.id, title: f.title, shortcut: "", section: "filter", icon: f.id === window.rootFilter ? "✓" : " " }
-      })
-      look: window.look
-      zoom: window.zoom
-      onActivated: function(id) { window.setRootFilter(id) }
+      sourceComponent: ActionPanel {
+        placeholder: "Filter…"
+        actions: RootSearch.FILTERS.map(function(f) {
+          return { id: f.id, title: f.title, shortcut: "", section: "filter", icon: f.id === window.rootFilter ? "✓" : " " }
+        })
+        look: window.look
+        zoom: window.zoom
+        onActivated: function(id) { window.setRootFilter(id) }
+      }
     }
 
-    ActionPanel {
+    Loader {
       id: toastPanel
-      visible: window.toastPanelOpen
+      active: window.toastPanelOpen
       z: 10
       width: window.px(280)
       anchors.left: parent.left
       anchors.leftMargin: card.borderLeft + window.px(10)
       anchors.bottom: footer.top
       anchors.bottomMargin: window.px(6)
-      placeholder: "Search toast actions…"
-      actions: (window.toast ? window.toast.actions : []).map(function(a) {
-        return { id: a.id, title: a.title, shortcut: "", section: "toast", icon: " " }
-      })
-      look: window.look
-      zoom: window.zoom
-      onActivated: function(id) { window.runToastAction(id) }
+      sourceComponent: ActionPanel {
+        placeholder: "Search toast actions…"
+        actions: (window.toast ? window.toast.actions : []).map(function(a) {
+          return { id: a.id, title: a.title, shortcut: "", section: "toast", icon: " " }
+        })
+        look: window.look
+        zoom: window.zoom
+        onActivated: function(id) { window.runToastAction(id) }
+      }
     }
 
-    InfoPanel {
-      visible: window.aboutOpen
+    Loader {
+      active: window.aboutOpen
       z: 10
       anchors.right: parent.right
       anchors.rightMargin: card.borderRight + window.px(10)
       anchors.bottom: footer.top
       anchors.bottomMargin: window.px(6)
-      title: window.selectedRow ? window.selectedRow.title : ""
-      rows: window.aboutRows
-      look: window.look
-      zoom: window.zoom
+      sourceComponent: InfoPanel {
+        title: window.selectedRow ? window.selectedRow.title : ""
+        rows: window.aboutRows
+        look: window.look
+        zoom: window.zoom
+      }
     }
 
-    Alert {
-      visible: !!window.alert
+    Loader {
+      active: !!window.alert
       z: 20
       anchors.fill: parent
-      spec: window.alert ? window.alert.spec : null
-      look: window.look
-      zoom: window.zoom
-      onConfirmed: window.confirmAlert()
-      onCancelled: window.alert = null
+      sourceComponent: Alert {
+        spec: window.alert ? window.alert.spec : null
+        look: window.look
+        zoom: window.zoom
+        onConfirmed: window.confirmAlert()
+        onCancelled: window.alert = null
+      }
     }
   }
 }

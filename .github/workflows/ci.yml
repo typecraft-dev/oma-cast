@@ -22,8 +22,19 @@ jobs:
       - name: Unit tests
         run: node --test tests/*.test.js
 
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Search helper
+        run: |
+          cargo test --locked --manifest-path search/Cargo.toml
+          bin/build-search
+          node --test tests/search-integration.test.js
+
       - name: Shell syntax
-        run: bash -n bin/oma-cast tests/smoke.sh
+        run: |
+          for script in bin/oma-cast bin/build-search tests/smoke.sh tests/native-transport.sh; do
+            bash -n "$script"
+          done
 
       - name: Plugin manifest is valid JSON
         run: node -e 'JSON.parse(require("fs").readFileSync("plugin/manifest.json", "utf8"))'

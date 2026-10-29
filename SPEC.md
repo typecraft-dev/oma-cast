@@ -73,6 +73,17 @@ Consequences for Linux:
 
 ### 2.0 Quickshell build (current) [D, 2026-10-19]
 
+**Search acceleration [D, 2026-10-28].** An optional Rust helper vendors Flea's MIT typed matcher; this is an
+approved exception to the QML/JS-only runtime. The launcher searches asynchronously over JSON lines while oma-cast
+still applies personalization, filtering, calculator and fallback sections. Exact, prefix, word, subsequence and
+typo matches use Flea's tiers, with shorter titles breaking prefix/word ties after frecency. High sensitivity excludes
+typo-only hits; medium and low use Flea's bounded edit budget (one edit from four alphanumeric letters, two from eight).
+The old matcher remains the synchronous IPC and failure fallback. Query/view/filter/revision changes and hide cancel
+obsolete results; navigation cannot activate an entry while its search is pending. Startup, malformed replies, exit
+and timeout all have a bounded fallback. Build-time dependencies are Rust, serde and serde_json; no extra runtime or
+system daemon. Flea's source provenance and license live in `search/`. Results update the existing ListModel in place and reuse visible delegates, following Flea 0.3.12's stable-model technique. Unchanged answers produce no model writes.
+
+
 **This supersedes the Tauri + Node design below for Omarchy.** Omarchy's desktop (bar, menus, launcher, notifications, lock screen) runs in one long-lived Quickshell process, `omarchy-shell`, whose features are plugins. oma-cast is one more plugin there, built the way Omarchy builds its own menu and emoji picker. The reasons:
 - **No external dependencies.** No Tauri, WebKitGTK, Node runtime, npm packages or native SQLite modules. It needs only what Omarchy already ships: Quickshell, Qt, bash, socat and Hyprland.
 - **Native look.** The plugin reads the active Omarchy theme's `[menu]` tokens (`qs.Commons.Color`, `Style`), so `omarchy theme set` restyles it live with no theme parser.
@@ -650,12 +661,12 @@ Each running menu-bar command owns one SNI item (ksni):
   - search field with placeholder "Search for apps and commands…" (each view sets its own)
   - inline argument pills after the measured text width
   - optional right-side dropdown accessory (Ctrl+P)
-  - a 2 px loading bar under the header
+  - a static divider under the header; loading feedback stays in the footer [D, 2026-10-28]
 - **Body:** sectioned list.
   - Row: icon 22 px, title, subtitle in secondary colour, and right-aligned accessories in this order: tags/text/date, alias badge, hotkey glyphs, type label ("Application", "Command", "Quicklink", …).
   - Master-detail split for list detail (~40/60). Grid view (columns 1–8). Empty state with icon, title and description.
 - **Footer (42 px):**
-  - left: current context icon + title, or the active toast (style icon, title, message)
+  - left: current context icon + title, or the active toast (style icon, title, message); show quiet "Loading…" after 500 ms of visible loading, with toast priority and reset on hide [D, 2026-10-28]
   - right: primary action title + ↵, a separator, "Actions" + Ctrl+K
 - **Action panel (Ctrl+K):** popover anchored bottom-right, with its own search field and sections (primary, then copy, configure, deeplink, delete).
   - Each row shows its shortcut.

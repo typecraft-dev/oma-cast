@@ -17,8 +17,86 @@ Item {
   property var providerItems: ({})
   property bool loading: guardProc.running || providerProc.running
   property int revision: 0
+  property var guardCompiler: null
 
   signal message(string level, string text, var metadata)
+
+  function createGuardCompiler() {
+    try {
+      var path = source.omarchyPath + "/shell/plugins/menu/MenuModel.js"
+      var url = "file://" + path.split("/").map(encodeURIComponent).join("/")
+      source.guardCompiler = Qt.createQmlObject(
+        "import QtQml\nimport " + JSON.stringify(url) + " as Stock\n"
+          + "QtObject { function compile(items) { return Stock.guardScript(items) } }",
+        source, "OmarchyGuardCompiler")
+    } catch (error) {
+      source.guardCompiler = null
+    }
+  }
+
+  Component.onCompleted: { source.createGuardCompiler(); source.refresh() }
+  Component.onDestruction: if (source.guardCompiler) source.guardCompiler.destroy()
+
+  function guardItems(tree) {
+    var items = Object.create(null)
+    for (var i = 0; i < tree.order.length; i++) {
+      var id = tree.order[i]
+      if (!Object.prototype.hasOwnProperty.call(tree.items, id)) continue
+      var item = tree.items[id]
+      if (item && /^[A-Za-z0-9._-]+$/.test(item.id)) items[item.id] = item
+    }
+    return items
+  }
+
+  function compileGuards(tree, items) {
+    if (source.guardCompiler) {
+      try {
+        var script = source.guardCompiler.compile(items)
+        if (typeof script === "string") return script
+      } catch (error) {}
+      source.guardCompiler.destroy()
+      source.guardCompiler = null
+    }
+    return OmarchyMenu.guardScript(tree)
+  }
+
+  function guardKeys(items) {
+    var keys = []
+    for (var id in items) {
+      if (items[id].when) keys.push(id + ":w")
+      if (items[id].checked) keys.push(id + ":c")
+      if (items[id].disabled) keys.push(id + ":d")
+    }
+    return keys
+  }
+
+  function finishGuards(exitCode, exitStatus) {
+    var tree = guardProc.requestTree
+    var expected = guardProc.expectedGuards
+    guardProc.requestTree = null
+    guardProc.expectedGuards = []
+    if (!tree) return
+    if (tree !== source.tree) { source.refresh(); return }
+    if (exitCode !== 0 || exitStatus !== 0) {
+      source.message("warning", "Menu guard refresh failed; keeping previous results.", null)
+      return
+    }
+    var received = Object.create(null)
+    var lines = guardProc.collected.split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      // Guard rows look like system.lock:w:1, with one row per requested condition.
+      var match = /^([A-Za-z0-9._-]+:[wcd]):[01]$/.exec(lines[i].trim())
+      if (match) received[match[1]] = true
+    }
+    for (var j = 0; j < expected.length; j++) {
+      if (!received[expected[j]]) {
+        source.message("warning", "Menu guard refresh was incomplete; keeping previous results.", null)
+        return
+      }
+    }
+    source.guards = OmarchyMenu.parseGuardOutput(guardProc.collected)
+    source.revision++
+  }
 
   function rebuild() {
     source.tree = OmarchyMenu.buildTree(source.defaultItems, source.userItems)
@@ -28,9 +106,12 @@ Item {
 
   function refresh() {
     if (!guardProc.running) {
-      var script = OmarchyMenu.guardScript(source.tree)
+      var items = source.guardItems(source.tree)
+      var script = source.compileGuards(source.tree, items)
       if (script) {
         guardProc.collected = ""
+        guardProc.requestTree = source.tree
+        guardProc.expectedGuards = source.guardKeys(items)
         guardProc.command = ["bash", "-lc", script]
         guardProc.running = true
       }
@@ -80,11 +161,11 @@ Item {
   Process {
     id: guardProc
     property string collected: ""
+    property var requestTree: null
+    property var expectedGuards: []
     stdout: SplitParser { onRead: function(line) { guardProc.collected += line + "\n" } }
     onExited: function(exitCode, exitStatus) {
-      if (exitStatus !== 0) return
-      source.guards = OmarchyMenu.parseGuardOutput(guardProc.collected)
-      source.revision++
+      source.finishGuards(exitCode, exitStatus)
     }
   }
 

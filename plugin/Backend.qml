@@ -7,6 +7,7 @@ import "core/Paths.js" as Paths
 import "core/Log.js" as Log
 import "core/Schema.js" as Schema
 import "core/Ranker.js" as Ranker
+import "core/FleaSearch.js" as FleaSearch
 import "core/Frecency.js" as Frecency
 import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
@@ -36,7 +37,7 @@ Item {
   property var candidates: []
   property var candidatesById: ({})
   property int candidatesRevision: 0
-  readonly property bool loading: menuSource.loading || agentLauncher.checking
+  readonly property bool loading: menuSource.loading || agentLauncher.checking || nativeSearch.pending !== null
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
@@ -46,6 +47,25 @@ Item {
 
   function call(method, data) { return Rpc.call(backend.registry, method, data) }
   function callSync(method, data) { return Rpc.callSync(backend.registry, method, data) }
+  function cancelSearch() { nativeSearch.cancel() }
+
+  function searchAsync(data, callback) {
+    nativeSearch.cancel()
+    var query = String(data && data.query || "").trim()
+    var view = data && data.view
+    if (!query || (view && view.kind !== "root")) {
+      callback(backend.callSync("rootSearch.search", data))
+      return
+    }
+    nativeSearch.search(Ranker.transliterate(query.toLowerCase()), backend.searchContext().sensitivity, function(matches) {
+      callback(backend.callSync("rootSearch.search", Object.assign({}, data, { fleaHits: matches })))
+    })
+  }
+
+  NativeSearch {
+    id: nativeSearch
+    onFailed: function(message) { backend.log("warning", "search", message) }
+  }
   function subscribe(method, callback) { return Rpc.subscribe(backend.registry, method, callback) }
 
   function emit(method, data) {
@@ -80,8 +100,12 @@ Item {
     if (quicklinksStore.loaded) next = next.concat(Quicklinks.list(quicklinksStore.doc).map(Quicklinks.toCandidate))
     var byId = ({})
     for (var j = 0; j < next.length; j++) byId[next[j].id] = next[j]
+    var entries = FleaSearch.entries(next, Ranker.transliterate)
+    nativeSearch.cancel()
     backend.candidates = next
     backend.candidatesById = byId
+    nativeSearch.ids = next.map(function(c) { return c.id })
+    nativeSearch.entries = entries
     backend.candidatesRevision++
   }
 
@@ -222,6 +246,19 @@ Item {
     return candidate.kind === "omarchy-link" ? candidate.target : candidate.menuId
   }
 
+  function openMenu(item) {
+    if (item.provider && !OmarchyMenu.PROVIDERS[item.provider]) {
+      backend.summonPlugin("omarchy.menu", JSON.stringify({ menu: item.id }))
+      return { close: true }
+    }
+    return { push: { kind: "menu", menuId: item.id, title: item.label } }
+  }
+
+  function launchApp(candidate) {
+    if (backend.appLibrary) backend.appLibrary.launch(candidate.appId, candidate.title)
+    else Util.execArgv(["uwsm-app", "--", "gtk-launch", candidate.appId + ".desktop"])
+  }
+
   function performAction(data) {
     var id = String(data && data.id || "")
     var action = String(data && data.action || "open")
@@ -233,8 +270,7 @@ Item {
       switch (candidate.kind) {
         case "app":
           backend.recordVisit(id, query)
-          if (backend.appLibrary) backend.appLibrary.launch(candidate.appId, candidate.title)
-          else Util.execArgv(["uwsm-app", "--", "gtk-launch", candidate.appId + ".desktop"])
+          appFocuser.open(candidate)
           return { close: true }
         case "omarchy-action":
           if (candidate.disabled) return { toast: { style: "failure", title: candidate.title + " is already set up" } }
@@ -243,12 +279,12 @@ Item {
           return { close: true }
         case "omarchy-menu":
           backend.recordVisit(id, query)
-          return { push: { kind: "menu", menuId: candidate.menuId, title: candidate.title } }
+          return backend.openMenu(menuSource.tree.items[candidate.menuId])
         case "omarchy-link":
           backend.recordVisit(id, query)
           var target = menuSource.tree.items[candidate.target]
           if (!target) return { toast: { style: "failure", title: "Menu " + candidate.target + " not found" } }
-          return { push: { kind: "menu", menuId: target.id, title: target.label } }
+          return backend.openMenu(target)
         case "builtin":
           if (candidate.run.url) {
             var values = (data && data.arguments) || {}
@@ -273,6 +309,10 @@ Item {
     }
 
     switch (action) {
+      case "open-new":
+        backend.recordVisit(id, query)
+        backend.launchApp(candidate)
+        return { close: true }
       case "open-in-omarchy-menu":
         backend.summonPlugin("omarchy.menu", JSON.stringify({ menu: backend.omarchyRouteFor(candidate) }))
         return { close: true }
@@ -574,6 +614,7 @@ Item {
         var query = String(data && data.query || "")
         var view = data && data.view
         var ctx = backend.searchContext()
+        if (data && data.fleaHits) ctx.fleaHits = data.fleaHits
         var sections
         if (view && view.kind === "menu") sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
         else if (view && view.kind === "quicklinks") sections = RootSearch.quicklinkSections(backend.candidates, query, ctx, backend.deps)
@@ -759,6 +800,11 @@ Item {
       calculatorData.refresh()
     }
     if (method === "window.visibilityChanged" && data && !data.visible) agentLauncher.cancel()
+  }
+
+  AppFocuser {
+    id: appFocuser
+    onLaunchRequested: function(candidate) { backend.launchApp(candidate) }
   }
 
   AgentLauncher {
