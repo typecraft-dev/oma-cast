@@ -414,7 +414,7 @@ function lex(input) {
   var s = input
   var tokens = []
   var i = 0
-  var depth = 0
+  var calls = []
   var m
   while (i < s.length) {
     var rest = s.slice(i)
@@ -439,8 +439,8 @@ function lex(input) {
     if ((m = /^0x([0-9a-f]+)(?![0-9a-z])/i.exec(rest))) { tokens.push({ t: "num", v: parseInt(m[1], 16), base: 16 }); i += m[0].length; continue }
     if ((m = /^0b([01]+)(?![0-9a-z])/i.exec(rest))) { tokens.push({ t: "num", v: parseInt(m[1], 2), base: 2 }); i += m[0].length; continue }
     if ((m = /^0o([0-7]+)(?![0-9a-z])/i.exec(rest))) { tokens.push({ t: "num", v: parseInt(m[1], 8), base: 8 }); i += m[0].length; continue }
-    // 1,000,000 groups digits, except inside a call: max(100,200).
-    if ((m = (depth > 0 ? /^\d+(?:\.\d+)?(?:e[+-]?\d+)?|^\.\d+(?:e[+-]?\d+)?/i : /^(?:\d{1,3}(?:,\d{3})+(?![\d])|\d+)(?:\.\d+)?(?:e[+-]?\d+)?|^\.\d+(?:e[+-]?\d+)?/i).exec(rest))) {
+    // Commas separate function arguments; grouping parentheses allow digit groups.
+    if ((m = (calls.length && calls[calls.length - 1] ? /^\d+(?:\.\d+)?(?:e[+-]?\d+)?|^\.\d+(?:e[+-]?\d+)?/i : /^(?:\d{1,3}(?:,\d{3})+(?![\d])|\d+)(?:\.\d+)?(?:e[+-]?\d+)?|^\.\d+(?:e[+-]?\d+)?/i).exec(rest))) {
       var v = parseFloat(m[0].replace(/,/g, ""))
       var len = m[0].length
       // 5k = 5000 (Soulver). [I]
@@ -454,8 +454,11 @@ function lex(input) {
     if (rest.indexOf("**") === 0) { tokens.push({ t: "op", v: "^" }); i += 2; continue }
     if (rest.indexOf("->") === 0 || ch === "→") { tokens.push({ t: "id", v: "to" }); i += ch === "→" ? 1 : 2; continue }
     if ("+-*/^%!(),".indexOf(ch) >= 0) {
-      if (ch === "(") depth++
-      if (ch === ")") depth--
+      if (ch === "(") {
+        var prev = tokens[tokens.length - 1]
+        calls.push(!!prev && prev.t === "id" && Object.prototype.hasOwnProperty.call(FUNCTIONS, prev.v.toLowerCase()))
+      }
+      if (ch === ")") calls.pop()
       tokens.push({ t: "op", v: ch }); i++; continue
     }
     if (ch === "×" || ch === "·" || ch === "⋅") { tokens.push({ t: "op", v: "*" }); i++; continue }
@@ -473,9 +476,19 @@ function lex(input) {
 
 var ENV = null
 
-function num(n, unit) { return { type: "num", n: n, unit: unit || null, pct: false } }
-function pct(fraction) { return { type: "num", n: fraction, unit: null, pct: true } }
-function date(ms, hasTime) { return { type: "date", ms: ms, hasTime: !!hasTime } }
+function num(n, unit) {
+  if (!isFinite(n)) throw new CalcError("non-finite number")
+  return { type: "num", n: n, unit: unit || null, pct: false }
+}
+function pct(fraction) {
+  var v = num(fraction)
+  v.pct = true
+  return v
+}
+function date(ms, hasTime) {
+  if (!isFinite(new Date(ms).getTime())) throw new CalcError("date out of range")
+  return { type: "date", ms: ms, hasTime: !!hasTime }
+}
 
 // Unix time: seconds, or milliseconds from 13 digits up. [D]
 function fromUnix(n) {
@@ -514,7 +527,7 @@ function convert(value, unit) {
 }
 
 // A product or quotient of units, simplified to a named unit when one fits.
-function compound(a, b, sign) {
+function compound(a, b, sign, preserve) {
   var d = dimsCombine(a.dims, b.dims, sign)
   var factor = sign > 0 ? unitFactor(a) * unitFactor(b) : unitFactor(a) / unitFactor(b)
   if (isEmptyDims(d)) return { scalar: factor }
@@ -522,15 +535,17 @@ function compound(a, b, sign) {
   var named = UNITS[sym] || UNITS[sym.replace("·", "")]
   if (named && sameDims(named.dims, d)) return { unit: named, scale: factor / unitFactor(named) }
   var atoms = (a.atoms || []).concat(b.atoms || [])
-  var preferred = preferredUnit(d, atoms)
+  var preferred = preserve ? null : preferredUnit(d, atoms)
   if (preferred) return { unit: preferred, scale: factor / unitFactor(preferred) }
   return { unit: { sym: sym, name: sym, plural: sym, dims: d, factor: factor, offset: 0, long: false, currency: "", hint: "", atoms: atoms }, scale: 1 }
 }
 
 function unitPow(u, p) {
+  if (u.offset) throw new CalcError("affine unit")
   var d = dimsScale(u.dims, p)
   var preferred = preferredUnit(d, u.atoms || [u])
   var factor = Math.pow(unitFactor(u), p)
+  if (!isFinite(factor) || factor === 0) throw new CalcError("unit power out of range")
   if (preferred) return { unit: preferred, scale: factor / unitFactor(preferred) }
   var sup = p === 2 ? "²" : (p === 3 ? "³" : "^" + p)
   return { unit: { sym: u.sym + sup, name: u.sym + sup, plural: u.sym + sup, dims: d, factor: factor, offset: 0, long: false, currency: "", hint: "", atoms: u.atoms }, scale: 1 }
@@ -608,7 +623,7 @@ function multiply(a, b, divide, state) {
   if (b.pct && !a.pct) { state.kind = "percentage"; return num(divide ? a.n / b.n : a.n * b.n, a.unit) }
   if (a.pct && !b.pct && !divide) { state.kind = "percentage"; return num(a.n * b.n, b.unit) }
   var n = divide ? a.n / b.n : a.n * b.n
-  if (a.pct && b.pct) return pct(n)
+  if (a.pct && b.pct) return divide ? num(n) : pct(n)
   if (a.unit && b.unit) {
     if (a.unit.offset || b.unit.offset) throw new CalcError("affine unit")
     var c = compound(a.unit, b.unit, divide ? -1 : 1)
@@ -628,6 +643,7 @@ function power(a, b, state) {
   if (a.unit) {
     if (Math.floor(b.n) !== b.n || a.unit.offset) throw new CalcError("bad unit power")
     var p = unitPow(a.unit, b.n)
+    if (b.n === 0) return num(1)
     return num(Math.pow(a.n, b.n) * p.scale, p.unit)
   }
   return num(Math.pow(a.n, b.n))
@@ -650,18 +666,35 @@ function plainNumber(v) {
 function callFunction(name, args, state) {
   state.ops++
   var fn = FUNCTIONS[name]
+  var variadic = name === "min" || name === "max" || name === "hypot"
+  var optional = name === "log" || name === "round"
+  var count = name === "pow" ? 2 : 1
+  var maxCount = optional ? 2 : count
+  if (args.length < count || (!variadic && args.length > maxCount)) throw new CalcError("bad argument count")
+  for (var i = 0; i < args.length; i++) if (args[i].type !== "num") throw new CalcError("expected a number")
+  if (name === "round" && args.length === 2) {
+    var precision = args[1]
+    if (precision.unit || precision.pct || Math.floor(precision.n) !== precision.n || Math.abs(precision.n) > 308) throw new CalcError("bad precision")
+  }
+  if (name === "log") {
+    if (args[0].n <= 0) throw new CalcError("bad logarithm")
+    if (args.length === 2 && (args[1].n <= 0 || args[1].n === 1)) throw new CalcError("bad logarithm")
+  }
   if (TRIG[name]) {
     var a = args[0]
     var rad = a.unit ? (dimsKey(a.unit.dims) === "A1" ? toBase(a.n, a.unit) : NaN) : a.n
     return num(fn(rad))
   }
-  if (INVERSE_TRIG[name]) return num(fn(plainNumber(args[0])), UNITS.rad)
+  if (INVERSE_TRIG[name]) {
+    if (args[0].unit) throw new CalcError("inverse trig takes plain numbers")
+    return num(fn(plainNumber(args[0])), UNITS.rad)
+  }
   if (UNIT_PRESERVING[name] && args[0].unit) {
     var unit = args[0].unit
     var ns = args.map(function(x, i) { return i > 0 && name === "round" ? x.n : (x.unit ? convert(x, unit).n : x.n) })
     return num(fn.apply(null, ns), unit)
   }
-  for (var i = 0; i < args.length; i++) if (args[i].type !== "num" || args[i].unit) throw new CalcError(name + " takes plain numbers")
+  for (var j = 0; j < args.length; j++) if (args[j].unit) throw new CalcError(name + " takes plain numbers")
   return num(fn.apply(null, args.map(plainNumber)))
 }
 
@@ -676,7 +709,7 @@ function autoDuration(seconds) {
 
 // ----------------------------------------------------------------- dates
 
-function nowMs() { return ENV && ENV.nowMs ? ENV.nowMs : Date.now() }
+function nowMs() { return ENV && typeof ENV.nowMs === "number" ? ENV.nowMs : Date.now() }
 function startOfDay(ms) { var d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime() }
 function today() { return startOfDay(nowMs()) }
 
@@ -758,25 +791,38 @@ Parser.prototype.parseUnit = function(afterNumber) {
   return this.continueUnit(m.unit, 1)
 }
 
-Parser.prototype.continueUnit = function(unit, scale) {
+Parser.prototype.unitExponent = function(unit, scale) {
   for (;;) {
-    if ((this.isOp("/") || this.isWord("per")) && this.peek(1) && this.peek(1).t === "id") {
-      var save = this.i
+    var exponent = null
+    if (this.isOp("^")) {
       this.i++
-      var den = this.matchUnit(true)
-      if (!den) { this.i = save; break }
-      this.i += den.len
-      var c = compound(unit, den.unit, -1)
-      if (c.scalar !== undefined) throw new CalcError("unit cancels")
-      unit = c.unit; scale *= c.scale
-    } else if (this.isOp("^") && this.peek(1) && this.peek(1).t === "num") {
-      this.i++
-      var p = unitPow(unit, this.next().v)
-      unit = p.unit; scale *= p.scale
-    } else if (this.isOp("²") || this.isOp("³")) {
-      var q = unitPow(unit, this.next().v === "²" ? 2 : 3)
-      unit = q.unit; scale *= q.scale
-    } else break
+      var sign = 1
+      if (this.isOp("-") || this.isOp("+")) sign = this.next().v === "-" ? -1 : 1
+      var token = this.next()
+      if (!token || token.t !== "num") throw new CalcError("bad unit exponent")
+      exponent = sign * token.v
+    } else if (this.isOp("²") || this.isOp("³")) exponent = this.next().v === "²" ? 2 : 3
+    if (exponent === null) return { unit: unit, scale: scale }
+    if (!isFinite(exponent) || Math.floor(exponent) !== exponent) throw new CalcError("bad unit exponent")
+    var p = unitPow(unit, exponent)
+    unit = p.unit
+    scale = Math.pow(scale, exponent) * p.scale
+  }
+}
+
+Parser.prototype.continueUnit = function(unit, scale) {
+  var first = this.unitExponent(unit, scale)
+  unit = first.unit; scale = first.scale
+  while ((this.isOp("/") || this.isWord("per")) && this.peek(1) && this.peek(1).t === "id") {
+    var save = this.i
+    this.i++
+    var den = this.matchUnit(true)
+    if (!den) { this.i = save; break }
+    this.i += den.len
+    var powered = this.unitExponent(den.unit, 1)
+    var c = compound(unit, powered.unit, -1, true)
+    if (c.scalar !== undefined) throw new CalcError("unit cancels")
+    unit = c.unit; scale *= c.scale / powered.scale
   }
   return { unit: unit, scale: scale }
 }
@@ -1015,7 +1061,7 @@ Parser.prototype.parsePrimary = function() {
 
   if (t.t === "id") {
     var w = t.v.toLowerCase()
-    if (FUNCTIONS[w]) {
+    if (Object.prototype.hasOwnProperty.call(FUNCTIONS, w)) {
       var args = []
       if (this.isOp("(")) {
         this.i++
@@ -1036,10 +1082,14 @@ Parser.prototype.parsePrimary = function() {
     this.i++
     if (unixLen) {
       this.i += unixLen - 1
-      if (this.peek() && this.peek().t === "num" && !this.peek().base) {
+      var unsignedStamp = this.peek() && this.peek().t === "num" && !this.peek().base
+      var signedStamp = (this.isOp("-") || this.isOp("+")) && this.peek(1) && this.peek(1).t === "num"
+      if (unsignedStamp || signedStamp) {
         this.state.ops++
         this.state.fromUnix = true
-        return fromUnix(this.next().v)
+        var stamp = this.parseUnary()
+        if (stamp.unit || stamp.pct) throw new CalcError("bad timestamp")
+        return fromUnix(stamp.n)
       }
       if (w === "unix" && (unixLen === 2 || this.isWord("now"))) {
         if (this.isWord("now")) this.i++
@@ -1183,6 +1233,7 @@ function trimNumber(x) {
 
 // A measured quantity: 4 decimals, or 4 significant digits below 1. [D]
 function trimMeasure(x) {
+  if (Math.abs(x) >= 1e300) return trimNumber(x)
   if (Math.abs(x) >= 1 || x === 0) return trimNumber(Math.round(x * 1e4) / 1e4)
   return trimNumber(Number(x.toPrecision(4)))
 }
@@ -1232,6 +1283,7 @@ function present(v, state) {
     return { display: out, copy: out, caption: { 16: "Hexadecimal", 2: "Binary", 8: "Octal", 10: "Decimal" }[v.base] }
   }
   if (v.pct) {
+    if (!isFinite(v.n * 100)) throw new CalcError("percent out of range")
     var p = trimNumber(v.n * 100)
     return { display: group(p) + "%", copy: p + "%", caption: "Percent" }
   }
