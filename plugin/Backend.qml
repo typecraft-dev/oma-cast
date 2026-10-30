@@ -442,6 +442,7 @@ Item {
       getActions: function(data) {
         var rowId = String(data && data.id || "")
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
+        if (rowId === RootSearch.LINK_ID) return RootSearch.actionsFor({ kind: "link" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
         var candidate = backend.decorated(rowId)
         if (!candidate) {
@@ -457,6 +458,10 @@ Item {
         if (rowId === RootSearch.CALCULATOR_ID) {
           var calc = backend.calculate(String(data.query || ""))
           return calc ? RootSearch.aboutFor(RootSearch.calculatorCandidate(calc), nowMs) : []
+        }
+        if (rowId === RootSearch.LINK_ID) {
+          var url = RootSearch.linkUrl(data.query)
+          return url ? RootSearch.aboutFor(RootSearch.linkCandidate(url), nowMs) : []
         }
         if (rowId.indexOf("calculator-history:") === 0) {
           var entry = backend.historyEntry(rowId)
@@ -483,6 +488,19 @@ Item {
             return { pending: true }
           }
           Util.execArgv(["omarchy-launch-browser", RootSearch.fallbackUrl(fallback, data.query)])
+          return { close: true }
+        }
+        // The link row is the query itself, parsed again.
+        if (data && data.id === RootSearch.LINK_ID) {
+          var link = RootSearch.linkUrl(data.query)
+          if (!link) throw new Error("Not a web address")
+          var linkAction = String(data.action || "open")
+          if (linkAction === "copy-link") {
+            Util.execArgv(["wl-copy", "--", link])
+            return { close: true, hud: "Copied to Clipboard" }
+          }
+          if (linkAction !== "open" && linkAction !== "open-private") throw new Error("Unknown action " + linkAction)
+          Util.execArgv(linkAction === "open" ? ["omarchy-launch-browser", link] : ["omarchy-launch-browser", "--private", link])
           return { close: true }
         }
         // The calculator row is the query itself, evaluated again.

@@ -232,6 +232,32 @@ function calculatorCandidate(calc) {
   }
 }
 
+// A query that is a web address gets an "Open Link" row above everything
+// else, so ↵ opens it in the default browser instead of searching for it.
+// Raycast's root does the same with its Open URL result [I]. Without a
+// scheme the host needs a letter TLD, `localhost` or an IPv4 address [D], so
+// numbers like "1.5" and calculations stay out.
+var LINK_ID = "link:open"
+var LINK_HOST = /^(localhost|(\d{1,3}\.){3}\d{1,3}|([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63})(:\d{1,5})?([\/?#]\S*)?$/i
+
+function linkUrl(query) {
+  var q = String(query || "").trim()
+  if (!q || /\s/.test(q)) return null
+  if (/^(https?|ftp):\/\/[^\/?#]+/i.test(q)) return q
+  if (/^file:\/\/\//i.test(q)) return q
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(q)) return null
+  if (!LINK_HOST.test(q)) return null
+  // Local dev servers and routers usually serve plain HTTP [D].
+  return (/^(localhost|(\d{1,3}\.){3}\d{1,3})([:\/?#]|$)/i.test(q) ? "http://" : "https://") + q
+}
+
+function linkCandidate(url) {
+  return {
+    id: LINK_ID, type: "command", kind: "link", title: url, subtitle: "Open in default browser",
+    typeLabel: "Link", glyph: "\uf0c1", url: url, rootSearch: { when: "searching" }   // nf-fa-link
+  }
+}
+
 // One saved calculation in Calculator History.
 function historyCandidate(entry, nowMs) {
   return {
@@ -291,6 +317,8 @@ function rootSections(candidates, query, ctx, deps) {
     var searchable = decorated.filter(function(c) { return c.rootSearch.when !== "empty" })
     var results = deps.Ranker.rank(searchable, q, opts)
     var sections = []
+    var link = filtered ? null : linkUrl(q)
+    if (link) sections.push({ id: "link", title: "Link", rows: [{ candidate: linkCandidate(link), record: null }] })
     if (ctx.calculation && !filtered) sections.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
     if (results.length > 0) sections.push({ id: "results", title: "Results", rows: results })
     if (!filtered) sections.push({ id: "fallback-commands", title: "Use “" + q + "” with…", rows: fallbackRows(q) })
@@ -351,6 +379,13 @@ function actionsFor(candidate) {
       calc.push({ id: "delete-all-entries", title: "Delete All Entries", shortcut: "Ctrl Shift D", section: "delete", icon: "" })
     }
     return calc
+  }
+  if (candidate.kind === "link") {
+    return [
+      { id: "open", title: "Open in Browser", shortcut: "↵", section: "primary", icon: "" },
+      { id: "open-private", title: "Open in Private Window", shortcut: "Ctrl ↵", section: "primary", icon: "" },
+      { id: "copy-link", title: "Copy Link", shortcut: "Ctrl Shift C", section: "copy", icon: "" }
+    ]
   }
   var primary
   var list = []
@@ -459,7 +494,7 @@ function aboutFor(c, nowMs) {
   }
   add("Title", c.title)
   add("Type", c.typeLabel)
-  if (c.kind !== "fallback") add("Location", c.subtitle)
+  if (c.kind !== "fallback" && c.kind !== "link") add("Location", c.subtitle)
   add("ID", c.id)
   if (c.kind === "app") add("Desktop Entry", c.appId + ".desktop")
   if (c.kind === "omarchy-action") add("Command", c.action)
@@ -492,6 +527,9 @@ if (typeof module !== "undefined") {
     menuCandidates: menuCandidates,
     builtinCandidate: builtinCandidate,
     CALCULATOR_ID: CALCULATOR_ID,
+    LINK_ID: LINK_ID,
+    linkUrl: linkUrl,
+    linkCandidate: linkCandidate,
     calculatorCandidate: calculatorCandidate,
     historyCandidate: historyCandidate,
     historySections: historySections,
