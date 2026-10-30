@@ -86,11 +86,12 @@ PanelWindow {
   property var argValues: ({})
   property int argFocus: -1
   property string argsForId: ""
+  readonly property bool queryInputActive: !window.actionPanelOpen && !window.dropdownOpen && !window.toastPanelOpen
+    && !window.aboutOpen && !window.alert && window.argFocus < 0
 
   // Navigation bindings (ref 04 §2.8): emacs moves with Ctrl+N (Ctrl+P is the
   // dropdown); vim-motions with Ctrl+J/K, which moves the action panel to
-  // Alt+K. Ctrl+B/F and Ctrl+H/L move a text cursor in Raycast; our search
-  // field has none, so they do nothing here. [D]
+  // Alt+K.
   readonly property bool vim: window.general.navigationBindings === "vim-motions"
   readonly property string actionPanelKeys: window.vim ? "Alt K" : "Ctrl K"
 
@@ -128,11 +129,19 @@ PanelWindow {
     window.closePopups()
     window.historyIndex = -1
     window.rebuild(true)
-    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+    Qt.callLater(window.focusInput)
   }
+
+  function focusInput() {
+    if (window.queryInputActive) queryText.forceActiveFocus()
+    else keyCatcher.forceActiveFocus()
+  }
+
+  onQueryInputActiveChanged: window.focusInput()
 
   onShownChanged: {
     if (window.shown) return
+    Qt.inputMethod.reset()
     window.searchSerial++
     window.backend.cancelSearch()
     window.searchPending = false
@@ -488,7 +497,11 @@ PanelWindow {
       window.argValues = values
     } else {
       if (window.view.kind === "alias") text = text.replace(/\s/g, "")
-      window.setQuery(window.query + text)
+      var start = queryText.selectionStart
+      var end = queryText.selectionEnd
+      window.setQuery(window.query.slice(0, start) + text + window.query.slice(end))
+      queryText.deselect()
+      queryText.cursorPosition = start + text.length
     }
   }
 
@@ -643,9 +656,8 @@ PanelWindow {
       }
     }
 
-    if (Util.editsFilter(event, window.query)) { window.setQuery(Util.editedFilter(event, window.query)); return true }
+    if (event.modifiers === Qt.ControlModifier && key === Qt.Key_U) { window.setQuery(""); return true }
     if (key === Qt.Key_Backspace && !window.query && !window.atRoot) { window.pop(); return true }
-    if (window.isTyping(event)) { window.setQuery(window.query + event.text); return true }
     return false
   }
 
@@ -681,12 +693,11 @@ PanelWindow {
     borderSpec: window.borderSpec
     clip: true
 
-    MouseArea { anchors.fill: parent; onClicked: { window.closePopups(); keyCatcher.forceActiveFocus() } }
+    MouseArea { anchors.fill: parent; onClicked: { window.closePopups(); window.argFocus = -1; window.focusInput() } }
 
     Item {
       id: keyCatcher
       anchors.fill: parent
-      focus: true
       Keys.priority: Keys.BeforeItem
       Keys.onPressed: function(event) { if (window.handleKey(event)) event.accepted = true }
     }
@@ -731,36 +742,24 @@ PanelWindow {
       // typed text (ref 04 §2.2 WidthSizer).
       readonly property real queryRoom: (filterButton.visible ? filterButton.x - window.px(12) : header.width - window.px(20)) - queryText.x
 
-      Text {
+      QueryInput {
         id: queryText
-        textFormat: Text.PlainText
         x: lead.x + lead.width + window.px(12)
-        width: Math.min(implicitWidth, header.queryRoom - (pills.visible ? pills.width + window.px(10) : 0))
+        width: Math.max(window.px(4), pills.visible ? Math.min(implicitWidth + window.px(4), header.queryRoom - pills.width - window.px(10)) : header.queryRoom)
         anchors.verticalCenter: parent.verticalCenter
-        text: window.query || (pills.visible ? "" : window.placeholder)
+        text: window.query
+        placeholderText: pills.visible ? "" : window.placeholder
         color: window.look.foreground
-        opacity: window.query ? 1 : 0.45
+        accentColor: window.look.accent
+        selectionColor: window.look.accent
+        selectedTextColor: window.look.background
+        enabled: window.queryInputActive
         font.family: window.look.fontFamily
         font.pixelSize: Math.round(Style.font.heading * 1.15 * window.zoom)
-        elide: Text.ElideLeft
-      }
-
-      Rectangle {
-        width: Math.max(1, Style.space(2))
-        height: queryText.font.pixelSize + Style.space(4)
-        anchors.verticalCenter: parent.verticalCenter
-        x: queryText.x + (window.query ? Math.min(queryText.contentWidth, queryText.width) + Style.space(1) : 0)
-        color: window.look.accent
-        visible: window.shown && !window.actionPanelOpen && window.argFocus < 0
-
-        SequentialAnimation on opacity {
-          running: window.shown
-          loops: Animation.Infinite
-          NumberAnimation { to: 1; duration: 0 }
-          PauseAnimation { duration: 530 }
-          NumberAnimation { to: 0; duration: 0 }
-          PauseAnimation { duration: 530 }
-        }
+        focus: true
+        onTextEdited: window.setQuery(text)
+        Keys.priority: Keys.BeforeItem
+        Keys.onPressed: function(event) { event.accepted = window.handleKey(event) }
       }
 
       Row {
@@ -814,7 +813,7 @@ PanelWindow {
             MouseArea {
               anchors.fill: parent
               cursorShape: Qt.IBeamCursor
-              onClicked: { window.argFocus = pill.index; keyCatcher.forceActiveFocus() }
+              onClicked: window.argFocus = pill.index
             }
           }
         }
@@ -860,7 +859,7 @@ PanelWindow {
         MouseArea {
           anchors.fill: parent
           cursorShape: Qt.PointingHandCursor
-          onClicked: { window.toggleDropdown(); keyCatcher.forceActiveFocus() }
+          onClicked: window.toggleDropdown()
         }
       }
 
