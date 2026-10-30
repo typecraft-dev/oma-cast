@@ -18,6 +18,7 @@ Item {
 
   property double ratesFetchedAt: 0
   property double ratesTriedAt: 0
+  property int ratesRevision: 0
   property double zonesAt: 0
   property bool cacheRead: false
   property var request: null
@@ -34,18 +35,56 @@ Item {
     var now = Date.now()
     if (now - data.zonesAt > data.zonesMaxAgeMs && !zoneProcess.running) zoneProcess.running = true
     if (data.ratesEnabled && data.cacheRead && !data.request
-        && now - data.ratesFetchedAt > data.ratesMaxAgeMs && now - data.ratesTriedAt > data.retryAfterMs)
+        && (!data.rates || now - data.ratesFetchedAt >= data.ratesMaxAgeMs)
+        && (!data.ratesTriedAt || now - data.ratesTriedAt >= data.retryAfterMs))
       data.fetchRates()
   }
 
   function validRates(doc) {
-    if (!doc || typeof doc.base !== "string" || !doc.rates || typeof doc.rates !== "object") return null
+    if (!doc || typeof doc.base !== "string" || !/^[A-Z]{3}$/.test(doc.base) || typeof doc.date !== "string"
+        || !/^\d{4}-\d{2}-\d{2}$/.test(doc.date) || !doc.rates
+        || typeof doc.rates !== "object" || Array.isArray(doc.rates)) return null
+    var stamp = Date.parse(doc.date + "T00:00:00Z")
+    if (!isFinite(stamp) || new Date(stamp).toISOString().slice(0, 10) !== doc.date || stamp > Date.now()) return null
     var out = {}
-    for (var code in doc.rates) if (/^[A-Z]{3}$/.test(code) && typeof doc.rates[code] === "number" && doc.rates[code] > 0) out[code] = doc.rates[code]
-    return { base: doc.base, date: String(doc.date || ""), rates: out }
+    for (var code in doc.rates) {
+      var rate = doc.rates[code]
+      if (!/^[A-Z]{3}$/.test(code) || typeof rate !== "number" || !isFinite(rate) || rate <= 0
+          || (code === doc.base && rate !== 1)) return null
+      out[code] = rate
+    }
+    if (!Object.keys(out).length) return null
+    return { base: doc.base, date: doc.date, rates: out }
+  }
+
+  function loadCache(text) {
+    try {
+      var doc = JSON.parse(text)
+      var parsed = data.validRates(doc)
+      if (!parsed || typeof doc.fetchedAt !== "number" || !isFinite(doc.fetchedAt)
+          || doc.fetchedAt <= 0 || doc.fetchedAt > Date.now()
+          || doc.fetchedAt < Date.parse(parsed.date + "T00:00:00Z")) throw new Error("invalid rate cache")
+      if ((!data.rates || parsed.date >= data.rates.date) && doc.fetchedAt >= data.ratesFetchedAt) {
+        data.rates = parsed
+        data.ratesFetchedAt = doc.fetchedAt
+        data.ratesRevision++
+      }
+    } catch (e) {
+      data.message("warning", "ignoring unreadable exchange-rate cache", null)
+    }
+    data.cacheRead = true
+    data.refresh()
+  }
+
+  function cancelRates() {
+    var xhr = data.request
+    data.request = null
+    requestTimeout.stop()
+    if (xhr) xhr.abort()
   }
 
   function fetchRates() {
+    if (!data.ratesEnabled || !data.cacheRead || !data.cacheDir || data.request) return
     data.ratesTriedAt = Date.now()
     var xhr = new XMLHttpRequest()
     data.request = xhr
@@ -55,28 +94,42 @@ Item {
       requestTimeout.stop()
       var parsed = null
       try { parsed = xhr.status === 200 ? data.validRates(JSON.parse(xhr.responseText)) : null } catch (e) { parsed = null }
-      if (!parsed) {
+      if (!parsed || (data.rates && parsed.date < data.rates.date)) {
         data.message("warning", "could not fetch exchange rates", { status: xhr.status })
         return
       }
       data.rates = parsed
       data.ratesFetchedAt = Date.now()
+      data.ratesRevision++
       cache.setText(JSON.stringify({ fetchedAt: data.ratesFetchedAt, base: parsed.base, date: parsed.date, rates: parsed.rates }))
       data.message("info", "exchange rates updated", { date: parsed.date, currencies: Object.keys(parsed.rates).length })
     }
-    xhr.open("GET", data.ratesUrl)
-    xhr.send()
     requestTimeout.restart()
+    try {
+      xhr.open("GET", data.ratesUrl)
+      xhr.send()
+    } catch (e) {
+      data.cancelRates()
+      data.message("warning", "could not fetch exchange rates", null)
+    }
   }
+
+  onRatesEnabledChanged: {
+    if (data.ratesEnabled) {
+      data.refresh()
+    } else {
+      data.cancelRates()
+      data.ratesTriedAt = 0
+    }
+  }
+  Component.onDestruction: data.cancelRates()
 
   Timer {
     id: requestTimeout
     interval: 15000
     onTriggered: {
       if (!data.request) return
-      var xhr = data.request
-      data.request = null
-      xhr.abort()
+      data.cancelRates()
       data.message("warning", "exchange rates request timed out", null)
     }
   }
@@ -86,20 +139,7 @@ Item {
     path: data.cacheDir ? data.cacheDir + "/currencies.json" : ""
     atomicWrites: true
     printErrors: false
-    onLoaded: {
-      try {
-        var doc = JSON.parse(text())
-        var parsed = data.validRates(doc)
-        if (parsed) {
-          data.rates = parsed
-          data.ratesFetchedAt = Number(doc.fetchedAt) || 0
-        }
-      } catch (e) {
-        data.message("warning", "ignoring unreadable exchange-rate cache", null)
-      }
-      data.cacheRead = true
-      data.refresh()
-    }
+    onLoaded: data.loadCache(text())
     onLoadFailed: { data.cacheRead = true; data.refresh() }
   }
 

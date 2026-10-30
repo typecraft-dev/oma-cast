@@ -132,7 +132,7 @@ Works:
   - arithmetic and functions
   - Soulver-style percentages (`$30 + 20%`, `20% off 50`, `50 as a % of 200`)
   - ~250 units (`5 ft to cm`, `60 mph * 2 h`, `16px to rem`)
-  - currencies (ECB rates from frankfurter.dev, cached daily in `~/.cache/oma-cast/currencies.json`; turn off with `"currencyRates": false` in config.json)
+  - currencies: same-currency maths and compound rates work offline; cross-currency conversion is explicit and shows the Frankfurter quote date. Rates live in `~/.cache/oma-cast/currencies.json`; disabling `currencyRates` stops requests and cross-currency conversion. The contract, cache freshness policy and monetary rounding are in SPEC §8.1.1. Issue #52 has evaluator, mocked rate-service and isolated QML coverage.
   - dates (`3 days from now`, `days until christmas`)
   - time zones (`time in tokyo`, `3pm london to nyc`; offsets come from one bash `printf %(%z)T` pass because QML has no Intl)
   - bases (`255 to hex`)

@@ -254,8 +254,7 @@ def(["pt"], ["point", "points"], { P: 1 }, 4 / 3)
 var REM = def(["rem"], ["rem", "rems"], { P: 1 }, 16)
 var EM = def(["em"], ["em", "ems"], { P: 1 }, 16)
 
-// Currencies: ECB reference rates (frankfurter.app). factor is resolved per
-// call from env.rates, so it is 0 here.
+// Currency factors describe one unit of money; only explicit conversion uses rates.
 var CURRENCIES = {
   USD: { symbol: "$", names: ["dollar", "dollars", "us dollar", "us dollars", "buck", "bucks", "usd"] },
   EUR: { symbol: "€", names: ["euro", "euros", "eur"] },
@@ -291,7 +290,7 @@ var CURRENCIES = {
 var CURRENCY_SYMBOLS = { "$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY", "₹": "INR", "₩": "KRW", "₺": "TRY", "₪": "ILS" }
 for (var _code in CURRENCIES) {
   var _c = CURRENCIES[_code]
-  var _cu = def([_code], [], { C: 1 }, 0, { currency: _code })
+  var _cu = def([_code], [], { C: 1 }, 1, { currency: _code })
   _cu.name = _code; _cu.plural = _code
   for (var _n = 0; _n < _c.names.length; _n++) UNIT_NAMES[_c.names[_n]] = _cu
 }
@@ -484,19 +483,18 @@ function fromUnix(n) {
 }
 function unixValue(ms) { var v = num(Math.floor(ms / 1000)); v.unix = true; return v }
 
-// Without rates a currency still works on its own ("$30 + 20%", "$30/h ×
-// 8 h"): the factor cancels. Converting between two needs rates (convert()).
-function currencyFactor(unit) {
+function currencyCode(unit) { return unit ? unit.currency || unit.money || "" : "" }
+
+function currencyFactor(code) {
   var rates = ENV && ENV.rates
-  if (!rates || !rates.rates) return 1
-  if (unit.currency === rates.base) return 1
-  var r = rates.rates[unit.currency]
-  if (!r) throw new CalcError("no rate for " + unit.currency)
+  if (!rates || !/^[A-Z]{3}$/.test(rates.base) || !rates.rates) throw new CalcError("no exchange rates")
+  if (code === rates.base) return 1
+  var r = rates.rates[code]
+  if (typeof r !== "number" || !isFinite(r) || r <= 0) throw new CalcError("no rate for " + code)
   return 1 / r
 }
 
 function unitFactor(unit) {
-  if (unit.currency) return currencyFactor(unit)
   if (unit === REM || unit === EM) return (ENV && ENV.remToPxRate) || 16
   if (unit === WORKDAY || unit === WORKWEEK) return ((ENV && ENV.workHoursPerDay) || 8) * 3600 * (unit === WORKWEEK ? 5 : 1)
   return unit.factor
@@ -505,29 +503,44 @@ function unitFactor(unit) {
 function toBase(n, unit) { return (n + unit.offset) * unitFactor(unit) }
 function fromBase(n, unit) { return n / unitFactor(unit) - unit.offset }
 
-function convert(value, unit) {
+function convert(value, unit, explicit, state) {
   if (!value.unit) throw new CalcError("nothing to convert")
-  if (value.unit === unit || (value.unit.currency && value.unit.currency === unit.currency)) return num(value.n, unit)
   if (!sameDims(value.unit.dims, unit.dims)) throw new CalcError("incompatible units")
-  if (unit.dims.C && !(ENV && ENV.rates && ENV.rates.rates)) throw new CalcError("no exchange rates")
-  return num(fromBase(toBase(value.n, value.unit), unit), unit)
+  var from = currencyCode(value.unit), to = currencyCode(unit)
+  var exchange = 1
+  if (from !== to) {
+    if (!explicit || !from || !to) throw new CalcError("convert currencies explicitly")
+    exchange = currencyFactor(from) / currencyFactor(to)
+    if (state) state.rateDate = String(ENV.rates.date || "")
+  }
+  if (value.unit === unit) return num(value.n, unit)
+  return num(fromBase(toBase(value.n, value.unit), unit) * exchange, unit)
 }
 
 // A product or quotient of units, simplified to a named unit when one fits.
-function compound(a, b, sign) {
+function compound(a, b, sign, preserve) {
   var d = dimsCombine(a.dims, b.dims, sign)
+  var ac = currencyCode(a), bc = currencyCode(b)
+  var money = ac || bc
+  if (ac && bc && ac !== bc) throw new CalcError("convert currencies explicitly")
+  if (sign > 0 && ac && bc) throw new CalcError("unsupported money dimension")
+  if (money && d.C && d.C !== 1) throw new CalcError("unsupported money dimension")
   var factor = sign > 0 ? unitFactor(a) * unitFactor(b) : unitFactor(a) / unitFactor(b)
   if (isEmptyDims(d)) return { scalar: factor }
   var sym = a.sym + (sign > 0 ? "·" : "/") + b.sym
   var named = UNITS[sym] || UNITS[sym.replace("·", "")]
   if (named && sameDims(named.dims, d)) return { unit: named, scale: factor / unitFactor(named) }
   var atoms = (a.atoms || []).concat(b.atoms || [])
-  var preferred = preferredUnit(d, atoms)
+  var preferred = preserve ? null : preferredUnit(d, atoms)
   if (preferred) return { unit: preferred, scale: factor / unitFactor(preferred) }
-  return { unit: { sym: sym, name: sym, plural: sym, dims: d, factor: factor, offset: 0, long: false, currency: "", hint: "", atoms: atoms }, scale: 1 }
+  return { unit: { sym: sym, name: sym, plural: sym, dims: d, factor: factor, offset: 0, long: false, currency: "", money: d.C ? money : "", hint: "", atoms: atoms }, scale: 1 }
 }
 
 function unitPow(u, p) {
+  if (currencyCode(u)) {
+    if (p !== 1) throw new CalcError("unsupported money power")
+    return { unit: u, scale: 1 }
+  }
   var d = dimsScale(u.dims, p)
   var preferred = preferredUnit(d, u.atoms || [u])
   var factor = Math.pow(unitFactor(u), p)
@@ -650,6 +663,9 @@ function plainNumber(v) {
 function callFunction(name, args, state) {
   state.ops++
   var fn = FUNCTIONS[name]
+  for (var m = 0; m < args.length; m++) {
+    if (currencyCode(args[m].unit) && (!UNIT_PRESERVING[name] || (name === "round" && m > 0))) throw new CalcError("bad currency argument")
+  }
   if (TRIG[name]) {
     var a = args[0]
     var rad = a.unit ? (dimsKey(a.unit.dims) === "A1" ? toBase(a.n, a.unit) : NaN) : a.n
@@ -869,7 +885,7 @@ Parser.prototype.parseTarget = function(value) {
   this.state.kind = u.unit.currency ? "currency" : "conversion"
   this.state.fromUnit = value.unit
   this.state.toUnit = u.unit
-  return convert(value, u.unit)
+  return convert(value, u.unit, true, this.state)
 }
 
 Parser.prototype.parseExpr = function() {
@@ -994,7 +1010,7 @@ Parser.prototype.parsePrimary = function() {
   }
 
   if (t.t === "cur") {
-    var amount = this.parsePostfix()
+    var amount = this.parsePrimary()
     if (amount.type !== "num" || amount.unit || amount.pct) throw new CalcError("bad amount")
     var per = this.continueUnit(UNITS[t.v], 1)     // "$30/h"
     return num(amount.n * per.scale, per.unit)
@@ -1197,7 +1213,12 @@ function group(s) {
 }
 
 function fixed(x, decimals) {
-  var s = (Math.round(x * Math.pow(10, decimals)) / Math.pow(10, decimals)).toFixed(decimals)
+  // Decimal shifting keeps monetary ties such as 1.005 away from zero.
+  var parts = Math.abs(x).toString().split("e")
+  var shifted = Number(parts[0] + "e" + (Number(parts[1] || 0) + decimals))
+  if (!isFinite(shifted)) return x.toFixed(decimals)
+  var rounded = Math.round(shifted) / Math.pow(10, decimals)
+  var s = (x < 0 ? -rounded : rounded).toFixed(decimals)
   return s === "-0" || /^-0\.0+$/.test(s) ? s.slice(1) : s
 }
 
@@ -1349,6 +1370,7 @@ function evaluate(query, env) {
     if (value.type === "num" && !isFinite(value.n)) return null
     if (value.type === "date" && !isFinite(value.ms)) return null
     var shown = present(value, state)
+    if (state.rateDate !== undefined) shown.caption = "Frankfurter " + (state.rateDate || "quote date unavailable") + " · " + shown.caption
     var kind = value.type === "date" ? "date" : state.kind
     var inputCaption = state.fromUnix ? "Unix Timestamp" : (KIND_CAPTIONS[kind] || "")
     if ((kind === "conversion" || kind === "currency") && state.fromUnit) {
@@ -1363,7 +1385,8 @@ function evaluate(query, env) {
       copy: shown.copy,
       value: value.type === "num" ? value.n : value.ms,
       inputCaption: inputCaption,
-      resultCaption: shown.caption
+      resultCaption: shown.caption,
+      rateDate: state.rateDate
     }
   } catch (e) {
     if (e instanceof CalcError) return null

@@ -490,6 +490,16 @@ Full verbatim catalog: `reference/04-frontend-features.md §1 + Appendix A/B/C`.
 
 Features that are **store extensions, not built-ins** [O]: Kill Process, Color Picker, Spotify, Reminders, Lorem Ipsum. They should work through the extension runtime (§9). Consider shipping first-party Linux versions of Kill Process (`/proc`) and Color Picker (`hyprpicker` / portal `PickColor`).
 
+### 8.1.1 Currency calculations [D, issue #52]
+
+- Currency identity is preserved through compound units. Same-currency arithmetic, ratios, percentages, rounding and rates such as `GBP/h` never require exchange data. Existing plain-number addition/subtraction treats the number as the other operand's unit.
+- Different currencies require an explicit `to`/`in` conversion. Mixed-currency arithmetic, including functions, modulo and percentage ratios, is rejected. Money products, reciprocal money and money powers other than one are rejected.
+- Explicit conversion uses rates relative to a shared base, including compound conversions such as `USD/h to GBP/h`. Missing or invalid required rates produce no result. Same-currency conversions such as `GBP/h to GBP/min` work offline.
+- Currency display rounds decimal ties away from zero and normalises negative zero; intermediate calculations retain JavaScript number precision. The `round()` function retains its ordinary numeric rounding rule.
+- Frankfurter quotes are cached with separate quote-date and fetch-time fields. Check for refresh on launcher opens after 12 hours; ordinary failed attempts retry after 30 minutes, with a 15-second request timeout. Manual refresh bypasses the age/retry intervals but never overlaps another request.
+- Validate quote dates, base identifiers, finite positive rates and cache timestamps before accepting data. Partial rate tables remain useful for available conversions; malformed or older quotes cannot replace valid newer data. Wait for the initial configuration read before allowing rate requests or cross-currency conversions. Cancellation on disable/unload prevents late responses from being applied.
+- Valid cached quotes remain available indefinitely when offline. Every cross-currency result shows `Frankfurter YYYY-MM-DD` in its result caption, using the provider's quote date even when a later fetch returns the same quote. `currencyRates: false` disables fetching and cross-currency conversion, while same-currency maths continues working. No manually configured rates or crypto.
+
 ### 8.2 Clipboard History details [O]
 - **Dedup:** MD5 over the item representations. A match bumps `copy_count` and `updated_at`; no new row.
 - **Categories:**

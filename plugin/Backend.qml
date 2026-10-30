@@ -26,6 +26,7 @@ Item {
   property var summon: null
 
   property var config: Schema.withConfigDefaults(null)
+  property bool configLoaded: false
   property bool directoriesReady: false
   readonly property bool ready: directoriesReady && settingsStore.loaded && frecencyStore.loaded && calculatorStore.loaded
 
@@ -39,7 +40,7 @@ Item {
   readonly property bool loading: menuSource.loading || agentLauncher.checking || nativeSearch.pending !== null
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
-  readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
+  readonly property double calculatorRevision: calculatorData.ratesRevision + calculatorData.zonesAt + (backend.configLoaded && backend.config.currencyRates ? 0 : 1)
 
   signal notification(string method, var data)
 
@@ -139,7 +140,7 @@ Item {
       nowMs: Date.now(),
       localOffset: -new Date().getTimezoneOffset(),
       hour12: backend.hour12,
-      rates: backend.config.currencyRates ? calculatorData.rates : null,
+      rates: backend.configLoaded && backend.config.currencyRates ? calculatorData.rates : null,
       zones: calculatorData.zones,
       remToPxRate: backend.config.remToPxRate,
       workHoursPerDay: backend.config.workHoursPerDay
@@ -508,6 +509,7 @@ Item {
       historyDelete: function(data) { return backend.calculatorAction("delete-entry", null, String(data && data.id || "")) },
       historyDeleteAll: function() { return backend.calculatorAction("delete-all-entries", null, "") },
       refreshCurrencies: function() {
+        if (!backend.configLoaded) throw new Error("configuration not loaded")
         if (!backend.config.currencyRates) throw new Error("currencyRates is off in config.json")
         calculatorData.fetchRates()
         return null
@@ -515,11 +517,12 @@ Item {
       getCurrencies: function() {
         var r = calculatorData.rates
         return {
-          enabled: backend.config.currencyRates,
+          enabled: backend.configLoaded && backend.config.currencyRates,
           date: r ? r.date : null,
           base: r ? r.base : null,
           currencies: r ? Object.keys(r.rates).concat([r.base]).sort() : [],
           fetchedAt: calculatorData.ratesFetchedAt || null,
+          provider: "Frankfurter",
           zones: Object.keys(calculatorData.zones).length
         }
       }
@@ -616,7 +619,7 @@ Item {
   CalculatorData {
     id: calculatorData
     cacheDir: backend.directoriesReady ? backend.paths.cache : ""
-    ratesEnabled: backend.config.currencyRates
+    ratesEnabled: backend.configLoaded && backend.config.currencyRates
     onMessage: function(level, text, metadata) { backend.log(level, "calculator", text, metadata) }
   }
 
@@ -638,7 +641,12 @@ Item {
         backend.config = Schema.withConfigDefaults(null)
         backend.log("warning", "config", "ignoring unreadable " + path + ": " + e)
       }
+      backend.configLoaded = true
     }
-    onLoadFailed: backend.config = Schema.withConfigDefaults(null)
+    onLoadFailed: {
+      if (!backend.directoriesReady) return
+      backend.config = Schema.withConfigDefaults(null)
+      backend.configLoaded = true
+    }
   }
 }
