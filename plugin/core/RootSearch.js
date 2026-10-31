@@ -264,7 +264,7 @@ function historySections(history, query, nowMs, filter) {
   return out
 }
 
-// The root dropdown (Ctrl+P, ref 04 §2.2 toggleFilter). Raycast's root has
+// The root dropdown (Ctrl+Shift+P, ref 04 §2.2 toggleFilter). Raycast's root has
 // no dropdown; this one narrows root search by type. [D]
 var FILTERS = [
   { id: "all", title: "All" },

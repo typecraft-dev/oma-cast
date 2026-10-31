@@ -103,6 +103,7 @@ need live desktop validation.
 | `↑` on an empty search | Search history |
 | `Ctrl+↑` / `Ctrl+↓` | Jump between sections |
 | `Ctrl+N` / `Ctrl+P` | Next / previous |
+| `Ctrl+Shift+P` | Open the root filter menu |
 | `Ctrl+Shift+F` | Add to favorites (`Ctrl+Alt+↑↓` to reorder) |
 | `Ctrl+Shift+C` | Copy |
 | `Alt+Shift+D` | Disable a command |
