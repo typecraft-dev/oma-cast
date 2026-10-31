@@ -71,7 +71,7 @@ PanelWindow {
   property var toast: null
   property int historyIndex: -1
 
-  // Ctrl+P root filter (RootSearch.FILTERS), Ctrl+T toast actions,
+  // Ctrl+Shift+P root filter (RootSearch.FILTERS), Ctrl+T toast actions,
   // Ctrl+Shift+K About panel and the confirm alert.
   property string rootFilter: "all"
   property bool dropdownOpen: false
@@ -87,8 +87,8 @@ PanelWindow {
   property int argFocus: -1
   property string argsForId: ""
 
-  // Navigation bindings (ref 04 §2.8): emacs moves with Ctrl+N (Ctrl+P is the
-  // dropdown); vim-motions with Ctrl+J/K, which moves the action panel to
+  // Navigation bindings (ref 04 §2.8): emacs moves with Ctrl+N/Ctrl+P (the
+  // dropdown is Ctrl+Shift+P); vim-motions with Ctrl+J/K, which moves the action panel to
   // Alt+K. Ctrl+B/F and Ctrl+H/L move a text cursor in Raycast; our search
   // field has none, so they do nothing here. [D]
   readonly property bool vim: window.general.navigationBindings === "vim-motions"
@@ -533,15 +533,15 @@ PanelWindow {
     else window.dismissRequested()
   }
 
-  // -1 up, 1 down or 0, per the navigation bindings. Ctrl+P only moves up
-  // inside popups: in the list it opens the dropdown.
-  function direction(event, ctrl, alt, inPopup) {
+  // -1 up, 1 down or 0, per the navigation bindings. Ctrl+P moves up
+  // everywhere, in the list and inside popups alike.
+  function direction(event, ctrl, alt) {
     var key = event.key
     if (!ctrl && !alt && key === Qt.Key_Down) return 1
     if (!ctrl && !alt && key === Qt.Key_Up) return -1
     if (!ctrl || alt || (event.modifiers & Qt.ShiftModifier)) return 0
-    if (window.vim) return key === Qt.Key_J ? 1 : (key === Qt.Key_K ? -1 : 0)
-    return key === Qt.Key_N ? 1 : (key === Qt.Key_P && inPopup ? -1 : 0)
+    if (window.vim) return key === Qt.Key_J ? 1 : (key === Qt.Key_K || key === Qt.Key_P ? -1 : 0)
+    return key === Qt.Key_N ? 1 : (key === Qt.Key_P ? -1 : 0)
   }
 
   function isActionPanelKey(ctrl, alt, shift, key) {
@@ -551,7 +551,7 @@ PanelWindow {
 
   // Keys for a popup list (action panel, dropdown, toast actions).
   function handlePopupKey(event, panel, ctrl, alt) {
-    var dir = window.direction(event, ctrl, alt, true)
+    var dir = window.direction(event, ctrl, alt)
     if (dir) { panel.move(dir); return true }
     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { panel.activateSelected(); return true }
     if (Util.editsFilter(event, panel.filter)) { panel.filter = Util.editedFilter(event, panel.filter); return true }
@@ -588,7 +588,7 @@ PanelWindow {
       return true
     }
     if (window.dropdownOpen) {
-      if (ctrl && !shift && key === Qt.Key_P) { window.dropdownOpen = false; return true }
+      if (ctrl && shift && key === Qt.Key_P) { window.dropdownOpen = false; return true }
       return window.handlePopupKey(event, dropdown.item, ctrl, alt)
     }
     if (window.toastPanelOpen) {
@@ -607,7 +607,7 @@ PanelWindow {
       if (window.atRoot && enter && ctrl && alt && !shift) { window.askAgent(); return true }
       if (ctrl && shift && key === Qt.Key_K) { window.toggleAbout(); return true }
       if (window.isActionPanelKey(ctrl, alt, shift, key)) { window.toggleActionPanel(); return true }
-      if (ctrl && !shift && key === Qt.Key_P) { window.toggleDropdown(); return true }
+      if (ctrl && shift && key === Qt.Key_P) { window.toggleDropdown(); return true }
       if (ctrl && !shift && key === Qt.Key_T) { window.toggleToastPanel(); return true }
       // Shift+Enter opens a new window for apps; Enter focuses an open one.
       if (enter && shift && !ctrl && !alt && window.performIfOffered(["open-new"])) return true
@@ -620,7 +620,7 @@ PanelWindow {
       if (ctrl && alt && key === Qt.Key_Down) { window.performIfOffered(["favorite-down"]); return true }
       if (ctrl && key === Qt.Key_Up) { window.jumpSection(-1); return true }
       if (ctrl && key === Qt.Key_Down) { window.jumpSection(1); return true }
-      var dir = window.direction(event, ctrl, alt, false)
+      var dir = window.direction(event, ctrl, alt)
       if (dir < 0) {
         if (window.atRoot && (window.query === "" || window.historyIndex >= 0) && window.selectedIndex === window.nextSelectable(-1, 1) && window.recallHistory(1)) return true
         window.move(-1); return true
