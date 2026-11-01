@@ -129,6 +129,11 @@ function createApps(opts) {
   var apps = {
     entries: [],
     loading: false,
+    // Latch: the first enumeration has completed (even empty, e.g. when
+    // PowerShell is missing). The Files section stays hidden until this
+    // flips, so files can never beat apps to the screen on a cold show.
+    // Stubs in tests have no such field and read as already-scanned. [D]
+    scanned: false,
     iconDir: opts.iconDir || "",
     _listeners: { changed: [] },
     _icons: {}
@@ -141,6 +146,14 @@ function createApps(opts) {
   // window paints from cache first. [D]
   var lastScanAt = 0
   var SCAN_THROTTLE_MS = 30000
+  // Typing gate: while the user is actively typing, icon extractions
+  // (a PowerShell spawn each) stay queued so they never contend with
+  // the next keystroke's search+render. keys.js calls setTyping. [D]
+  var typing = false
+  apps.setTyping = function(active) {
+    typing = !!active
+    if (!typing) pumpIcons()
+  }
   // Icon extractions spawn PowerShell per uncached .lnk: cap concurrency
   // so the first show (100+ app rows) doesn't fork 100 processes at once
   // and starve the renderer. Extra rows queue. [D]
@@ -149,6 +162,7 @@ function createApps(opts) {
   var ICON_CONCURRENCY = 4
   apps._pendingIcons = {}
   function pumpIcons() {
+    if (typing) return
     while (iconRunning < ICON_CONCURRENCY && iconQueue.length > 0) {
       var job = iconQueue.shift()
       iconRunning++
@@ -235,9 +249,10 @@ function createApps(opts) {
       out.sort(function(a, b) { return a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) })
       apps.entries = out
       lastScanAt = Date.now()
+      apps.scanned = true
       emit()
       return out
-    }, function() { apps.loading = false; return apps.entries })
+    }, function() { apps.loading = false; apps.scanned = true; return apps.entries })
   }
 
   // Lazy icon extraction, cached under iconDir. Resolves to a file:// URL

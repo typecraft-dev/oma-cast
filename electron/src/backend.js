@@ -68,6 +68,7 @@ function createBackend(opts) {
   var api = {
     version: VERSION,
     paths: paths,
+    apps: apps || null,
     registry: registry,
     get loading() { return !!((apps && apps.loading) || agentChecking
       || (fileIndex && fileIndex.loading) || (processes && processes.loading)) },
@@ -667,7 +668,13 @@ function createBackend(opts) {
           // Path bags stay for multi-token and path-like queries (slashes,
           // a drive colon, ~). [D]
           var fq = query.trim()
-          if (ctx.filter === "all" && fq.length >= 2 && fileIndex && fileIndex.ready) {
+          // ...until the first app scan lands: the file index loads from
+          // its disk cache synchronously while the Start Menu scan is an
+          // async PowerShell pass, so without this a cold show's first
+          // keystrokes render Files before Applications even exists.
+          // Stubs without the latch (tests) read as already-scanned. [D]
+          var appsReady = !apps || apps.scanned !== false
+          if (ctx.filter === "all" && fq.length >= 2 && fileIndex && fileIndex.ready && appsReady && !(data && data.skipFiles)) {
             var pathLike = /[\/\\~:]/.test(fq) || fq.split(/\s+/).length > 1
             // Everything mode: Everything generates candidates system-wide
             // and instantly; the same ranker tiers them (nameOnly included).

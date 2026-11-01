@@ -39,13 +39,14 @@ function pop() {
   if (top.selectedIndex >= 0) select(top.selectedIndex)
 }
 
-function rebuild(resetSelection) {
+function rebuild(resetSelection, opts) {
   gate.reset()
   var keepId = !resetSelection && W.selectedRow ? W.selectedRow.itemId : ""
   W.rows = []
   if (view().kind === "alias") { select(-1); renderList(); return }
   var result = backend.callSync("rootSearch.search", {
-    query: W.query, view: view(), filter: atRoot() ? W.rootFilter : "all"
+    query: W.query, view: view(), filter: atRoot() ? W.rootFilter : "all",
+    skipFiles: !!(opts && opts.skipFiles)
   })
   if (!result.ok) { showToast("failure", result.error); select(-1); renderList(); return }
   var keepIndex = -1
@@ -68,17 +69,43 @@ function rebuild(resetSelection) {
 // they always act on the latest query. [D]
 var rebuildTimer = null
 var pendingReset = false
+// Files are the slow tier (100k-entry match on the UI thread): the fast
+// pass paints apps/commands instantly with skipFiles, then the trailing
+// pass adds the Files section once typing pauses. Icon extractions stay
+// gated until the trailing pass so PowerShell spawns never contend with
+// keystrokes. [D]
+var filesTimer = null
+var typingIdleTimer = null
+function markTyping() {
+  try { if (backend.apps && backend.apps.setTyping) backend.apps.setTyping(true) } catch (e) {}
+  if (typingIdleTimer) clearTimeout(typingIdleTimer)
+  typingIdleTimer = setTimeout(function() {
+    typingIdleTimer = null
+    try { if (backend.apps && backend.apps.setTyping) backend.apps.setTyping(false) } catch (e) {}
+  }, 300)
+}
+function scheduleFilesPass() {
+  if (filesTimer) clearTimeout(filesTimer)
+  filesTimer = setTimeout(function() {
+    filesTimer = null
+    if (rebuildTimer) return  // a keystroke is still pending; it re-arms us
+    rebuild(false)
+  }, 150)
+}
 function scheduleRebuild(resetSelection) {
   if (resetSelection) pendingReset = true
+  markTyping()
   if (rebuildTimer) return
   rebuildTimer = setTimeout(function() {
     rebuildTimer = null
     var r = pendingReset
     pendingReset = false
-    rebuild(r)
+    rebuild(r, { skipFiles: true })
+    scheduleFilesPass()
   }, 0)
 }
 function flushRebuild() {
+  if (filesTimer) { clearTimeout(filesTimer); filesTimer = null }
   if (!rebuildTimer) return
   clearTimeout(rebuildTimer)
   rebuildTimer = null

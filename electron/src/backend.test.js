@@ -152,6 +152,39 @@ test("a single-token app search finds the app, not path-only file hits", () => {
   backend.dispose()
 })
 
+test("the Files section waits for the first app scan", () => {
+  function stubApps(scanned) {
+    return {
+      entries: [{ id: "C:\\links\\Firefox.lnk", name: "Firefox", icon: "", keywords: [] }],
+      loading: true,
+      scanned: scanned,
+      on: function() {},
+      refresh: function() { return Promise.resolve(this.entries) },
+      launch: function() {},
+      iconSource: function() { return Promise.resolve("") }
+    }
+  }
+  function stubFiles() {
+    return {
+      entries: [{ p: "C:/Users/u/Downloads/firefox-setup.exe", n: "firefox-setup.exe", d: false, m: 2 }],
+      ready: true, loading: false, lastIndexedAt: Date.now(),
+      start: function() {}, refreshIfStale: function() {}, on: function() {}
+    }
+  }
+  // Scan still in flight: the app ranks, Files stays hidden.
+  const pending = setup({ apps: stubApps(false), fileIndex: stubFiles() })
+  const r = pending.backend.callSync("rootSearch.search", { query: "firefox", view: null, filter: "all" })
+  const results = r.data.find(function(s) { return s.id === "results" })
+  assert.ok(results && results.rows.some(function(row) { return row.title === "Firefox" }), "the app ranks while scanning")
+  assert.ok(!r.data.some(function(s) { return s.id === "files" }), "no Files before the first scan")
+  pending.backend.dispose()
+  // Scan landed: the same query grows the Files section.
+  const done = setup({ apps: stubApps(true), fileIndex: stubFiles() })
+  const r2 = done.backend.callSync("rootSearch.search", { query: "firefox", view: null, filter: "all" })
+  assert.ok(r2.data.some(function(s) { return s.id === "files" }), "Files surface after the scan")
+  done.backend.dispose()
+})
+
 test("the Files section can come from Everything, falling back to the walk", () => {
   const esPool = [
     { p: "D:/Vault/report-q3.txt", n: "report-q3.txt", d: false, m: 9, nl: "report-q3.txt", pl: "d:/vault/report-q3.txt" }
