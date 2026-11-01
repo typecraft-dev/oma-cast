@@ -1,5 +1,7 @@
 
-var APP = "oma-cast"
+var APP = "omacast"
+// The name before 2026-11-01. Its directories move to APP on first start. [D]
+var LEGACY_APP = "oma-cast"
 
 function xdg(env, name, homeFallback) {
   var value = String(env(name) || "")
@@ -37,10 +39,18 @@ function resolve(env) {
   }
 }
 
+// [from, to] pairs for the base directories still under LEGACY_APP.
+function legacyMoves(paths) {
+  var suffix = "/" + APP
+  return [paths.config, paths.data, paths.cache, paths.state].map(function(dir) {
+    return [dir.slice(0, -suffix.length) + "/" + LEGACY_APP, dir]
+  })
+}
+
 function directoriesToCreate(paths) {
   return [paths.config, paths.db, paths.cache, paths.logs, paths.backups, paths.runtime]
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { APP: APP, resolve: resolve, directoriesToCreate: directoriesToCreate }
+  module.exports = { APP: APP, LEGACY_APP: LEGACY_APP, resolve: resolve, legacyMoves: legacyMoves, directoriesToCreate: directoriesToCreate }
 }

@@ -25,7 +25,7 @@ Item {
   // Focusing the window is what moves you to its workspace. Hyprland refuses
   // focus to any window while the launcher's layer holds exclusive keyboard
   // focus, and refocuses the previous window when it unmaps, so wait (up to a
-  // second) for the "oma-cast" layer to go before dispatching. The Lua-config
+  // second) for the "omacast" layer to go before dispatching. The Lua-config
   // dispatcher is tried first and the classic keyword form is the fallback;
   // the dispatch is retried for half a second in case it still lands early.
   // On floating workspaces focus doesn't raise, so the window is then brought
@@ -34,7 +34,7 @@ Item {
   function focusWindow(address, minimized) {
     Quickshell.execDetached(["bash", "-c",
       'for _ in $(seq 20); do'
-      + ' hyprctl layers -j 2>/dev/null | grep -q \'"namespace": *"oma-cast"\' || break;'
+      + ' hyprctl layers -j 2>/dev/null | grep -q \'"namespace": *"omacast"\' || break;'
       + ' sleep 0.05;'
       + ' done;'
       + ' if [[ $1 == 1 ]]; then'

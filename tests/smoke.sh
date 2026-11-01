@@ -2,7 +2,7 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
-cli=bin/oma-cast
+cli=bin/omacast
 fail=0
 pass() { printf '  ok    %s\n' "$1"; }
 bad() { printf '  FAIL  %s\n' "$1"; fail=1; }
@@ -28,7 +28,7 @@ echo "toggle latency (show -> layer mapped, hide -> unmapped; budget 100 ms)"
 sock="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
 events=$(mktemp)
 socat -u "UNIX-CONNECT:$sock" - 2>/dev/null | while IFS= read -r line; do
-  case $line in *layer\>\>oma-cast*) echo "$(date +%s%N) ${line%%>>*}" >>"$events" ;; esac
+  case $line in *layer\>\>omacast*) echo "$(date +%s%N) ${line%%>>*}" >>"$events" ;; esac
 done &
 watcher=$!
 sleep 0.3

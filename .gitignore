@@ -1,2 +1,3 @@
 /search/target/
-/plugin/bin/
+/bin/omacast-search
+/bin/.search.*

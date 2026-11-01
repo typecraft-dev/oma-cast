@@ -38,7 +38,7 @@ PanelWindow {
   anchors { top: true; bottom: true; left: true; right: true }
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
-  WlrLayershell.namespace: "oma-cast"
+  WlrLayershell.namespace: "omacast"
   WlrLayershell.layer: WlrLayer.Overlay
   WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
@@ -59,7 +59,7 @@ PanelWindow {
   })
   readonly property var borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
 
-  property var stack: [{ kind: "root", title: "oma-cast", query: "" }]
+  property var stack: [{ kind: "root", title: "omacast", query: "" }]
   readonly property var view: window.stack[window.stack.length - 1]
   property string query: ""
   property int selectedIndex: -1
@@ -148,7 +148,7 @@ PanelWindow {
   }
 
   function popToRoot() {
-    window.stack = [{ kind: "root", title: "oma-cast", query: "" }]
+    window.stack = [{ kind: "root", title: "omacast", query: "" }]
     window.query = ""
     window.rootFilter = "all"
     window.rebuild(true)
