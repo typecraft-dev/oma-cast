@@ -90,6 +90,21 @@ test("dates and durations", () => {
   assert.equal(result("2026-12-25 + 1 week"), "Friday, 1 January 2027")
   assert.equal(result("next friday + 1 day"), "Saturday, 24 October 2026")
   assert.equal(C.evaluate("christmas - today", env).kind, "date")
+  // "time to time": forward from the first to the second, wrapping
+  // past midnight when both sides fall on the same day.
+  assert.equal(result("10:35pm to 11:10pm"), "35 minutes")
+  assert.equal(result("11pm to 1am"), "2 hours", "overnight wraps past midnight")
+  assert.equal(result("11pm to 10pm"), "23 hours", "an earlier end reads forward")
+  assert.equal(result("1am to 11pm"), "22 hours")
+  assert.equal(result("3pm to 5pm"), "2 hours")
+  assert.equal(result("10:35 to 11:10"), "35 minutes", "24-hour times too")
+  assert.equal(result("10:35pm until 11:10pm"), "35 minutes")
+  assert.equal(result("friday to sunday"), "2 days")
+  assert.equal(result("dec 25 to jan 5"), "11 days", "a floating year-less side in the past means next year")
+  assert.equal(result("jan 5 to dec 25"), "11 days")
+  assert.equal(result("dec 25 2026 to jan 5 2027"), "11 days", "explicit years never roll")
+  assert.equal(result("now to unix"), String(NOW / 1000), "conversion targets still convert")
+  assert.equal(C.evaluate("10:35pm to foo", env), null)
 })
 
 test("time zones", () => {

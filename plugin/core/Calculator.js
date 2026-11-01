@@ -692,6 +692,14 @@ function nextOccurrence(mo, d) {
   return t < today() ? makeDate(y + 1, mo, d) : t
 }
 
+// A year-less month-day ("dec 25") in the past means next year; anything
+// else passes through untouched.
+function rollFloatingYear(d) {
+  if (!d.floatingYear || startOfDay(d.ms) >= today()) return d.ms
+  var t = new Date(d.ms)
+  return makeDate(t.getFullYear() + 1, t.getMonth(), t.getDate())
+}
+
 // ----------------------------------------------------------------- parser
 
 function Parser(tokens) {
@@ -785,6 +793,49 @@ Parser.prototype.parseStatement = function() {
   var special = this.parseDurationBetween()
   if (special) return special
   var value = this.parseExpr()
+  // "10:35pm to 11:10pm", "friday to sunday": the time from one date
+  // to the other. Date-only pairs stay absolute (either order reads the
+  // same); times read forward, wrapping past midnight when both sides
+  // fall on the same day, so "11pm to 1am" is 2 hours. A bare `to`
+  // never meant conversion for dates anyway. [D]
+  if (value.type === "date" && (this.isWord("to") || this.isWord("until") || this.isWord("till"))) {
+    // ...unless the right side is a conversion target ("now to unix",
+    // "2023-11-14 to unix"): then rewind and let parseTarget below
+    // handle it. A failed probe must leave no trace. [D]
+    var saveTo = this.i, saveOps = this.state.ops, saveKind = this.state.kind
+    var later = null
+    try {
+      this.i++
+      later = this.parseMul()
+      if (later.type !== "date") throw new CalcError("expected a date")
+    } catch (e) {
+      if (!(e instanceof CalcError)) throw e
+      later = null
+    }
+    if (later) {
+      this.state.ops++
+      this.state.kind = "date"
+      if (!value.hasTime && !later.hasTime) {
+        // A floating year-less side in the past ("jan 5" after New Year)
+        // means next year, so "dec 25 to jan 5" reads 11 days. Explicit
+        // years and anchored dates (yesterday, friday) never roll. [D]
+        var fromMs = rollFloatingYear(value)
+        var toMs = rollFloatingYear(later)
+        value = num(Math.abs(Math.round((startOfDay(toMs) - startOfDay(fromMs)) / 864e5)), UNITS.d)
+      } else {
+        // Forward in time: a same-day end before the start ("11pm to
+        // 1am") wraps to the next day. Different-day pairs stay
+        // absolute. [D]
+        var diffMs = later.ms - value.ms
+        if (diffMs < 0 && startOfDay(later.ms) === startOfDay(value.ms)) diffMs += 864e5
+        value = autoDuration(Math.abs(diffMs) / 1000)
+      }
+    } else {
+      this.i = saveTo
+      this.state.ops = saveOps
+      this.state.kind = saveKind
+    }
+  }
   // "50 as a % of 200", "50 is what % of 200"
   if ((this.isWord("as") || this.isWord("is")) && value.type === "num") {
     var save = this.i
@@ -975,7 +1026,9 @@ Parser.prototype.parsePrimary = function() {
     if (mi >= 0 && Math.floor(t.v) === t.v && t.v >= 1 && t.v <= 31) {
       this.i++
       var y = this.peek() && this.peek().t === "num" && this.peek().v >= 1000 ? this.next().v : null
-      return date(y === null ? makeDate(new Date(today()).getFullYear(), mi, t.v) : makeDate(y, mi, t.v), false)
+      var dayMonth = date(y === null ? makeDate(new Date(today()).getFullYear(), mi, t.v) : makeDate(y, mi, t.v), false)
+      if (y === null) dayMonth.floatingYear = true
+      return dayMonth
     }
     // "in" after a number is inches unless a conversion target follows.
     if (this.isWord("in") && this.peek(1) && (this.peek(1).t === "id" || this.peek(1).t === "cur") && !this.isWord("in", 1) && !this.isWord("to", 1)) return num(t.v)
@@ -1067,7 +1120,11 @@ Parser.prototype.parsePrimary = function() {
       var day = this.next().v
       if (this.isOp(",") && this.peek(1) && this.peek(1).t === "num") this.i++
       var year = this.peek() && this.peek().t === "num" && this.peek().v >= 1000 ? this.next().v : null
-      return date(year === null ? makeDate(new Date(today()).getFullYear(), month, day) : makeDate(year, month, day), false)
+      var monthDay = date(year === null ? makeDate(new Date(today()).getFullYear(), month, day) : makeDate(year, month, day), false)
+      // No year given: the date floats, so "dec 25 to jan 5" across New
+      // Year rolls the past side forward instead of reading 354 days. [D]
+      if (year === null) monthDay.floatingYear = true
+      return monthDay
     }
     // "friday", "next friday", "last friday"
     var rel = w === "next" || w === "last" || w === "this" ? w : ""
