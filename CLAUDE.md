@@ -136,6 +136,7 @@ Works:
   - ~250 units (`5 ft to cm`, `60 mph * 2 h`, `16px to rem`)
   - currencies (ECB rates from frankfurter.dev, cached daily in `~/.cache/oma-cast/currencies.json`; turn off with `"currencyRates": false` in config.json)
   - dates (`3 days from now`, `days until christmas`)
+  - time ranges (`10:35pm to 11:10pm` → 35 minutes; times read forward and wrap past midnight, `11pm to 1am` → 2 hours; `dec 25 to jan 5` → 11 days)
   - time zones (`time in tokyo`, `3pm london to nyc`; offsets come from one bash `printf %(%z)T` pass because QML has no Intl)
   - bases (`255 to hex`)
   - mixed units (`5 ft 3 in to cm`, `1 h 30 min + 45 min`)
@@ -177,6 +178,8 @@ Windows-port additions (2026-10-25, user-driven): **file search** (`FileSearch.j
 **0.2.7 (2026-10-27):** file search provider setting. The Settings view gains a **File Search Provider** row (↵ cycles Built-in Index ⇄ Everything): `everything` queries voidtools Everything through `es.exe` (`%ProgramFiles%\Everything`, then PATH; one sync spawn per query, 5 s cap) so Files goes system-wide and instant, while the same ranker — nameOnly guard included — tiers the hits. A dead Everything (not installed/running) answers null and that query falls back to the walk pool; the walk parks (no re-walk churn) while Everything serves, and resumes when you switch back.
 
 **0.2.8 (2026-10-28):** (1) **Web search without the pill** — Search Google / DuckDuckGo / unduck no longer take the query in a ~200 px inline pill after the root text (Tab in, Shift+Tab out); each builtin pushes a dedicated search view with a full-width query bar, like Settings (type there, ↵ searches, Esc pops). The pushed view shows one live row per query (`web-search:*`, separate from the root `fallback:*` rows), errors on empty ↵, and records the frecency visit on the builtin so engines rise with use. Root `Use "q" with…` fallbacks are unchanged. (2) **Power actions fire immediately** — Shut Down / Restart no longer schedule `shutdown /s|/r /t 15` with a cancellable toast (`shutdown /a`); like Sleep they close the window first and fire at once (`shutdown.exe /t 0`) with a HUD. `system.cancelPowerShutdown` stays for old toasts.
+
+**0.2.9 (2026-11-01):** (1) **Calculator time ranges** — `<time/date> to|until|till <time/date>` returns the span: `10:35pm to 11:10pm` → 35 minutes. Times read forward and wrap past midnight when both sides fall on the same day (`11pm to 1am` → 2 hours, `11pm to 10pm` → 23 hours); date-only pairs stay absolute with floating year-less sides rolling forward (`dec 25 to jan 5` → 11 days); conversion targets still convert (`now to unix`, `1700000000 to date`). (2) **Typing latency, second pass** — each keystroke burst paints apps/commands instantly with the Files tier deferred to a 150 ms trailing pass, and icon extractions stay queued while typing. (3) **Files wait for apps** — the Files section stays hidden until the first Start Menu scan completes (`apps.scanned` latch), so a cold show never renders Files before Applications exists.
 
 Deviations from the original spec (SPEC §2.0 and the Phase 1 note in §12):
 - A Quickshell plugin instead of Tauri + Node; there's no NDJSON supervisor until Phase 5.
