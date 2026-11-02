@@ -2,7 +2,7 @@
 
 **Source:** static reverse engineering of Raycast **2.8.2** (`com.raycast.macos`, macOS 26, arm64) installed on this machine, done 2026-10-19.
 **Target:** a clean-room, feature-equivalent launcher for **Arch Linux**, Wayland first (Hyprland → KDE → GNOME), with an X11 fallback.
-**Scope:** all Raycast features **except AI** (AI Chat, Quick AI, AI Commands, MCP, Screen Awareness, Browser-context-for-AI, "Ask X" commands, Dictate-to-AI, Remote). This fork adds a user-authorized explicit hand-off to Omarchy's default agent in its default terminal (§2.0); it does not implement those Raycast AI features.
+**Scope:** all Raycast features **except AI** (AI Chat, Quick AI, AI Commands, MCP, Screen Awareness, Browser-context-for-AI, "Ask X" commands, Dictate-to-AI, Remote). 
 
 This file is the plan. Claude Code should read it first. The `reference/` folder holds the detailed evidence (verbatim schemas, method lists, wire formats), and this spec points into it by section.
 
@@ -25,7 +25,7 @@ Legend: **[O]** = observed in the shipped binaries or JS. **[I]** = inferred. **
 1. **Clean room.** Do not copy, bundle or redistribute anything from `/Applications/Raycast.app`: no frontend JS, `index.mjs`, `@raycast/api/index.js` from the app bundle, icons, PNGs, fonts or `.node` modules. They are proprietary. This spec describes *behaviour and interfaces* so you can write your own implementation. The open-source pieces you can use are the public npm package `@raycast/api` (type definitions and the `ray` CLI; check its license for the version you pin), `@raycast/utils`, and the `raycast/extensions` GitHub repo (MIT), which is the corpus you test compatibility against.
 2. **Don't call Raycast's servers.** Store, account, sync, currency rates, translation and telemetry all go to `*.raycast.com`. A third-party client must not use them. Get extensions from the `raycast/extensions` repo and build them locally (§9.8). Use your own or public data sources for everything else.
 3. **No telemetry.** Drop Sentry and PostHog completely.
-4. **Embedded AI is out of scope.** The explicit default-agent terminal hand-off in §2.0 is the fork's authorized exception. Where another built-in mixes AI with non-AI behaviour (Dictation, Translator), build only the non-AI path and leave a `// AI: not implemented` seam.
+4. **Embedded AI is out of scope.** Where another built-in mixes AI with non-AI behaviour (Dictation, Translator), build only the non-AI path and leave a `// AI: not implemented` seam.
 5. **Prior art to study, not copy:** Vicinae (an open-source Linux launcher with Raycast-extension compatibility; check its current state), Espanso (text expansion via evdev/uinput), cliphist/clipse (Wayland clipboard history), plocate/fsearch (file index), Ulauncher/Walker/Anyrun (launcher UX on Wayland).
 
 ---
@@ -108,29 +108,19 @@ How the rest of this spec maps onto it:
 - **§10 frontend.** QML instead of React, with themes from Omarchy's tokens. The 8 Raycast themes (§10.4) become optional palettes over the same tokens.
 - **Logging** goes to the shell's log (`qs log -n -p "$OMARCHY_PATH/shell"`, lines prefixed `[omacast]`), with the level from `config.json`. There are no separate log files.
 
-**Default-agent hand-off [D, fork, 2026-10-20].** Non-empty root queries add an
-"Ask default agent" row after the web-search fallbacks. Selecting it or pressing
-Ctrl+Alt+Enter explicitly submits the current query to `omarchy-agent --prompt`
-as one literal argument. Omarchy owns agent/account choice, authentication,
-approval flags, working directory and terminal selection via `omarchy-launch-tui`
-and `xdg-terminal-exec`. No agent SDK, network endpoint, credentials or new
-package is introduced. Reference: Omarchy `quattro` `3ac43659dcbf88e84d951e3ce979b48a60a7d1f2`,
-`shell/plugins/agents/Panel.qml` (`startPrompt`) and `bin/omarchy-agent{,-prompt}`.
+**Default-agent hand-off: removed 2026-11-02 [D].** It passed the question to
+`omarchy-agent --prompt`, which hands it to every agent CLI as an argument, so other
+local users could read it from `/proc`. The marketplace review blocked that, and
+Omarchy has no private prompt transport, so the row, Ctrl+Alt+Enter,
+`core/Agent.js` and `services/AgentLauncher.qml` are gone. Revisit if
+`omarchy-agent` gains a stdin or file prompt.
 
-`services/AgentLauncher.qml` owns one bounded preflight at a time; core argv
-validation and the fixed check script live in `core/Agent.js`. Missing tooling,
-unset/uninstalled agent or unavailable terminal reports a visible error without
-clearing the query. Hide, timeout or plugin unload cancels the pending request.
-On success the entry point closes the overlay, clears the query and forwards
-argv using `Util.execArgv`. This checks prerequisites only: authentication and
-terminal startup failures remain the existing launcher's responsibility.
-
-Accept: normal app ranking/Enter selection is unchanged; fallback and shortcut
-launch a fresh default-agent session in the selected terminal; quotes, Unicode,
-multiline text, shell metacharacters and leading dashes arrive literally; blank
-queries never submit; missing setup and cancellation never launch. Portable
-fixtures cover argv/preflight and lifecycle; live Omarchy focus, terminal and
-account acceptance remains required. Embedded chat and model calls are deferred.
+**Privacy [D, 2026-11-02].** No user text (queries, calculator questions or
+answers, prompts) may reach any process's argv: clipboard writes go through
+`services/ClipboardWriter.qml` on stdin. Startup (`Paths.SETUP_SCRIPT`) creates
+the base dirs `0700` and store files `0600` before the first atomic write, and
+repairs readable ones with `chmod go-rwx` (never broadening). Covered by
+`tests/privacy.test.js` under `umask 022`.
 
 The original Tauri design follows, kept for reference and for non-Omarchy targets.
 

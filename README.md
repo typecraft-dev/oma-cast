@@ -16,7 +16,7 @@ It learns what you use, searches your apps and every Omarchy action, and looks l
 Omarchy's built-in menu is great at what it does. omacast adds what Raycast users miss on Linux:
 
 * **Learns your habits.** Results are ranked with a port of Raycast's root-search algorithm, plus frecency and learned search terms. The things you actually use float to the top, and if you type `ff` and pick Firefox, `ff` keeps meaning Firefox.
-* **One search for everything.** Your apps, all ~400 Omarchy menu actions (with breadcrumbs and live ✓ state), web-search fallbacks, and an explicit hand-off to your default coding agent.
+* **One search for everything.** Your apps, all ~400 Omarchy menu actions (with breadcrumbs and live ✓ state), and web-search fallbacks.
 * **Your shortcuts.** Give anything an alias, pin favorites, and hide the commands you never touch.
 * **Keyboard-first.** A Ctrl+K action panel, Ctrl+1–9 quick picks, search history on ↑, section jumping, and emacs-style navigation.
 * **Native to Omarchy.** It runs inside `omarchy-shell` as a plugin, with no Electron, no Node and no extra daemons. It opens in about 40 ms and follows your theme live when you run `omarchy theme set`.
@@ -98,7 +98,14 @@ It adds no packages and no background services.
   Rust. Aliases, favorites, learned terms and frecency stay in omacast's ranker either way. If the helper fails
   or times out, search falls back to the built-in matcher until the plugin reloads. Rebuild it after
   `omarchy plugin update`.
-- **Default agent.** The optional "Ask default agent" action runs Omarchy's own `omarchy-agent` (below).
+
+### Privacy
+
+Your search history, learned search terms and calculator history stay on your machine, in owner-only
+files: omacast creates its `~/.config`, `~/.local/share`, `~/.cache` and `~/.local/state` directories as
+`0700` and its database files as `0600`, and tightens any it finds readable by other users. Text you copy
+or paste from the calculator goes to `wl-copy` on stdin, never on a command line, so other local users
+can't read it from the process list. Paste sends Shift+Insert after copying, as Omarchy's clipboard history does.
 
 ### Upgrading from oma-cast
 
@@ -106,27 +113,6 @@ The plugin used to be `typecraft.oma-cast`. On first start, omacast moves your `
 cache and state directories to the `omacast` names. In a development checkout, `bin/omacast install` removes
 the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` moves `oma-cast.lua` to
 `omacast.lua`, keeping your key. `omacast doctor` reports anything left over.
-
-## Ask your default agent
-
-Type a question, select **Ask default agent** under the web-search fallbacks,
-and press Enter. **Ctrl+Alt+Enter** sends the current root-search text directly.
-This opens a new session with your question in Omarchy's configured default
-agent and terminal (Foot, Ghostty, Kitty or Alacritty).
-
-The action checks your setup first. Missing agent/terminal setup leaves the
-launcher open with your question and an error. Closing the launcher during the
-check cancels the pending hand-off. Normal app search and Enter selection keep
-working as before; typing alone never submits a question.
-
-Requires an Omarchy version with `omarchy-agent-prompt` and
-`omarchy-agent --prompt` (verified against `quattro` revision `3ac4365`). Select
-your defaults in Omarchy Settings. Agent authentication, accounts, approval
-behaviour, session working directory and terminal selection remain owned by
-Omarchy and the agent CLI. omacast does not store the question in search history,
-read credentials, or make model API calls. Successful preflight checks establish
-launch prerequisites, not successful sign-in or a running terminal; those still
-need live desktop validation.
 
 ## Keyboard
 
@@ -136,7 +122,6 @@ need live desktop validation.
 | `Shift+↵` | Open a new window of an app (`↵` switches to the one already open) |
 | `Ctrl+K` | Open the action panel |
 | `Super+V` / `Ctrl+V` / `Ctrl+Shift+V` / `Shift+Insert` | Paste text into the query (also accepts clipboard-history selections) |
-| `Ctrl+Alt+↵` | Ask the default agent using the current root-search text |
 | `Ctrl+1`…`9` | Pick a result |
 | `↑` on an empty search | Search history |
 | `Ctrl+↑` / `Ctrl+↓` | Jump between sections |
