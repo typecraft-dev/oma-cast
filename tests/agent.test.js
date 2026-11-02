@@ -4,10 +4,10 @@ const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
 const { spawnSync } = require("node:child_process")
-const Agent = require("../plugin/core/Agent.js")
+const Agent = require("../core/Agent.js")
 
 function fixture(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oma-cast-agent-"))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omacast-agent-"))
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
   const script = (name, source) => fs.writeFileSync(path.join(dir, name), "#!/bin/bash\n" + source, { mode: 0o700 })
   for (const tool of ["omarchy-agent", "omarchy-agent-prompt", "omarchy-launch-tui", "uwsm-app", "codex"]) script(tool, "exit 0\n")

@@ -3,9 +3,9 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const path = require("node:path")
 const vm = require("node:vm")
-const Agent = require("../plugin/core/Agent.js")
+const Agent = require("../core/Agent.js")
 
-const source = fs.readFileSync(path.join(__dirname, "../plugin/services/AgentLauncher.qml"), "utf8")
+const source = fs.readFileSync(path.join(__dirname, "../services/AgentLauncher.qml"), "utf8")
 function body(text, signature, indentation) {
   const start = text.indexOf(signature)
   assert.ok(start >= 0, signature)
@@ -74,7 +74,7 @@ test("failure, crash and timeout never prepare a terminal launch", () => {
 })
 
 test("showing refreshes calculator data and hiding cancels an agent hand-off", () => {
-  const text = fs.readFileSync(path.join(__dirname, "../plugin/Backend.qml"), "utf8")
+  const text = fs.readFileSync(path.join(__dirname, "../Backend.qml"), "utf8")
   const events = []
   const context = vm.createContext({
     method: "window.visibilityChanged", data: { visible: true },
@@ -97,7 +97,7 @@ test("showing refreshes calculator data and hiding cancels an agent hand-off", (
 })
 
 test("entry point dismisses and clears the launcher before starting the terminal", () => {
-  const text = fs.readFileSync(path.join(__dirname, "../plugin/Launcher.qml"), "utf8")
+  const text = fs.readFileSync(path.join(__dirname, "../Launcher.qml"), "utf8")
   const events = []
   const argv = Agent.launchArgv("Question")
   const context = vm.createContext({
@@ -114,7 +114,7 @@ test("entry point dismisses and clears the launcher before starting the terminal
 })
 
 test("agent shortcut is limited to root search and preserves normal Enter actions", () => {
-  const text = fs.readFileSync(path.join(__dirname, "../plugin/ui/LauncherWindow.qml"), "utf8")
+  const text = fs.readFileSync(path.join(__dirname, "../ui/LauncherWindow.qml"), "utf8")
   const events = []
   let next = 16
   const Qt = new Proxy({ ControlModifier: 1, ShiftModifier: 2, AltModifier: 4 }, {

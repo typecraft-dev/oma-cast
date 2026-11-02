@@ -576,7 +576,11 @@ Item {
 
   Process {
     id: mkdirs
-    command: ["mkdir", "-p"].concat(Paths.directoriesToCreate(backend.paths))
+    // Move each directory left under the old name first, unless the new one already exists.
+    command: ["bash", "-c",
+      'while [[ $1 != -- ]]; do [[ -d $1 && ! -e $2 ]] && mv -T -- "$1" "$2"; shift 2; done; shift; exec mkdir -p -- "$@"',
+      "omacast-mkdirs"]
+      .concat([].concat.apply([], Paths.legacyMoves(backend.paths)), ["--"], Paths.directoriesToCreate(backend.paths))
     onExited: function(exitCode) {
       if (exitCode !== 0) backend.log("error", "paths", "could not create data directories", { exitCode: exitCode })
       backend.directoriesReady = true

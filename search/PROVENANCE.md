@@ -37,7 +37,7 @@ license and notice are retained verbatim in `LICENSE`, SHA-256
 
 ## Adapter contract
 
-`oma-cast-search` uses synchronous NDJSON on stdin and stdout. Each response is
+`omacast-search` uses synchronous NDJSON on stdin and stdout. Each response is
 flushed before reading another request. A write, flush, or input I/O failure ends
 the process with failure. Unknown object properties are accepted. Requests must
 contain exactly one of `entries` or `query` and an unsigned 64-bit integer `id`.

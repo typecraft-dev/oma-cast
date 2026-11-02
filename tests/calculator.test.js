@@ -1,7 +1,7 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const C = require("../plugin/core/Calculator.js")
-const RS = require("../plugin/core/RootSearch.js")
+const C = require("../core/Calculator.js")
+const RS = require("../core/RootSearch.js")
 
 // Monday 19 Oct 2026, 16:06 in New York (UTC-4). Dates use the process
 // zone, so pin it.
@@ -164,7 +164,7 @@ test("history is newest first, unique, pruned after 90 days and capped", () => {
 })
 
 test("root search puts the Calculator section first; ↵ copies, Ctrl ↵ pastes", () => {
-  const deps = { Ranker: require("../plugin/core/Ranker.js"), Frecency: require("../plugin/core/Frecency.js"), OmarchyMenu: require("../plugin/core/OmarchyMenu.js") }
+  const deps = { Ranker: require("../core/Ranker.js"), Frecency: require("../core/Frecency.js"), OmarchyMenu: require("../core/OmarchyMenu.js") }
   const ctx = { commands: {}, frecency: {}, nowMs: NOW, sensitivity: "medium", calculation: C.evaluate("2+2", env) }
   const sections = RS.rootSections(RS.BUILTINS.map(RS.builtinCandidate), "2+2", ctx, deps)
   assert.equal(sections[0].id, "calculator")

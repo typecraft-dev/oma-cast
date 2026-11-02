@@ -1,9 +1,9 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const Ranker = require("../plugin/core/Ranker.js")
-const Frecency = require("../plugin/core/Frecency.js")
-const OmarchyMenu = require("../plugin/core/OmarchyMenu.js")
-const RS = require("../plugin/core/RootSearch.js")
+const Ranker = require("../core/Ranker.js")
+const Frecency = require("../core/Frecency.js")
+const OmarchyMenu = require("../core/OmarchyMenu.js")
+const RS = require("../core/RootSearch.js")
 
 const deps = { Ranker, Frecency, OmarchyMenu }
 const NOW = Date.UTC(2026, 9, 19, 12)
