@@ -250,7 +250,10 @@ cmd_setup_hyprland() {
   confirm "Make these changes?" "$assume_yes" || die "nothing changed"
 
   if [[ ! -f $file && -f $legacy ]]; then
-    sed 's/oma-cast/omacast/g; s/rerunning setup overwrites it/rerunning setup keeps it/' "$legacy" >"$file" && rm "$legacy" && echo "moved $legacy to $file"
+    # cp -p keeps the old file's mode (it may be private); sed -i keeps it too.
+    cp -p -- "$legacy" "$file" &&
+      sed -i 's/oma-cast/omacast/g; s/rerunning setup overwrites it/rerunning setup keeps it/' "$file" &&
+      rm -- "$legacy" && echo "moved $legacy to $file"
   elif [[ ! -f $file ]]; then
     cat >"$file" <<'LUA'
 -- Written by `omacast setup hyprland`. Safe to edit; rerunning setup keeps it.

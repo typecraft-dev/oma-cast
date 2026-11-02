@@ -77,16 +77,6 @@ Item {
     summon: function(id, payload) { return root.shell ? root.shell.summon(id, payload) : false }
   }
 
-  Connections {
-    target: backend
-    function onNotification(method, data) {
-      if (method !== "agent.launchReady") return
-      root.hide()
-      launcher.popToRoot()
-      Util.execArgv(data.argv)
-    }
-  }
-
   LauncherWindow {
     id: launcher
     shown: root.opened
