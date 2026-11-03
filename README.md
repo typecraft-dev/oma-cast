@@ -123,6 +123,7 @@ the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` mo
 | `Ctrl+K` | Open the action panel |
 | `Super+V` / `Ctrl+V` / `Ctrl+Shift+V` / `Shift+Insert` | Paste text into the query (also accepts clipboard-history selections) |
 | `Ctrl+1`…`9` | Pick a result |
+| `←` / `→`, `Home` / `End` | Move the query cursor (`Shift` to select text) |
 | `↑` on an empty search | Search history |
 | `Ctrl+↑` / `Ctrl+↓` | Jump between sections |
 | `Ctrl+N` / `Ctrl+P` | Next / previous |
@@ -164,6 +165,9 @@ node --test tests/*.test.js # unit tests, no npm install needed
 tests/smoke.sh              # live checks against the running shell
 omacast dev                 # reload on every save
 ```
+
+Query editing tests also run headlessly when Qt 6's `qmltestrunner` is installed
+at `/usr/lib/qt6/bin/qmltestrunner`. Set `QMLTESTRUNNER` to use another path.
 
 Remove a marketplace install first (`omarchy plugin remove typecraft.omacast`); both use the same plugin id.
 Quickshell caches QML for the life of the process, so run `omacast reload` after editing a checkout. See [`CLAUDE.md`](CLAUDE.md) for the layout and conventions.
