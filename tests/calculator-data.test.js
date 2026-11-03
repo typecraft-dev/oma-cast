@@ -5,11 +5,11 @@ const path = require("node:path")
 const vm = require("node:vm")
 const os = require("node:os")
 const { spawnSync } = require("node:child_process")
-const C = require("../plugin/core/Calculator.js")
-const Schema = require("../plugin/core/Schema.js")
+const C = require("../core/Calculator.js")
+const Schema = require("../core/Schema.js")
 
-const source = fs.readFileSync(path.join(__dirname, "../plugin/services/CalculatorData.qml"), "utf8")
-const backendSource = fs.readFileSync(path.join(__dirname, "../plugin/Backend.qml"), "utf8")
+const source = fs.readFileSync(path.join(__dirname, "../services/CalculatorData.qml"), "utf8")
+const backendSource = fs.readFileSync(path.join(__dirname, "../Backend.qml"), "utf8")
 const NOW = Date.UTC(2026, 9, 30, 12)
 const quote = { base: "EUR", date: "2026-10-29", rates: { USD: 2, GBP: 0.5 } }
 
@@ -278,12 +278,12 @@ test("initial config/cache ordering cannot send requests before the saved prefer
   }
 })
 
-test("real QML imports the rate service, reads a cache and runs currency calculations offline", { skip: !process.env.OMA_CAST_QML_RUNNER }, t => {
+test("real QML imports the rate service, reads a cache and runs currency calculations offline", { skip: !process.env.OMACAST_QML_RUNNER }, t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "oma-cast-currency-qml-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   for (const dir of ["services", "core", "cache", "runtime"]) fs.mkdirSync(path.join(root, dir), { mode: 0o700 })
-  fs.copyFileSync(path.join(__dirname, "../plugin/services/CalculatorData.qml"), path.join(root, "services/CalculatorData.qml"))
-  fs.copyFileSync(path.join(__dirname, "../plugin/core/Calculator.js"), path.join(root, "core/Calculator.js"))
+  fs.copyFileSync(path.join(__dirname, "../services/CalculatorData.qml"), path.join(root, "services/CalculatorData.qml"))
+  fs.copyFileSync(path.join(__dirname, "../core/Calculator.js"), path.join(root, "core/Calculator.js"))
   fs.writeFileSync(path.join(root, "cache/currencies.json"), JSON.stringify({ ...quote, date: "2000-01-03", fetchedAt: Date.now() }))
   fs.writeFileSync(path.join(root, "shell.qml"), `import QtQuick
 import Quickshell
@@ -321,7 +321,7 @@ ShellRoot {
   }
 }
 `)
-  const result = spawnSync(process.env.OMA_CAST_QML_RUNNER, ["-p", path.join(root, "shell.qml")], {
+  const result = spawnSync(process.env.OMACAST_QML_RUNNER, ["-p", path.join(root, "shell.qml")], {
     cwd: root,
     env: { ...process.env, HOME: root, XDG_CONFIG_HOME: root, XDG_DATA_HOME: root, XDG_CACHE_HOME: path.join(root, "cache"), XDG_RUNTIME_DIR: path.join(root, "runtime"), QT_QPA_PLATFORM: "offscreen", QML_DISABLE_DISK_CACHE: "1" },
     encoding: "utf8", timeout: 10000, killSignal: "SIGKILL",

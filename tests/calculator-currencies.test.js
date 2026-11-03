@@ -1,6 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const C = require("../plugin/core/Calculator.js")
+const C = require("../core/Calculator.js")
 
 const rates = { base: "EUR", date: "2026-10-29", rates: { USD: 2, GBP: 0.5, JPY: 100 } }
 const complete = { base: "EUR", date: rates.date, rates: Object.fromEntries(Object.keys(C.CURRENCIES).map(code => [code, 2])) }

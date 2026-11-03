@@ -8,7 +8,7 @@ const MAX_FIELDS: usize = 1_024;
 const MAX_ENTRIES: usize = 20_000;
 
 fn exchange(input: &[u8]) -> Vec<Value> {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_oma-cast-search"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_omacast-search"))
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
         .spawn().unwrap();
     child.stdin.take().unwrap().write_all(input).unwrap();
