@@ -212,7 +212,7 @@ Item {
   function runShell(command) {
     var summon = OmarchyMenu.summonAction(command)
     if (summon) backend.summonPlugin(summon.id, summon.payload)
-    else Util.execDetached(command)
+    else Util.execDetached("sleep 0.3; " + command)  // let the launcher window close first (screenshots captured its borders)
   }
 
   function recordVisit(id, query) {
