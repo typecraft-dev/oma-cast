@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
@@ -48,6 +49,14 @@ PanelWindow {
   }
   readonly property real zoom: window.general.uiZoom > 0 ? window.general.uiZoom : 1
   function px(value) { return Math.round(Style.space(value) * window.zoom) }
+  // The Omarchy logo glyph is drawn on a 15 px grid: at other sizes its thin
+  // strokes straddle device pixels and blur (27 px at 1.5x scale). Snap the
+  // size to the nearest multiple of 15 device pixels; the glyph also renders
+  // natively so FreeType hints it onto that grid.
+  function crispLogoSize(size) {
+    var ratio = window.devicePixelRatio || 1
+    return Math.round(Math.max(1, Math.round(size * ratio / 15)) * 15 / ratio)
+  }
 
   readonly property var look: ({
     background: Commons.Color.menu.background,
@@ -130,7 +139,37 @@ PanelWindow {
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
+  // Hold the content transparent until the surface has the output's size and
+  // scale, as Omarchy's OverlayWindow does. Qt draws the first frame after
+  // mapping at scale 1, which showed stretched and soft, with scale-dependent
+  // sizes jumping as the real scale landed.
+  readonly property var targetMonitor: {
+    var monitors = Hyprland.monitors.values
+    for (var i = 0; i < monitors.length; i++) {
+      if (window.screen && monitors[i].name === window.screen.name) return monitors[i]
+    }
+    return null
+  }
+  readonly property bool contentReady: window.shown && !!window.screen && !!window.targetMonitor
+    && window.width === window.screen.width && window.height === window.screen.height
+    && Math.round(window.devicePixelRatio * 120) === Math.round(window.targetMonitor.scale * 120)
+  property bool contentRevealed: false
+  onContentReadyChanged: {
+    window.contentRevealed = false
+    // Size and scale arrive while Qt is still updating the window; reveal once
+    // its layout has caught up.
+    if (window.contentReady) Qt.callLater(function() { if (window.contentReady) window.contentRevealed = true })
+  }
+  // Live monitor scaling emits no Hyprland event, so refresh the cached scale.
+  onDevicePixelRatioChanged: if (window.shown) Hyprland.refreshMonitors()
+  Binding {
+    target: window.contentItem
+    property: "opacity"
+    value: window.contentRevealed ? 1 : 0
+  }
+
   onShownChanged: {
+    if (window.shown) Hyprland.refreshMonitors()
     if (window.shown) return
     window.searchSerial++
     window.backend.cancelSearch()
@@ -704,7 +743,8 @@ PanelWindow {
           textFormat: Text.PlainText
           text: window.atRoot ? "" : ""
           font.family: window.atRoot ? "omarchy" : window.look.fontFamily
-          font.pixelSize: window.atRoot ? window.px(18) : window.px(15)
+          font.pixelSize: window.atRoot ? window.crispLogoSize(window.px(18)) : window.px(15)
+          renderType: Text.NativeRendering
           color: window.atRoot ? window.look.accent : window.look.foreground
           opacity: window.atRoot ? 1 : 0.7
         }
@@ -965,7 +1005,8 @@ PanelWindow {
           textFormat: Text.PlainText
           text: window.toast ? (window.toast.style === "failure" ? "" : "") : ""
           font.family: window.toast ? window.look.fontFamily : "omarchy"
-          font.pixelSize: window.toast ? window.px(12) : window.px(11)
+          font.pixelSize: window.toast ? window.px(12) : window.crispLogoSize(window.px(11))
+          renderType: window.toast ? Text.QtRendering : Text.NativeRendering
           color: window.toast && window.toast.style === "failure" ? "#e06c75" : window.look.accent
         }
         Text {
