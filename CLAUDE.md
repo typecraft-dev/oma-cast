@@ -162,6 +162,8 @@ Won't do (decided 2026-10-22):
 - Keystroke buffering. Keys sent within ~40 ms of the hotkey go to the window underneath; fixing it needs a parked surface, which Omarchy avoids (SPEC §12 Phase 1).
 - Calculator: Color, Weather and Flight results, crypto, pinned history entries and a history detail pane. Trig takes radians unless given `°`/`deg` [D].
 
+Omarchy 4.0.x compatibility: `plugin/ShellIpc.qml` (a plain `IpcHandler`, reached through `qs ipc`) and `plugin/ui/OverlayWindow.qml` (a copy of the `quattro` branch's `qs.Ui.OverlayWindow`) stand in for components 4.0.x does not ship. Explicit `qs.*` imports outrank same-directory files in QML, so Omarchy's own components win once they exist; delete the fallbacks then.
+
 Deviations from the original spec (SPEC §2.0 and the Phase 1 note in §12):
 - A Quickshell plugin instead of Tauri + Node; there's no NDJSON supervisor until Phase 5.
 - JSON documents instead of SQLite; no DB encryption or libsecret key.
