@@ -132,6 +132,9 @@ the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` mo
 | `Esc` / `Shift+Esc` | Back / back to root |
 | `Ctrl +` / `Ctrl −` / `Ctrl 0` | Zoom |
 
+The All / Applications / Commands filter beside the root search is optional: set `"rootFilter": false` in
+`~/.config/omacast/config.json` to hide it and its shortcut.
+
 ## CLI
 
 ```sh
