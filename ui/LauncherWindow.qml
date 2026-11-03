@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
@@ -139,6 +140,21 @@ PanelWindow {
     var seconds = Number(window.general.popToRootTimeout)
     if (!(seconds > 0)) window.popToRoot()
     else { popTimer.interval = seconds * 1000; popTimer.restart() }
+  }
+
+  // Where the card is while open, for Superwhisper: its recording glow (or
+  // pill) then draws on the launcher, as on any focused window, instead of on
+  // the window under it. Idle without Superwhisper or PyGObject.
+  readonly property string overlayFrame: window.shown && window.screen
+    ? ["1", window.screen.name, Math.round(card.x), Math.round(card.y), Math.round(card.width), Math.round(card.height)].join(" ")
+    : "0"
+  onOverlayFrameChanged: superwhisperFrame.write(window.overlayFrame + "\n")
+  Process {
+    id: superwhisperFrame
+    command: ["python3", decodeURIComponent(Qt.resolvedUrl("../services/superwhisper-frame.py").toString().replace(/^file:\/\//, ""))]
+    running: true
+    stdinEnabled: true
+    onStarted: superwhisperFrame.write(window.overlayFrame + "\n")
   }
 
   Timer {
