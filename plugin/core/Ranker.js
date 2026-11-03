@@ -18,6 +18,23 @@ function isSeparator(ch) {
   return ch !== "" && SEPARATORS.indexOf(ch) !== -1
 }
 
+var _normCache = {}
+var _normSize = 0
+function normalizeCached(s) {
+  var key = String(s === undefined || s === null ? "" : s)
+  // Bounded string-keyed cache: titles repeat across keystrokes and
+  // rebuilds, and normalize() scans the whole string every call. [D]
+  var hit = _normCache[key]
+  if (hit && hit.len === key.length) return hit
+  var r = normalize(key)
+  // Cap growth with a counter (Object.keys().length per call was itself
+  // O(cache) on this hot path). App libraries hold hundreds of titles. [D]
+  if (_normSize > 5000) { _normCache = {}; _normSize = 0 }
+  _normCache[key] = { normalizedText: r.normalizedText, wordBoundaries: r.wordBoundaries, len: key.length }
+  _normSize++
+  return _normCache[key]
+}
+
 
 function normalize(s) {
   var text = String(s === undefined || s === null ? "" : s)
@@ -34,7 +51,21 @@ var TRANSLIT = {
   "ı": "i", "ħ": "h", "Ħ": "H"
 }
 
+var _transCache = {}
+var _transSize = 0
+function transliterateCached(s) {
+  var key = String(s === undefined || s === null ? "" : s)
+  var hit = _transCache[key]
+  if (hit !== undefined) return hit
+  var r = transliterate(key)
+  if (_transSize > 5000) { _transCache = {}; _transSize = 0 }
+  _transCache[key] = r
+  _transSize++
+  return r
+}
+
 function transliterate(s) {
+
   var text = String(s === undefined || s === null ? "" : s)
   if (typeof text.normalize === "function") text = text.normalize("NFD").replace(/[̀-ͯ]/g, "")
   var out = ""
@@ -48,7 +79,7 @@ function transliterate(s) {
 
 function fuzzyMatch(target, query, options) {
   var literalDots = !!(options && options.literalQueryDots)
-  var tn = normalize(target)
+  var tn = normalizeCached(target)
   var t = tn.normalizedText
   var bounds = tn.wordBoundaries
   var q = String(query === undefined || query === null ? "" : query).toLowerCase()
@@ -65,6 +96,19 @@ function fuzzyMatch(target, query, options) {
   for (var i = 0; i < q.length; i++) if (querySep(q.charAt(i))) sepCount++
   var u = q.length - sepCount
   if (u > t.length) return "unmatched"
+
+  // Cheap subsequence gate: every non-separator query char must appear
+  // in order in the target — necessary for any DP alignment to exist.
+  // O(n) scan that skips the O(q*n^2) DP for the (typical) non-match.
+  // Separator query chars match any separator, so they always pass. [D]
+  var gi = 0
+  for (var gq = 0; gq < q.length; gq++) {
+    var gch = q.charAt(gq)
+    if (querySep(gch)) continue
+    gi = t.indexOf(gch, gi)
+    if (gi < 0) return "unmatched"
+    gi++
+  }
 
   if (u > 2) {
     var ti = 0
@@ -207,7 +251,7 @@ function searchTermRank(m) {
 }
 
 function wholeWordIn(title, q) {
-  var tn = normalize(title)
+  var tn = normalizeCached(title)
   var t = tn.normalizedText
   var b = tn.wordBoundaries
   var from = 0
@@ -230,10 +274,10 @@ function buildRecord(candidate, query, options) {
   var literalDots = !!opts.literalQueryDots
   var c = candidate || {}
   var q = String(query || "").trim().toLowerCase()
-  var tq = transliterate(q)
+  var tq = opts.tq !== undefined ? opts.tq : transliterateCached(q)
   var frecency = typeof c.frecency === "number" && isFinite(c.frecency) ? c.frecency : 1
 
-  var title = transliterate(String(c.title || ""))
+  var title = transliterateCached(String(c.title || ""))
   if (tq.charAt(0) === "/") title = title.replace("/", " ")
   var titleLower = title.toLowerCase()
   var alternates = Array.isArray(c.alternateTitles) ? c.alternateTitles.map(function(a) { return String(a || "") }) : []
@@ -286,7 +330,14 @@ function buildRecord(candidate, query, options) {
     keywords.push(subtitle + " " + String(c.title || ""))
   }
   if (c.bundleId && q.indexOf(".") !== -1) keywords.push(String(c.bundleId))
-  record.keywords = keywords.map(function(k) { return fuzzyMatch(String(k || ""), q, { literalQueryDots: literalDots }) })
+  // Keywords only feed the textMatched boolean — ordering uses title /
+  // subtitle scores. If the title already passes, skip every keyword DP.
+  // (Subtitle still runs: its score feeds ranking.) [D]
+  var titlePassed = record.alias !== "unmatched"
+    || passesThreshold(record.title, len, sensitivity)
+    || record.alternates.some(function(m) { return passesThreshold(m, len, sensitivity) })
+    || passesThreshold(record.subtitle, len, sensitivity)
+  record.keywords = titlePassed ? [] : keywords.map(function(k) { return fuzzyMatch(String(k || ""), q, { literalQueryDots: literalDots }) })
 
   record.searchTerm = searchTermMatch(c.searchTerms, q, frecency, c.openedAt, nowMs)
 
@@ -454,10 +505,61 @@ function byPinThen(then) {
   }
 }
 
+// Hoisted prefilter for rank(): O(total text length) subsequence scan over
+// every searchable field. A candidate that fails here cannot text-match
+// (every fuzzyMatch needs its non-separator chars in order), so rank()
+// skips transliterate + all DP work for it. Provably result-identical:
+// candidates with alias/searchTerms/boosts/pins/alwaysMatching always
+// take the full path. [D]
+function subseqHit(text, q) {
+  var t = String(text || "").toLowerCase()
+  var qq = String(q || "").toLowerCase()
+  var gi = 0
+  for (var i = 0; i < qq.length; i++) {
+    var ch = qq.charAt(i)
+    if (isSeparator(ch)) continue
+    gi = t.indexOf(ch, gi)
+    if (gi < 0) return false
+    gi++
+  }
+  return true
+}
+
+function needsFullRecord(c, q, tq) {
+  if (c.alwaysMatching || pinOf({ candidate: c }) !== null) return true
+  if (c.alias) return true
+  if (c.boostedTerms && c.boostedTerms.length) return true
+  if (c.searchTerms && c.searchTerms.length) return true
+  // Compare in transliterated space: buildRecord matches transliterate()
+  // output, so gating on raw strings would falsely reject ("cafe" vs
+  // "Café" — the blocker the differential-fuzz review caught). [D]
+  var t = transliterateCached(String(c.title || ""))
+  if (subseqHit(t, tq)) return true
+  var alts = c.alternateTitles || []
+  for (var i = 0; i < alts.length; i++) if (subseqHit(transliterateCached(alts[i]), tq)) return true
+  if (c.subtitle && subseqHit(transliterateCached(c.subtitle), tq)) return true
+  var kw = c.keywords || []
+  for (var k = 0; k < kw.length; k++) if (subseqHit(transliterateCached(kw[k]), tq)) return true
+  if (c.bundleId && q.indexOf(".") !== -1 && subseqHit(transliterateCached(c.bundleId), tq)) return true
+  if (c.subtitle && (subseqHit(transliterateCached(String(c.title || "") + " " + c.subtitle), tq)
+    || subseqHit(transliterateCached(c.subtitle + " " + String(c.title || "")), tq))) return true
+  return false
+}
+
 function rank(candidates, query, options) {
   var list = Array.isArray(candidates) ? candidates : []
   var q = String(query || "").trim()
-  var records = list.map(function(c) { return buildRecord(c, q, options) })
+  var ql = q.toLowerCase()
+  var opts = options || {}
+  if (opts.tq === undefined) opts = Object.assign({}, opts, { tq: transliterateCached(ql) })
+  var records = []
+  for (var mi = 0; mi < list.length; mi++) {
+    // Fast reject before transliterate + DP: provably non-matching
+    // candidates are dropped without a record (they match nothing and
+    // carry no pin/alias/terms that bucketing could observe). [D]
+    if (q && !needsFullRecord(list[mi], ql, opts.tq)) continue
+    records.push(buildRecord(list[mi], q, opts))
+  }
   var ordered
 
   if (!q) {

@@ -337,24 +337,57 @@ function passesFilter(candidate, filter) {
   return (candidate.type === "application") === (filter === "applications")
 }
 
+// Single-entry rank memo: the same query re-runs constantly without new
+// typing — Ctrl+P filter toggles, view push/pop, action-panel open/close
+// all re-search the current text. Hit = no DP at all. Keyed on the exact
+// decorated-list reference, so any data/revision change misses safely.
+// The backend's decorated memo keeps that reference stable for a full
+// minute bucket, which is what makes repeats hit. [D]
+var _rankMemo = { key: null, src: null, results: null, tail: null }
 function rootSections(candidates, query, ctx, deps) {
   var q = String(query || "").trim()
   var filtered = ctx.filter && ctx.filter !== "all"
+  var opts = rankOptions(ctx)
+
+  // Repeat-query fast path FIRST (before the decorated/filter loops):
+  // the backend memo keeps ctx.decorated reference-stable, so an exact
+  // key+reference hit skips every loop and all DP. [D]
+  var memoKey = (q && ctx.decorated) ? q + "\n" + String(ctx.filter || "all") : null
+  if (memoKey && _rankMemo.key === memoKey && _rankMemo.src === ctx.decorated) {
+    var sectionsHit = []
+    if (ctx.calculation && !filtered) sectionsHit.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
+    return sectionsHit.concat(_rankMemo.tail)
+  }
+  // Memoized decorated list (the backend caches it per data revision +
+  // time bucket): decorating clones every candidate and runs Math.exp per
+  // row, so redoing it per keystroke dominates app search. [D]
   var decorated = []
-  for (var i = 0; i < candidates.length; i++) {
-    if (!isEnabled(candidates[i], ctx) || !passesFilter(candidates[i], ctx.filter)) continue
-    decorated.push(decorate(candidates[i], ctx, deps))
+  if (ctx.decorated) {
+    // Backend memo (isEnabled pre-applied); the type filter still varies
+    // per call, so apply it here. [D]
+    for (var j = 0; j < ctx.decorated.length; j++) {
+      if (passesFilter(ctx.decorated[j], ctx.filter)) decorated.push(ctx.decorated[j])
+    }
+  } else {
+    for (var i = 0; i < candidates.length; i++) {
+      if (!isEnabled(candidates[i], ctx) || !passesFilter(candidates[i], ctx.filter)) continue
+      decorated.push(decorate(candidates[i], ctx, deps))
+    }
   }
   var opts = rankOptions(ctx)
 
   if (q) {
     var searchable = decorated.filter(function(c) { return c.rootSearch.when !== "empty" })
     var results = deps.Ranker.rank(searchable, q, opts)
-    var sections = []
-    if (ctx.calculation && !filtered) sections.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
-    if (results.length > 0) sections.push({ id: "results", title: "Results", rows: results })
-    if (!filtered) sections.push({ id: "fallback-commands", title: "Use “" + q + "” with…", rows: fallbackRows(q) })
-    return sections
+    var sections2 = []
+    if (ctx.calculation && !filtered) sections2.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
+    if (results.length > 0) sections2.push({ id: "results", title: "Results", rows: results })
+    if (!filtered) sections2.push({ id: "fallback-commands", title: "Use “" + q + "” with…", rows: fallbackRows(q) })
+    // Only memoize the calc-free tail: a calculator row depends on the
+    // clock and exchange-rate arrivals, never on the rank input. [D]
+    if (memoKey) _rankMemo = { key: memoKey, src: ctx.decorated, results: results,
+      tail: sections2.filter(function(s) { return s.id !== "calculator" }) }
+    return sections2
   }
 
   var shown = decorated.filter(function(c) { return c.rootSearch.when !== "searching" || c.favoriteOrder !== null })

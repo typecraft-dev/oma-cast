@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="676" font-family="monospace">
+<rect width="900" height="676" fill="#0d1117"/>
+<text x="150" y="30" fill="#e6edf3" font-size="17">oma-cast app search: mean ms per search (800 apps, old vs new)</text>
+<text x="150" y="50" fill="#8b949e" font-size="12">repeat = identical query (filter toggle / view re-entry) — fresh = distinct keystroke</text>
+<text x="10" y="83" fill="#e6edf3" font-size="13">files ×27</text>
+<rect x="150" y="78" width="463.0950234504992" height="15" fill="#f85149"/>
+<rect x="150" y="96" width="42.31201023037548" height="15" fill="#3fb950"/>
+<text x="619.0950234504992" y="90" fill="#8b949e" font-size="11">4.5ms</text>
+<text x="198.31201023037548" y="108" fill="#8b949e" font-size="11">0.17ms</text>
+<text x="10" y="127" fill="#e6edf3" font-size="13">notes ×22</text>
+<rect x="150" y="122" width="447.6267297742037" height="15" fill="#f85149"/>
+<rect x="150" y="140" width="47.39633846564385" height="15" fill="#3fb950"/>
+<text x="603.6267297742037" y="134" fill="#8b949e" font-size="11">4.2ms</text>
+<text x="203.39633846564385" y="152" fill="#8b949e" font-size="11">0.19ms</text>
+<text x="10" y="171" fill="#e6edf3" font-size="13">screenshot ×34</text>
+<rect x="150" y="166" width="466.11557557115884" height="15" fill="#f85149"/>
+<rect x="150" y="184" width="33.78194735052875" height="15" fill="#3fb950"/>
+<text x="622.1155755711588" y="178" fill="#8b949e" font-size="11">4.5ms</text>
+<text x="189.78194735052875" y="196" fill="#8b949e" font-size="11">0.13ms</text>
+<text x="10" y="215" fill="#e6edf3" font-size="13">zxqv ×34</text>
+<rect x="150" y="210" width="422.6994523141044" height="15" fill="#f85149"/>
+<rect x="150" y="228" width="28.188966568824014" height="15" fill="#3fb950"/>
+<text x="578.6994523141044" y="222" fill="#8b949e" font-size="11">3.7ms</text>
+<text x="184.18896656882401" y="240" fill="#8b949e" font-size="11">0.11ms</text>
+<text x="10" y="259" fill="#e6edf3" font-size="13">obsidian ×32</text>
+<rect x="150" y="254" width="441.49765479031157" height="15" fill="#f85149"/>
+<rect x="150" y="272" width="32.575810516003884" height="15" fill="#3fb950"/>
+<text x="597.4976547903116" y="266" fill="#8b949e" font-size="11">4.1ms</text>
+<text x="188.57581051600388" y="284" fill="#8b949e" font-size="11">0.13ms</text>
+<text x="10" y="303" fill="#e6edf3" font-size="13">taskmgr ×38</text>
+<rect x="150" y="298" width="462.7462511505455" height="15" fill="#f85149"/>
+<rect x="150" y="316" width="29.90336419078278" height="15" fill="#3fb950"/>
+<text x="618.7462511505455" y="310" fill="#8b949e" font-size="11">4.5ms</text>
+<text x="185.90336419078278" y="328" fill="#8b949e" font-size="11">0.12ms</text>
+<text x="10" y="347" fill="#e6edf3" font-size="13">word ×45</text>
+<rect x="150" y="342" width="446.3589530038653" height="15" fill="#f85149"/>
+<rect x="150" y="360" width="23.979959905479376" height="15" fill="#3fb950"/>
+<text x="602.3589530038653" y="354" fill="#8b949e" font-size="11">4.1ms</text>
+<text x="179.97995990547938" y="372" fill="#8b949e" font-size="11">0.09ms</text>
+<text x="10" y="391" fill="#e6edf3" font-size="13">vpn client ×21</text>
+<rect x="150" y="386" width="381.23712410954306" height="15" fill="#f85149"/>
+<rect x="150" y="404" width="36.89314167973609" height="15" fill="#3fb950"/>
+<text x="537.2371241095431" y="398" fill="#8b949e" font-size="11">3.1ms</text>
+<text x="192.8931416797361" y="416" fill="#8b949e" font-size="11">0.14ms</text>
+<text x="10" y="435" fill="#e6edf3" font-size="13">photo ×29</text>
+<rect x="150" y="430" width="423.50675917430044" height="15" fill="#f85149"/>
+<rect x="150" y="448" width="32.81746540189451" height="15" fill="#3fb950"/>
+<text x="579.5067591743004" y="442" fill="#8b949e" font-size="11">3.7ms</text>
+<text x="188.8174654018945" y="460" fill="#8b949e" font-size="11">0.13ms</text>
+<text x="10" y="479" fill="#e6edf3" font-size="13">calc ×49</text>
+<rect x="150" y="474" width="440.9041057832717" height="15" fill="#f85149"/>
+<rect x="150" y="492" width="21.725057110223105" height="15" fill="#3fb950"/>
+<text x="596.9041057832717" y="486" fill="#8b949e" font-size="11">4.0ms</text>
+<text x="177.7250571102231" y="504" fill="#8b949e" font-size="11">0.08ms</text>
+<text x="10" y="523" fill="#e6edf3" font-size="13">o ×24</text>
+<rect x="150" y="518" width="423.1610633791662" height="15" fill="#f85149"/>
+<rect x="150" y="536" width="39.26242500896757" height="15" fill="#3fb950"/>
+<text x="579.1610633791662" y="530" fill="#8b949e" font-size="11">3.7ms</text>
+<text x="195.26242500896757" y="548" fill="#8b949e" font-size="11">0.15ms</text>
+<text x="10" y="567" fill="#e6edf3" font-size="13">e ×71</text>
+<rect x="150" y="562" width="542.0754271009322" height="15" fill="#f85149"/>
+<rect x="150" y="580" width="23.23039721546479" height="15" fill="#3fb950"/>
+<text x="698.0754271009322" y="574" fill="#8b949e" font-size="11">6.3ms</text>
+<text x="179.2303972154648" y="592" fill="#8b949e" font-size="11">0.09ms</text>
+<text x="10" y="611" fill="#e6edf3" font-size="13">a ×46</text>
+<rect x="150" y="606" width="419.153713139262" height="15" fill="#f85149"/>
+<rect x="150" y="624" width="20.716856640782225" height="15" fill="#3fb950"/>
+<text x="575.153713139262" y="618" fill="#8b949e" font-size="11">3.7ms</text>
+<text x="176.71685664078223" y="636" fill="#8b949e" font-size="11">0.08ms</text>
+<text x="10" y="655" fill="#e6edf3" font-size="13">er ×62</text>
+<rect x="150" y="650" width="660" height="15" fill="#f85149"/>
+<rect x="150" y="668" width="41.84505918895434" height="15" fill="#3fb950"/>
+<text x="816" y="662" fill="#8b949e" font-size="11">10.3ms</text>
+<text x="197.84505918895434" y="680" fill="#8b949e" font-size="11">0.17ms</text>
+<text x="150" y="668" fill="#f85149" font-size="12">■ old (no memo, full rank per keystroke)</text>
+<text x="510" y="668" fill="#3fb950" font-size="12">■ new (prefilter + memos)</text>
+</svg>

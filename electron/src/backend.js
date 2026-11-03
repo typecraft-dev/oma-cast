@@ -99,6 +99,41 @@ function createBackend(opts) {
       sensitivity: settingsStore.loaded ? settingsStore.doc.general.rootSearchSensitivity : "medium"
     }
   }
+  // Decorated-list memo: one clone + Math.exp per candidate per data
+  // change (not per keystroke). Keyed on both revisions plus a 60 s time
+  // bucket — frecency ordering is monotonic in anchor at fixed now, so a
+  // bucket never reorders; the bucket only bounds absolute-value drift.
+  // [D]
+  var decorMemo = { rev: -1, srev: -1, bucket: -1, list: [] }
+  // Final mapped-sections memo for the app-only root path (see search).
+  // [D]
+  var bMemo = { key: null, src: null, out: null }
+  function decoratedList(ctx) {
+    var bucket = Math.floor(ctx.nowMs / 60000)
+    if (decorMemo.rev !== candidatesRevision || decorMemo.srev !== storeRevision || decorMemo.bucket !== bucket) {
+      var list = []
+      for (var i = 0; i < candidates.length; i++) {
+        if (!RootSearchIsEnabled(candidates[i], ctx)) continue
+        list.push(RootSearch.decorate(candidates[i], ctx, deps))
+      }
+      decorMemo = { rev: candidatesRevision, srev: storeRevision, bucket: bucket, list: list }
+    }
+    return decorMemo.list
+  }
+  function RootSearchIsEnabled(c, ctx) {
+    var settings = ctx.commands && ctx.commands[c.id]
+    return !(settings && settings.enabled === false)
+  }
+  function deepFreezeSections(sections) {
+    try {
+      for (var i = 0; i < sections.length; i++) {
+        Object.freeze(sections[i].rows)
+        Object.freeze(sections[i])
+      }
+      Object.freeze(sections)
+    } catch (e) {}
+    return sections
+  }
   function decorated(id) {
     var c = candidatesById[id]
     return c ? RootSearch.decorate(c, searchContext(), deps) : null
@@ -658,7 +693,24 @@ function createBackend(opts) {
         else if (view && view.kind === "web-search") sections = RootSearch.webSearchSections(view.engine, query)
         else {
           ctx.filter = String(data && data.filter || "all")
+          ctx.decorated = decoratedList(ctx)
           if (query.trim() && ctx.filter === "all") ctx.calculation = calculate(query)
+          // App-search result memo: identical query + filter + data +
+          // calculator output returns the mapped sections with a shallow
+          // copy (row refs are never mutated downstream; the RPC layer
+          // serializes). Time-varying calculator rows carry their output
+          // in the key, so they miss instead of going stale. The Files
+          // tier bypasses (walker cache churns independently). [D]
+          var fq = query.trim()
+          var filesTier = ctx.filter === "all" && fq.length >= 2 && fileIndex && fileIndex.ready && !(data && data.skipFiles)
+          var calcKey = ctx.calculation ? ctx.calculation.copy : ""
+          var bKey = !view && !filesTier ? query + "\n" + ctx.filter + "\n" + calcKey : null
+          if (bKey && bMemo.key === bKey && bMemo.src === ctx.decorated) {
+            // Shared frozen reference: the RPC/IPC boundary serializes,
+            // so no caller can mutate the cache; freezing turns a
+            // violation into a loud error instead of silent pollution. [D]
+            return bMemo.out
+          }
           sections = RootSearch.rootSections(candidates, query, ctx, deps)
           // SPEC §8.6: a Files section after Results (before the “Use ‘q’
           // with…” fallbacks), once the query is long enough to plausibly
@@ -699,9 +751,11 @@ function createBackend(opts) {
             }
           }
         }
-        return sections.map(function(s) {
+        var mapped = sections.map(function(s) {
           return { id: s.id, title: s.title, rows: s.rows.map(function(r) { return r.candidate }) }
         })
+        if (bKey && !view && !filesTier) bMemo = { key: bKey, src: ctx.decorated, out: deepFreezeSections(mapped) }
+        return mapped
       },
       getActions: function(data) {
         var rowId = String(data && data.id || "")
