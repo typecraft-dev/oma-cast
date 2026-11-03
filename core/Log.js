@@ -11,7 +11,7 @@ function shouldLog(level, threshold) {
 }
 
 function format(level, category, message, metadata) {
-  var line = "[oma-cast] [" + LEVELS[levelIndex(level)] + "]"
+  var line = "[omacast] [" + LEVELS[levelIndex(level)] + "]"
   if (category) line += " [" + category + "]"
   line += " " + String(message)
   if (metadata !== undefined && metadata !== null) {

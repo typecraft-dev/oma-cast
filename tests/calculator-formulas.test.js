@@ -1,6 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const C = require("../plugin/core/Calculator.js")
+const C = require("../core/Calculator.js")
 
 process.env.TZ = "UTC"
 const env = { nowMs: Date.UTC(2026, 9, 30, 12), localOffset: 0, hour12: false, zones: { "Asia/Tokyo": 540 } }

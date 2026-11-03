@@ -1,6 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const Rpc = require("../plugin/core/Rpc.js")
+const Rpc = require("../core/Rpc.js")
 
 function registryWithSystem() {
   const reg = Rpc.createRegistry()

@@ -11,7 +11,6 @@ import "core/FleaSearch.js" as FleaSearch
 import "core/Frecency.js" as Frecency
 import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
-import "core/Agent.js" as Agent
 import "core/Calculator.js" as Calculator
 import "services"
 
@@ -36,7 +35,7 @@ Item {
   property var candidates: []
   property var candidatesById: ({})
   property int candidatesRevision: 0
-  readonly property bool loading: menuSource.loading || agentLauncher.checking || nativeSearch.pending !== null
+  readonly property bool loading: menuSource.loading || nativeSearch.pending !== null
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
@@ -171,16 +170,16 @@ Item {
       case "open":
       case "copy-answer":
         if (!historyId) backend.saveCalculation(entry)
-        Util.execArgv(["wl-copy", "--", entry.copy])
+        clipboard.copy(entry.copy)
         return { close: true, hud: "Copied to Clipboard" }
       case "paste-answer":
         if (!historyId) backend.saveCalculation(entry)
-        // Omarchy's own paste: copies, waits for our window to unmap, types.
-        Util.execArgv(["omarchy-clipboard-paste-text", entry.copy])
+        // Copies, waits for our window to unmap, then pastes.
+        clipboard.paste(entry.copy)
         return { close: true }
       case "copy-question-answer":
         if (!historyId) backend.saveCalculation(entry)
-        Util.execArgv(["wl-copy", "--", entry.query + " = " + entry.result])
+        clipboard.copy(entry.query + " = " + entry.result)
         return { close: true, hud: "Copied to Clipboard" }
       case "open-history":
         return { push: { kind: "calculator-history", title: "Calculator History" } }
@@ -313,7 +312,7 @@ Item {
         return { close: true }
       case "copy-command":
       case "copy-id":
-        Util.execArgv(["wl-copy", "--", action === "copy-id" ? candidate.appId + ".desktop" : candidate.action])
+        clipboard.copy(action === "copy-id" ? candidate.appId + ".desktop" : candidate.action)
         return { close: true, hud: "Copied to Clipboard" }
       case "favorite-add":
       case "favorite-remove":
@@ -478,10 +477,6 @@ Item {
         }
         var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === (data && data.id) })[0]
         if (fallback) {
-          if (fallback.id === Agent.FALLBACK_ID) {
-            agentLauncher.start(data.query)
-            return { pending: true }
-          }
           Util.execArgv(["omarchy-launch-browser", RootSearch.fallbackUrl(fallback, data.query)])
           return { close: true }
         }
@@ -559,7 +554,14 @@ Item {
       menuSource.refresh()
       calculatorData.refresh()
     }
-    if (method === "window.visibilityChanged" && data && !data.visible) agentLauncher.cancel()
+  }
+
+  // Clipboard text goes over stdin, never argv (other users can read argv).
+  function copyText(text) { clipboard.copy(text) }
+
+  ClipboardWriter {
+    id: clipboard
+    onFailed: function(message) { backend.log("error", "clipboard", message, null) }
   }
 
   AppFocuser {
@@ -567,16 +569,13 @@ Item {
     onLaunchRequested: function(candidate) { backend.launchApp(candidate) }
   }
 
-  AgentLauncher {
-    id: agentLauncher
-    onPrepared: function(argv) { backend.emit("agent.launchReady", { argv: argv }) }
-    onFailed: function(message) { backend.emit("agent.launchFailed", { message: message }) }
-  }
-
 
   Process {
     id: mkdirs
-    command: ["mkdir", "-p"].concat(Paths.directoriesToCreate(backend.paths))
+    // Moves directories left under the old name, then creates everything
+    // owner-only and repairs modes left readable by older builds.
+    command: Paths.setupArgv(backend.paths, [Schema.documents.settings.file, Schema.documents.frecency.file, Schema.documents.calculator.file]
+      .map(function(file) { return backend.paths.db + "/" + file }))
     onExited: function(exitCode) {
       if (exitCode !== 0) backend.log("error", "paths", "could not create data directories", { exitCode: exitCode })
       backend.directoriesReady = true
