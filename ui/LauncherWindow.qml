@@ -644,7 +644,7 @@ PanelWindow {
 
   function isTyping(event) {
     return event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127
-      && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)
+      && ((event.modifiers & ~Qt.KeypadModifier) === Qt.NoModifier || (event.modifiers & ~Qt.KeypadModifier) === Qt.ShiftModifier)
   }
 
   Connections {
