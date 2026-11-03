@@ -1004,7 +1004,8 @@ PanelWindow {
           textFormat: Text.PlainText
           text: window.toast ? (window.toast.style === "failure" ? "" : "") : ""
           font.family: window.toast ? window.look.fontFamily : "omarchy"
-          font.pixelSize: window.toast ? window.px(12) : window.px(11)
+          font.pixelSize: window.toast ? window.px(12) : window.crispLogoSize(window.px(11))
+          renderType: window.toast ? Text.QtRendering : Text.NativeRendering
           color: window.toast && window.toast.style === "failure" ? "#e06c75" : window.look.accent
         }
         Text {
