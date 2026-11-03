@@ -51,7 +51,19 @@ test("a query always ends with the fallback section", () => {
   assert.equal(sections.length, 1)
   assert.equal(sections[0].id, "fallback-commands")
   assert.equal(sections[0].title, "Use “zzzz-nothing” with…")
-  assert.deepEqual(titles(sections[0]), ["Search Google", "Search DuckDuckGo"])
+  assert.deepEqual(titles(sections[0]), ["Search Google", "Search DuckDuckGo", "Show in Large Type"])
+})
+
+test("Show in Large Type is a query-level fallback with a display action", () => {
+  const row = results("meeting at noon").at(-1).rows.at(-1).candidate
+  assert.equal(row.id, "fallback:large-type")
+  assert.equal(row.title, "Show in Large Type")
+  assert.equal(row.kind, "fallback")
+  assert.ok(!row.url, "large type is not a web search")
+  assert.deepEqual(RS.actionsFor(row).map(a => a.id), ["open"])
+  assert.equal(RS.actionsFor(row)[0].title, "Show in Large Type")
+  assert.ok(results("").flatMap(s => s.rows).every(r => r.candidate.id !== row.id), "never on the empty root")
+  assert.ok(RS.submenuSections(candidates(), "trigger", "show me", ctx(), deps).flatMap(s => s.rows).every(r => r.candidate.id !== row.id), "never inside submenus")
 })
 
 test("an exact alias puts its command on top (Phase 1 accept)", () => {
