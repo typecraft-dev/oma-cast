@@ -116,12 +116,12 @@ Renamed **raylinux → oma-launcher → oma-cast** on 2026-10-19, then **oma-cas
 Works:
 - **Root search** ported from ref 02 §4.2–4.6 (`core/Ranker.js`, `core/Frecency.js`, golden tests). Sections (`core/RootSearch.js`):
   - empty root: Favorites, Suggestions (frecency > 1, top 6), Commands, Applications
-  - query: Results, then `Use "<q>" with…` (Google, DuckDuckGo fallbacks)
+  - query: Results, then `Use "<q>" with…` (Google, DuckDuckGo, Show in Large Type fallbacks)
 - **Providers:** apps from `shell.appLibrary`, the whole Omarchy menu (about 400 items, with breadcrumbs, guards, ✓ state and font/power-profile provider rows), and the built-in "Omarchy Menu".
 - **Opening an open app [D]:** ↵ on an app focuses its most recently used window, switching to its workspace, and launches only when none is open. Windows match by desktop id, `StartupWMClass`, or the URL Chromium/Brave web app classes are built from (`RootSearch.findAppWindow`). The focus waits for the `omacast` layer to unmap, since Hyprland refuses focus while it holds the keyboard. Focus doesn't raise on Omarchy 4.5's floating workspaces, so the window is then brought to the top, and one minimized to the dock is moved back first, the way the dock does it. Shift+↵ ("Open New Window") always launches.
 - **Ranking state:** frecency (+100 per launch, 10-day half-life) and learned search terms in `db/frecency.json`. Aliases (exact → top; duplicates rejected), favourites (Ctrl+Shift+F, reorder Ctrl+Alt+↑↓) and disabled commands live in `db/settings.json` `commands`.
 - **Navigation:** pushed Omarchy submenus (search within them), the alias editor, back with Esc / Ctrl+[ / Backspace on an empty query / the header arrow, and Shift+Esc to pop to root.
-- **Keyboard:** Ctrl+K action panel (filterable, per-row shortcuts), ↵ / Ctrl+↵ / Ctrl+Shift+↵ for the first three actions, Ctrl+1–9, Ctrl+↑↓ to jump sections, PageUp/PageDown, ↑ on an empty root for search history, Ctrl+Shift+C copy, Alt+Shift+D disable, Ctrl + / − / 0 zoom.
+- **Keyboard:** Ctrl+K action panel (filterable, per-row shortcuts), ↵ / Ctrl+↵ / Ctrl+Shift+↵ for the first three actions, Ctrl+1–9, Ctrl+↑↓ to jump sections, PageUp/PageDown, ↑ on an empty root for search history, Ctrl+Shift+C copy, Alt+Shift+D disable, Ctrl+L Large Type, Ctrl + / − / 0 zoom.
   - Navigation bindings (`general.navigationBindings`): `emacs` moves down with Ctrl+N; `vim-motions` moves with Ctrl+J/K and puts the action panel on **Alt+K**. Set it with `omacast call settings.updateGeneralSettings '{"navigationBindings":"vim-motions"}'`.
   - **Ctrl+P** opens the root dropdown (All / Applications / Commands); emacs Ctrl+P = up only works inside popups.
   - **Ctrl+T** opens the toast's actions (Copy Error Message on failures, Undo after Disable Command). **Ctrl+Shift+K** opens the About panel for the selected row.
@@ -150,7 +150,9 @@ Works:
 
   ↵ copies the answer (HUD), Ctrl+↵ pastes it (wl-copy on stdin, then Shift+Insert), Ctrl+Shift+C copies "question = answer". Each one saves to **Calculator History** (`db/calculator.json`, 4096 rows / 90 days): a built-in command and pushed view, searchable, Ctrl+D deletes an entry, Ctrl+Shift+D deletes all. RPC: `calculator.calculate|historyGetAll|historyDelete|historyDeleteAll|refreshCurrencies|getCurrencies`. A bare number, word or quantity (`42`, `firefox`, `5 kg`) never produces a row, because the section takes ↵.
 - **Latency:** show → mapped in 59–66 ms, hide in 24–42 ms on Omarchy 4.0.6 (`tests/smoke.sh`; it was 37–44 ms on the old `OverlayWindow`).
-- **Tests:** root search, calculator and privacy coverage (`node --test tests/*.test.js`).
+- **Tests:** root search, calculator, Large Type policy and privacy coverage (`node --test tests/*.test.js`).
+
+**Large Type (fork, 2026-11-03):** Ctrl+L (or the "Show in Large Type" fallback row, which answers with a `{ largeType: query }` outcome from `rootSearch.performAction`) shows the current root-search query across the screen, as Alfred's Large Type does. It is a mode inside `LauncherWindow`, not a second surface: the card hides, `ui/LargeTypeOverlay.qml` paints an opaque theme background with the text, and Esc, a click or Ctrl+L again restores the card with the query and focus intact. Blank or whitespace-only input is a no-op (`core/LargeType.js` `displayText`), the text is snapshotted so it cannot change while shown, and the overlay state resets in `closePopups()` so hide/show cycles never leave it stale. Fitting is Qt's `Text.Fit` between bounds from `core/LargeType.js` (`fitRange`), so sizing stays bounded for any input length; the query renders `Text.PlainText`, never markup.
 
 **Default-agent hand-off:** removed 2026-11-02 after the marketplace review; it exposed the question in process arguments (SPEC §2.0).
 
