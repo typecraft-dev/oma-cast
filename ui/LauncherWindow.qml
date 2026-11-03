@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
@@ -130,7 +131,37 @@ PanelWindow {
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
+  // Hold the content transparent until the surface has the output's size and
+  // scale, as Omarchy's OverlayWindow does. Qt draws the first frame after
+  // mapping at scale 1, which showed stretched and soft, with scale-dependent
+  // sizes jumping as the real scale landed.
+  readonly property var targetMonitor: {
+    var monitors = Hyprland.monitors.values
+    for (var i = 0; i < monitors.length; i++) {
+      if (window.screen && monitors[i].name === window.screen.name) return monitors[i]
+    }
+    return null
+  }
+  readonly property bool contentReady: window.shown && !!window.screen && !!window.targetMonitor
+    && window.width === window.screen.width && window.height === window.screen.height
+    && Math.round(window.devicePixelRatio * 120) === Math.round(window.targetMonitor.scale * 120)
+  property bool contentRevealed: false
+  onContentReadyChanged: {
+    window.contentRevealed = false
+    // Size and scale arrive while Qt is still updating the window; reveal once
+    // its layout has caught up.
+    if (window.contentReady) Qt.callLater(function() { if (window.contentReady) window.contentRevealed = true })
+  }
+  // Live monitor scaling emits no Hyprland event, so refresh the cached scale.
+  onDevicePixelRatioChanged: if (window.shown) Hyprland.refreshMonitors()
+  Binding {
+    target: window.contentItem
+    property: "opacity"
+    value: window.contentRevealed ? 1 : 0
+  }
+
   onShownChanged: {
+    if (window.shown) Hyprland.refreshMonitors()
     if (window.shown) return
     window.searchSerial++
     window.backend.cancelSearch()
