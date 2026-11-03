@@ -49,6 +49,14 @@ PanelWindow {
   }
   readonly property real zoom: window.general.uiZoom > 0 ? window.general.uiZoom : 1
   function px(value) { return Math.round(Style.space(value) * window.zoom) }
+  // The Omarchy logo glyph is drawn on a 15 px grid: at other sizes its thin
+  // strokes straddle device pixels and blur (27 px at 1.5x scale). Snap the
+  // size to the nearest multiple of 15 device pixels; the glyph also renders
+  // natively so FreeType hints it onto that grid.
+  function crispLogoSize(size) {
+    var ratio = window.devicePixelRatio || 1
+    return Math.round(Math.max(1, Math.round(size * ratio / 15)) * 15 / ratio)
+  }
 
   readonly property var look: ({
     background: Commons.Color.menu.background,
@@ -734,7 +742,8 @@ PanelWindow {
           textFormat: Text.PlainText
           text: window.atRoot ? "" : ""
           font.family: window.atRoot ? "omarchy" : window.look.fontFamily
-          font.pixelSize: window.atRoot ? window.px(18) : window.px(15)
+          font.pixelSize: window.atRoot ? window.crispLogoSize(window.px(18)) : window.px(15)
+          renderType: Text.NativeRendering
           color: window.atRoot ? window.look.accent : window.look.foreground
           opacity: window.atRoot ? 1 : 0.7
         }
