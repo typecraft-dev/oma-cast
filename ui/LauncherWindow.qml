@@ -996,13 +996,18 @@ PanelWindow {
         anchors.verticalCenter: parent.verticalCenter
         spacing: window.px(8)
 
-        readonly property var primary: {
+        readonly property var current: {
           window.selectedRow
           window.backend.storeRevision
           if (window.view.kind === "alias") return { title: "Save Alias", shortcut: "↵" }
           var list = window.actionsForSelected()
           return list.length ? list[0] : null
         }
+        // Keep the last action while a search is in flight: actionsForSelected
+        // is empty then, and blanking it made the footer flicker on each key.
+        property var primary: null
+        onCurrentChanged: if (!window.searchPending) footerActions.primary = footerActions.current
+        Component.onCompleted: footerActions.primary = footerActions.current
 
         Text {
           visible: footerActions.primary !== null
