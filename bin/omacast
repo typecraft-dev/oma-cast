@@ -1,0 +1,336 @@
+#!/bin/bash
+
+set -uo pipefail
+
+PLUGIN_ID="typecraft.omacast"
+IPC_TARGET="omacast"
+# The name before 2026-11-01; install, setup and doctor clean up after it.
+LEGACY_ID="typecraft.oma-cast"
+LEGACY_NAME="oma-cast"
+
+self=$(readlink -f "${BASH_SOURCE[0]}")
+repo=$(cd "$(dirname "$self")/.." && pwd -P)
+plugins_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins"
+plugin_link="$plugins_dir/$PLUGIN_ID"
+hypr_dir="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
+cli_link="$HOME/.local/bin/omacast"
+
+# A marketplace install (`omarchy plugin add`) is this repo cloned straight into
+# the plugins dir. A development checkout lives elsewhere and is symlinked in.
+managed() { [[ $repo == "$(cd "$plugins_dir" 2>/dev/null && pwd -P)/$PLUGIN_ID" ]]; }
+
+installed_links() {
+  local link
+  for link in "$plugin_link" "$plugin_link".dev-*; do
+    [[ -L $link && $(readlink -f "$link") == "$repo" ]] && printf '%s\n' "$link"
+  done
+}
+
+current_link() { installed_links | tail -n1; }
+
+usage() {
+  cat <<USAGE
+Usage: omacast <command> [args]
+
+Launcher
+  toggle                 Show or hide the launcher
+  show | hide            Show or hide it
+  run <commandId>        Open a command directly
+  call <method> [json]   Call a backend method, e.g. omacast call system.info
+
+Setup
+  install                Enable the plugin and link this CLI into ~/.local/bin
+                         (a development checkout is also linked into omarchy-shell)
+  uninstall              Disable and remove the plugin, offering to remove the hotkey
+  setup hyprland [--yes] Bind Alt+Space to the launcher in ~/.config/hypr/omacast.lua
+  build-search           Build the optional flea-search helper (needs Rust/cargo)
+  doctor                 Check that the pieces are in place
+
+Development checkout
+  reload                 Make the shell reload the plugin after editing it
+  dev                    Reload the plugin on every save
+USAGE
+}
+
+die() { echo "omacast: $*" >&2; exit 1; }
+
+ipc() { omarchy-shell "$IPC_TARGET" "$@"; }
+
+need_shell() {
+  command -v omarchy-shell >/dev/null || die "omarchy-shell not found; omacast runs inside the Omarchy shell"
+}
+
+interactive() { [[ -t 0 && -t 1 ]]; }
+
+# confirm <prompt> <assume-yes>
+confirm() {
+  (( $2 )) && return 0
+  interactive || die "refusing to change your config without confirmation; pass --yes"
+  if command -v gum >/dev/null; then
+    gum confirm "$1"
+  else
+    local answer
+    read -r -p "$1 [y/N] " answer
+    [[ $answer == [yY]* ]]
+  fi
+}
+
+link_cli() {
+  mkdir -p "$HOME/.local/bin"
+  if [[ ! -e $cli_link || -L $cli_link ]]; then
+    ln -sfn "$self" "$cli_link"
+    echo "linked $cli_link"
+  else
+    echo "left $cli_link alone; it is not a symlink"
+  fi
+}
+
+# Undo what the oma-cast install left behind: its plugin links, its enable
+# entry and its CLI link. Hyprland files are handled by setup hyprland.
+remove_legacy_install() {
+  local link removed=0
+  for link in "$plugins_dir/$LEGACY_ID" "$plugins_dir/$LEGACY_ID".dev-*; do
+    [[ -L $link ]] || continue
+    rm "$link" && echo "removed old link $link" && removed=1
+  done
+  if omarchy plugin list --json 2>/dev/null | jq -e --arg id "$LEGACY_ID" 'any(.[]; .id == $id and .enabled)' >/dev/null 2>&1 ||
+    jq -e --arg id "$LEGACY_ID" '.plugins // [] | any(.id == $id)' "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/shell.json" >/dev/null 2>&1; then
+    omarchy plugin disable "$LEGACY_ID" >/dev/null 2>&1 && echo "disabled $LEGACY_ID"
+  fi
+  local old_cli="$HOME/.local/bin/$LEGACY_NAME"
+  if [[ -L $old_cli && ( ! -e $old_cli || $(readlink "$old_cli") == "$repo"/* ) ]]; then
+    rm "$old_cli" && echo "removed old $old_cli"
+  fi
+  (( removed )) && omarchy-shell -q shell rescanPlugins
+  return 0
+}
+
+# Same rule as core/Paths.js legacyMoves, run before build-search creates the
+# new cache dir and so stops the plugin from moving the old one.
+move_legacy_dirs() {
+  local base
+  for base in "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}" \
+    "${XDG_CACHE_HOME:-$HOME/.cache}" "${XDG_STATE_HOME:-$HOME/.local/state}"; do
+    [[ -d $base/$LEGACY_NAME && ! -e $base/omacast ]] || continue
+    mv -T -- "$base/$LEGACY_NAME" "$base/omacast" && echo "moved $base/$LEGACY_NAME to $base/omacast"
+  done
+}
+
+cmd_install() {
+  need_shell
+  [[ -f $repo/manifest.json ]] || die "plugin manifest missing at $repo"
+  move_legacy_dirs
+  if command -v cargo >/dev/null; then
+    "$repo/bin/build-search" || die "search helper build failed; plugin was not installed"
+  else
+    echo "Rust not found; skipping the helper build (using an existing helper or the built-in matcher)"
+  fi
+  remove_legacy_install
+
+  if ! managed; then
+    mkdir -p "$plugins_dir"
+    if [[ -e $plugin_link && ! -L $plugin_link ]]; then
+      die "$plugin_link exists and is not a symlink; remove it with: omarchy plugin remove $PLUGIN_ID"
+    fi
+    ln -sfn "$repo" "$plugin_link"
+    echo "linked $plugin_link -> $repo"
+  fi
+  link_cli
+
+  omarchy-shell -q shell rescanPlugins
+  local out i
+  for i in $(seq 1 50); do
+    out=$(omarchy plugin enable "$PLUGIN_ID" 2>&1) && break
+    [[ $out == *"not ready"* || $out == *"could not find"* || $out == *"not known"* ]] || break
+    sleep 0.1
+  done
+  [[ -n $out ]] && echo "$out"
+
+  for i in $(seq 1 100); do
+    if [[ $(omarchy-shell "$IPC_TARGET" ping 2>/dev/null) == "ok" ]]; then
+      echo "omacast is running"
+      [[ -f $hypr_dir/omacast.lua ]] || echo "bind a hotkey with: omacast setup hyprland"
+      return 0
+    fi
+    sleep 0.1
+  done
+  die "plugin did not answer; check the shell log with: qs log -n -p \"\$OMARCHY_PATH/shell\""
+}
+
+cmd_uninstall() {
+  need_shell
+  local assume_yes=0
+  [[ ${1:-} == --yes || ${1:-} == -y ]] && assume_yes=1
+
+  if [[ -L $cli_link && $(readlink -f "$cli_link") == "$self" ]]; then
+    rm "$cli_link" && echo "removed $cli_link"
+  fi
+  if [[ -f $hypr_dir/omacast.lua ]]; then
+    if ! (( assume_yes )) && ! interactive; then
+      echo "kept the hotkey; remove $hypr_dir/omacast.lua and require(\"hypr.omacast\") yourself, or pass --yes"
+    elif confirm "Remove the hotkey ($hypr_dir/omacast.lua and its require in hyprland.lua)?" "$assume_yes"; then
+      sed -i -E '/^\s*require\("hypr\.omacast"\)\s*$/d; /^-- omacast launcher bindings$/d' "$hypr_dir/hyprland.lua"
+      rm "$hypr_dir/omacast.lua" && echo "removed $hypr_dir/omacast.lua"
+      hyprctl reload >/dev/null 2>&1
+    fi
+  fi
+
+  if managed; then
+    local args=()
+    (( assume_yes )) && args=(--yes)
+    exec omarchy plugin remove "$PLUGIN_ID" "${args[@]}"
+  fi
+  omarchy plugin disable "$PLUGIN_ID" 2>/dev/null || true
+  local link
+  while IFS= read -r link; do
+    [[ -n $link ]] && rm "$link" && echo "removed $link"
+  done < <(installed_links)
+  omarchy-shell -q shell rescanPlugins
+}
+
+need_checkout() {
+  managed && die "$1 is for development checkouts; edits under $repo reload automatically"
+  [[ -n $(current_link) ]] || die "plugin is not installed; run: omacast install"
+}
+
+cmd_reload() {
+  need_checkout reload
+  local old
+  while IFS= read -r old; do rm "$old"; done < <(installed_links)
+  ln -s "$repo" "$plugin_link.dev-$(date +%s%N)"
+}
+
+cmd_dev() {
+  command -v inotifywait >/dev/null || die "inotifywait not found (inotify-tools)"
+  need_checkout dev
+  cmd_reload
+  echo "watching $repo; Ctrl+C to stop"
+  inotifywait -m -r -q -e close_write,create,delete,move --format '%w%f' \
+    --exclude '/(\.git|search|tests|reference|docs)/' "$repo" |
+    while read -r path; do
+      echo "changed ${path#"$repo"/}"
+      cmd_reload
+    done
+}
+
+cmd_setup_hyprland() {
+  local assume_yes=0
+  [[ ${1:-} == --yes || ${1:-} == -y ]] && assume_yes=1
+  local main="$hypr_dir/hyprland.lua" file="$hypr_dir/omacast.lua" legacy="$hypr_dir/$LEGACY_NAME.lua"
+  [[ -f $main ]] || die "no $main; this setup targets Lua-configured Hyprland (hyprctl version: $(hyprctl version 2>/dev/null | head -1))"
+
+  local conflicts
+  conflicts=$(grep -rnE '"ALT \+ SPACE"|ALT, ?SPACE' "$hypr_dir" "${OMARCHY_PATH:-/usr/share/omarchy}/default/hypr" 2>/dev/null |
+    grep -vF -e "$file:" -e "$legacy:" | grep -vE '^\S+:[0-9]+:\s*(--|#)')
+  if [[ -n $conflicts ]]; then
+    echo "Alt+Space is already bound:" >&2
+    echo "$conflicts" >&2
+    die "unbind it first, or write $file yourself with another key"
+  fi
+
+  local legacy_require=0 needs_require=1 plan=()
+  grep -qE '^\s*require\("hypr\.oma-cast"\)' "$main" && legacy_require=1
+  grep -qE '^\s*require\("hypr\.omacast"\)' "$main" && needs_require=0
+  if [[ -f $file ]]; then
+    plan+=("keep your existing $file")
+  elif [[ -f $legacy ]]; then
+    plan+=("move $legacy to $file, renaming oma-cast:toggle to omacast:toggle")
+  else
+    plan+=("write $file, binding Alt+Space to omacast:toggle")
+  fi
+  if (( legacy_require )); then
+    plan+=("replace require(\"hypr.oma-cast\") with require(\"hypr.omacast\") in $main")
+  elif (( needs_require )); then
+    plan+=("append require(\"hypr.omacast\") to $main")
+  fi
+  plan+=("reload Hyprland")
+
+  echo "omacast setup hyprland will:"
+  printf '  - %s\n' "${plan[@]}"
+  confirm "Make these changes?" "$assume_yes" || die "nothing changed"
+
+  if [[ ! -f $file && -f $legacy ]]; then
+    # cp -p keeps the old file's mode (it may be private); sed -i keeps it too.
+    cp -p -- "$legacy" "$file" &&
+      sed -i 's/oma-cast/omacast/g; s/rerunning setup overwrites it/rerunning setup keeps it/' "$file" &&
+      rm -- "$legacy" && echo "moved $legacy to $file"
+  elif [[ ! -f $file ]]; then
+    cat >"$file" <<'LUA'
+-- Written by `omacast setup hyprland`. Safe to edit; rerunning setup keeps it.
+-- Alt+Space reaches the plugin's global shortcut directly, so no process
+-- starts per keypress. Omarchy's own menu stays on Super+Space.
+o.bind("ALT + SPACE", "omacast launcher", hl.dsp.global("omacast:toggle"))
+LUA
+    echo "wrote $file"
+  fi
+
+  if (( legacy_require )); then
+    sed -i -E 's/^(\s*)require\("hypr\.oma-cast"\)/\1require("hypr.omacast")/; s/^-- oma-cast launcher bindings$/-- omacast launcher bindings/' "$main"
+    echo "updated the require in $main"
+  elif (( needs_require )); then
+    printf '\nrequire("hypr.omacast")\n' >>"$main"
+    echo "added require(\"hypr.omacast\") to $main"
+  fi
+  hyprctl reload >/dev/null && echo "reloaded Hyprland; Alt+Space toggles omacast"
+}
+
+cmd_doctor() {
+  local bad=0
+  check() {
+    local label=$1; shift
+    if "$@" >/dev/null 2>&1; then printf '  ok    %s\n' "$label"; else printf '  FAIL  %s\n' "$label"; bad=1; fi
+  }
+  echo "omacast doctor"
+  check "omarchy-shell is installed" command -v omarchy-shell
+  check "omarchy-shell is running" omarchy-shell shell ping
+  check "socat is installed (fast shell IPC)" command -v socat
+  check "Hyprland socket is reachable" hyprctl version
+  if managed; then
+    printf '  ok    plugin is installed in %s\n' "$repo"
+  else
+    check "plugin is linked into $plugins_dir" test -n "$(current_link)"
+  fi
+  check "plugin is enabled" bash -c "omarchy plugin list --json 2>/dev/null | jq -e --arg id '$PLUGIN_ID' 'any(.[]; .id == \$id and .enabled)'"
+  check "plugin answers IPC" bash -c "[[ \$(omarchy-shell $IPC_TARGET ping) == ok ]]"
+  check "backend answers system.healthPing" bash -c "omarchy-shell $IPC_TARGET call system.healthPing '{}' | grep -q '\"ok\":true'"
+  if [[ -x $repo/bin/omacast-search ]]; then
+    printf '  ok    flea-search helper is built\n'
+  else
+    printf '  info  no flea-search helper; using the built-in matcher (build it with: omacast build-search)\n'
+  fi
+  local base
+  for base in "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}" \
+    "${XDG_CACHE_HOME:-$HOME/.cache}" "${XDG_STATE_HOME:-$HOME/.local/state}"; do
+    [[ -d $base/$LEGACY_NAME ]] && printf '  info  %s is left from oma-cast; omacast uses %s\n' "$base/$LEGACY_NAME" "$base/omacast"
+  done
+  if [[ -f $hypr_dir/$LEGACY_NAME.lua ]] || grep -qE '^\s*require\("hypr\.oma-cast"\)' "$hypr_dir/hyprland.lua" 2>/dev/null; then
+    printf '  FAIL  the hotkey still uses the old oma-cast name; run: omacast setup hyprland\n'
+    bad=1
+  elif [[ -f $hypr_dir/omacast.lua ]]; then
+    printf '  ok    hotkey file %s\n' "$hypr_dir/omacast.lua"
+  else
+    printf '  info  no hotkey yet; run: omacast setup hyprland\n'
+  fi
+  return $bad
+}
+
+case "${1:-}" in
+  toggle|show|hide) need_shell; ipc "$1" >/dev/null ;;
+  run) need_shell; [[ -n ${2:-} ]] || die "usage: omacast run <commandId>"; ipc run "$2" ;;
+  call) need_shell; [[ -n ${2:-} ]] || die "usage: omacast call <method> [json]"; ipc call "$2" "${3:-}" ;;
+  ping) need_shell; ipc ping ;;
+  build-search) move_legacy_dirs; "$repo/bin/build-search" ;;
+  install) cmd_install ;;
+  uninstall) cmd_uninstall "${2:-}" ;;
+  reload) cmd_reload ;;
+  dev) cmd_dev ;;
+  setup)
+    case "${2:-}" in
+      hyprland) cmd_setup_hyprland "${3:-}" ;;
+      *) die "usage: omacast setup hyprland [--yes]" ;;
+    esac
+    ;;
+  doctor) cmd_doctor ;;
+  -h|--help|help|"") usage ;;
+  *) usage >&2; exit 1 ;;
+esac

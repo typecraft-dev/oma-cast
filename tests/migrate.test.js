@@ -1,7 +1,7 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const Migrate = require("../plugin/core/Migrate.js")
-const Schema = require("../plugin/core/Schema.js")
+const Migrate = require("../core/Migrate.js")
+const Schema = require("../core/Schema.js")
 
 const migrations = [
   { version: 1, name: "init", up: (d) => { d.items = []; return d } },

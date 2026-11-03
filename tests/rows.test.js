@@ -1,6 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const { update, snapshot } = require("../plugin/core/Rows.js")
+const { update, snapshot } = require("../core/Rows.js")
 
 test("stable updates keep unchanged rows and batch additions without resetting the model", () => {
   const records = [{ itemId: "a", title: "A" }, { itemId: "b", title: "B" }], calls = []
@@ -25,7 +25,7 @@ test("stable updates keep unchanged rows and batch additions without resetting t
 
 test("a failed search removes retained rows before they can be clicked", () => {
   const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm")
-  const source = fs.readFileSync(path.join(__dirname, "../plugin/ui/LauncherWindow.qml"), "utf8")
+  const source = fs.readFileSync(path.join(__dirname, "../ui/LauncherWindow.qml"), "utf8")
   const start = source.indexOf("  function applySearch(")
   const body = source.slice(source.indexOf("{", start) + 1, source.indexOf("\n  }", start))
   const records = [{ itemId: "old-result" }]

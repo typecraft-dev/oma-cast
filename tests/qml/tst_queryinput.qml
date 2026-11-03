@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import "../../plugin/ui"
+import "../../ui"
 
 Item {
   width: 500

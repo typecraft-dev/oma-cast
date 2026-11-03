@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "typecraft.omacast",
+  "name": "omacast",
+  "version": "0.1.0",
+  "author": "typecraft",
+  "description": "A Raycast-style launcher for Omarchy: apps, every Omarchy action, calculator and frecency ranking",
+  "kinds": [
+    "menu"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "Launcher.qml"
+  }
+}

@@ -12,7 +12,7 @@ Item {
   property var shell: null
   property var manifest: null
 
-  readonly property string pluginId: (root.manifest && root.manifest.id) || "typecraft.oma-cast"
+  readonly property string pluginId: (root.manifest && root.manifest.id) || "typecraft.omacast"
 
   property bool opened: false
   property double openedAt: 0
@@ -56,7 +56,7 @@ Item {
   }
 
   function run(commandId) {
-    // `oma-cast run` is explicit, so it skips the confirmation alert.
+    // `omacast run` is explicit, so it skips the confirmation alert.
     var r = backend.callSync("rootSearch.performAction", { id: commandId, action: "open", query: "", confirmed: true })
     if (!r.ok) return r
     var outcome = r.data || {}
@@ -77,16 +77,6 @@ Item {
     summon: function(id, payload) { return root.shell ? root.shell.summon(id, payload) : false }
   }
 
-  Connections {
-    target: backend
-    function onNotification(method, data) {
-      if (method !== "agent.launchReady") return
-      root.hide()
-      launcher.popToRoot()
-      Util.execArgv(data.argv)
-    }
-  }
-
   LauncherWindow {
     id: launcher
     shown: root.opened
@@ -96,14 +86,14 @@ Item {
   }
 
   GlobalShortcut {
-    appid: "oma-cast"
+    appid: "omacast"
     name: "toggle"
-    description: "Toggle oma-cast"
+    description: "Toggle omacast"
     onPressed: root.toggle()
   }
 
   IpcHandler {
-    target: "oma-cast"
+    target: "omacast"
 
     function toggle(): string {
       root.toggle()

@@ -5,9 +5,9 @@ const path = require("node:path")
 const vm = require("node:vm")
 const { spawnSync } = require("node:child_process")
 const { fileURLToPath, pathToFileURL } = require("node:url")
-const OmarchyMenu = require("../plugin/core/OmarchyMenu.js")
+const OmarchyMenu = require("../core/OmarchyMenu.js")
 
-const sourcePath = path.join(__dirname, "../plugin/services/OmarchyMenuSource.qml")
+const sourcePath = path.join(__dirname, "../services/OmarchyMenuSource.qml")
 const text = fs.readFileSync(sourcePath, "utf8")
 const methods = ["createGuardCompiler", "guardItems", "compileGuards", "guardKeys", "finishGuards", "refresh"]
 
@@ -232,21 +232,21 @@ test("empty guard scripts do not launch a process", () => {
 
 function sandbox(t) {
   const parent = fs.realpathSync("/tmp")
-  const root = fs.mkdtempSync(path.join(parent, "oma-cast-guard-probe-"))
-  const marker = path.join(root, ".oma-cast-guard-probe")
+  const root = fs.mkdtempSync(path.join(parent, "omacast-guard-probe-"))
+  const marker = path.join(root, ".omacast-guard-probe")
   fs.writeFileSync(marker, "guard import fixtures\n")
   t.after(() => {
     assert.ok(path.isAbsolute(root))
     assert.equal(path.dirname(root), parent)
-    assert.ok(path.basename(root).startsWith("oma-cast-guard-probe-"))
+    assert.ok(path.basename(root).startsWith("omacast-guard-probe-"))
     assert.equal(fs.readFileSync(marker, "utf8"), "guard import fixtures\n")
     fs.rmSync(root, { recursive: true, force: true })
   })
   return root
 }
 
-// Opt in on Omarchy: OMA_CAST_QML_RUNNER=/usr/bin/qs node --test tests/omarchy-native-guards.test.js
-test("real QML imports present, missing, broken, throwing and quoted-path OEM fixtures", { skip: !process.env.OMA_CAST_QML_RUNNER }, t => {
+// Opt in on Omarchy: OMACAST_QML_RUNNER=/usr/bin/qs node --test tests/omarchy-native-guards.test.js
+test("real QML imports present, missing, broken, throwing and quoted-path OEM fixtures", { skip: !process.env.OMACAST_QML_RUNNER }, t => {
   const root = sandbox(t)
   const paths = {}
   const fixtures = {
@@ -268,7 +268,7 @@ test("real QML imports present, missing, broken, throwing and quoted-path OEM fi
     env[key] = path.join(root, key)
     fs.mkdirSync(env[key], { mode: 0o700 })
   }
-  const coreUrl = pathToFileURL(path.join(__dirname, "../plugin/core/OmarchyMenu.js")).href
+  const coreUrl = pathToFileURL(path.join(__dirname, "../core/OmarchyMenu.js")).href
   const config = path.join(root, "shell.qml")
   fs.writeFileSync(config, `import QtQml
 import Quickshell
@@ -317,16 +317,16 @@ ShellRoot {
         check(script === (available ? "stock:__proto__,constructor,probe" : fallback), "wrong compiler: " + name)
         if (source.guardCompiler) { source.guardCompiler.destroy(); source.guardCompiler = null }
       }
-      console.log("OMA_CAST_GUARD_PROBE:OK")
-    } catch (error) { console.error("OMA_CAST_GUARD_PROBE:FAIL " + error) }
+      console.log("OMACAST_GUARD_PROBE:OK")
+    } catch (error) { console.error("OMACAST_GUARD_PROBE:FAIL " + error) }
     Qt.quit()
   })
 }
 `)
-  const result = spawnSync(process.env.OMA_CAST_QML_RUNNER, ["-p", config], { cwd: root, env, encoding: "utf8", timeout: 15000, killSignal: "SIGKILL" })
+  const result = spawnSync(process.env.OMACAST_QML_RUNNER, ["-p", config], { cwd: root, env, encoding: "utf8", timeout: 15000, killSignal: "SIGKILL" })
   assert.ifError(result.error)
   const output = result.stdout + result.stderr
   assert.equal(result.status, 0, output)
-  assert.match(output, /OMA_CAST_GUARD_PROBE:OK/)
-  assert.doesNotMatch(output, /OMA_CAST_GUARD_PROBE:FAIL/)
+  assert.match(output, /OMACAST_GUARD_PROBE:OK/)
+  assert.doesNotMatch(output, /OMACAST_GUARD_PROBE:FAIL/)
 })

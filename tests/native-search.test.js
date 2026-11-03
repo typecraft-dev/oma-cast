@@ -3,10 +3,10 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const path = require("node:path")
 const vm = require("node:vm")
-const F = require("../plugin/core/FleaSearch.js")
-const R = require("../plugin/core/Ranker.js")
+const F = require("../core/FleaSearch.js")
+const R = require("../core/Ranker.js")
 
-const source = fs.readFileSync(path.join(__dirname, "../plugin/services/NativeSearch.qml"), "utf8")
+const source = fs.readFileSync(path.join(__dirname, "../services/NativeSearch.qml"), "utf8")
 function harness() {
   const events = [], writes = []
   const service = { entries: [{ title: "Files" }], ids: ["files"], serial: 0, loadId: 0, loaded: false, disabled: false, pending: null, failed: m => events.push(m) }

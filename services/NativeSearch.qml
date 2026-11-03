@@ -6,7 +6,7 @@ Item {
   id: service
   property var entries: []
   property var ids: []
-  property string executable: decodeURIComponent(Qt.resolvedUrl("../bin/oma-cast-search").toString().replace(/^file:\/\//, ""))
+  property string executable: decodeURIComponent(Qt.resolvedUrl("../bin/omacast-search").toString().replace(/^file:\/\//, ""))
   property bool disabled: false
   property bool loaded: false
   property int serial: 0
@@ -88,7 +88,7 @@ Item {
   Process {
     id: helper
     // Bash emits a normal process exit when the helper is missing or cannot execute.
-    command: ["bash", "-c", 'exec -- "$1"', "oma-cast-search", service.executable]
+    command: ["bash", "-c", 'exec -- "$1"', "omacast-search", service.executable]
     stdinEnabled: true
     stdout: SplitParser { onRead: function(line) { service.receive(line) } }
     onStarted: service.load()

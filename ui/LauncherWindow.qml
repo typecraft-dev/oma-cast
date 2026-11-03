@@ -4,7 +4,6 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
-import "../core/Agent.js" as Agent
 import "../core/RootSearch.js" as RootSearch
 import "../core/Rows.js" as Rows
 
@@ -38,7 +37,7 @@ PanelWindow {
   anchors { top: true; bottom: true; left: true; right: true }
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
-  WlrLayershell.namespace: "oma-cast"
+  WlrLayershell.namespace: "omacast"
   WlrLayershell.layer: WlrLayer.Overlay
   WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
@@ -59,7 +58,7 @@ PanelWindow {
   })
   readonly property var borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
 
-  property var stack: [{ kind: "root", title: "oma-cast", query: "" }]
+  property var stack: [{ kind: "root", title: "omacast", query: "" }]
   readonly property var view: window.stack[window.stack.length - 1]
   property string query: ""
   property int selectedIndex: -1
@@ -157,7 +156,7 @@ PanelWindow {
   }
 
   function popToRoot() {
-    window.stack = [{ kind: "root", title: "oma-cast", query: "" }]
+    window.stack = [{ kind: "root", title: "omacast", query: "" }]
     window.query = ""
     window.rootFilter = "all"
     window.rebuild(true)
@@ -407,7 +406,7 @@ PanelWindow {
     window.toastPanelOpen = false
     if (!action) return
     if (action.copy !== undefined) {
-      Util.execArgv(["wl-copy", "--", action.copy])
+      window.backend.copyText(action.copy)
       window.showToast("success", "Copied to Clipboard")
       return
     }
@@ -438,11 +437,6 @@ PanelWindow {
     if (Util.editsFilter(event, value)) { set(Util.editedFilter(event, value)); return true }
     if (window.isTyping(event)) { set(value + event.text); return true }
     return false
-  }
-
-  function askAgent() {
-    var r = window.backend.callSync("rootSearch.performAction", { id: Agent.FALLBACK_ID, action: "open", query: window.query })
-    if (!r.ok) window.showToast("failure", r.error)
   }
 
   function saveAlias() {
@@ -617,7 +611,6 @@ PanelWindow {
       if (enter) { window.saveAlias(); return true }
       if (key === Qt.Key_Space) return true
     } else {
-      if (window.atRoot && enter && ctrl && alt && !shift) { window.askAgent(); return true }
       if (ctrl && shift && key === Qt.Key_K) { window.toggleAbout(); return true }
       if (window.isActionPanelKey(ctrl, alt, shift, key)) { window.toggleActionPanel(); return true }
       if (ctrl && !shift && key === Qt.Key_P) { window.toggleDropdown(); return true }
@@ -669,9 +662,6 @@ PanelWindow {
   Connections {
     target: window.backend
     function onCandidatesRevisionChanged() { if (window.shown && !window.actionPanelOpen && !window.alert) window.rebuild(false) }
-    function onNotification(method, data) {
-      if (method === "agent.launchFailed" && window.shown) window.showToast("failure", data.message)
-    }
     // Exchange rates or zone offsets arrived: re-evaluate a calculation on screen.
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
   }

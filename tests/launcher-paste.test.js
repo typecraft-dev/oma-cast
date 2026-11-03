@@ -4,7 +4,7 @@ const fs = require("node:fs")
 const path = require("node:path")
 const vm = require("node:vm")
 
-const source = fs.readFileSync(path.join(__dirname, "../plugin/ui/LauncherWindow.qml"), "utf8")
+const source = fs.readFileSync(path.join(__dirname, "../ui/LauncherWindow.qml"), "utf8")
 
 function body(signature) {
   const start = source.indexOf(signature)

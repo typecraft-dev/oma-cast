@@ -3,7 +3,7 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const path = require("node:path")
 const { execFileSync } = require("node:child_process")
-const M = require("../plugin/core/OmarchyMenu.js")
+const M = require("../core/OmarchyMenu.js")
 
 const sample = `{
   // comment line
