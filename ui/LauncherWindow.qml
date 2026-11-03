@@ -376,7 +376,7 @@ PanelWindow {
   }
 
   function toggleDropdown() {
-    if (window.dropdownOpen || !window.atRoot) { window.dropdownOpen = false; return }
+    if (window.dropdownOpen || !window.atRoot || !window.backend.config.rootFilter) { window.dropdownOpen = false; return }
     window.dropdownOpen = true
     dropdown.item.filter = ""
     var at = RootSearch.FILTERS.map(function(f) { return f.id }).indexOf(window.rootFilter)
@@ -842,7 +842,7 @@ PanelWindow {
 
       Rectangle {
         id: filterButton
-        visible: window.atRoot && !window.compact
+        visible: window.atRoot && !window.compact && window.backend.config.rootFilter
         anchors.right: parent.right
         anchors.rightMargin: window.px(16)
         anchors.verticalCenter: parent.verticalCenter
