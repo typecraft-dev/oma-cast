@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
@@ -139,6 +140,21 @@ PanelWindow {
     var seconds = Number(window.general.popToRootTimeout)
     if (!(seconds > 0)) window.popToRoot()
     else { popTimer.interval = seconds * 1000; popTimer.restart() }
+  }
+
+  // Where the card is while open, for Superwhisper: its recording glow (or
+  // pill) then draws on the launcher, as on any focused window, instead of on
+  // the window under it. Idle without Superwhisper or PyGObject.
+  readonly property string overlayFrame: window.shown && window.screen
+    ? ["1", window.screen.name, Math.round(card.x), Math.round(card.y), Math.round(card.width), Math.round(card.height)].join(" ")
+    : "0"
+  onOverlayFrameChanged: superwhisperFrame.write(window.overlayFrame + "\n")
+  Process {
+    id: superwhisperFrame
+    command: ["python3", decodeURIComponent(Qt.resolvedUrl("../services/superwhisper-frame.py").toString().replace(/^file:\/\//, ""))]
+    running: true
+    stdinEnabled: true
+    onStarted: superwhisperFrame.write(window.overlayFrame + "\n")
   }
 
   Timer {
@@ -471,8 +487,15 @@ PanelWindow {
   function pasteClipboard() {
     clipboardInput.clear()
     clipboardInput.paste()
-    var text = clipboardInput.text.replace(/[\r\n\u2028\u2029]+/g, " ")
+    var text = clipboardInput.text
     clipboardInput.clear()
+    window.insertText(text)
+  }
+
+  // Pasted or input-method text (fcitx5, dictation apps), into whichever
+  // field has the keyboard.
+  function insertText(text) {
+    text = String(text).replace(/[\r\n\u2028\u2029]+/g, " ")
     if (!text) return
     if (window.actionPanelOpen) actionPanel.item.filter += text
     else if (window.argFocus >= 0) {
@@ -673,12 +696,19 @@ PanelWindow {
 
     MouseArea { anchors.fill: parent; onClicked: { window.closePopups(); keyCatcher.forceActiveFocus() } }
 
-    Item {
+    // A TextInput rather than a plain Item so input-method commits (fcitx5,
+    // dictation apps) reach the launcher; key presses still go to handleKey
+    // first, and anything committed moves straight into the query.
+    TextInput {
       id: keyCatcher
-      anchors.fill: parent
+      width: 0
+      height: 0
       focus: true
+      color: "transparent"
+      cursorDelegate: Item {}
       Keys.priority: Keys.BeforeItem
       Keys.onPressed: function(event) { if (window.handleKey(event)) event.accepted = true }
+      onTextChanged: if (text) { var committed = text; clear(); window.insertText(committed) }
     }
 
     Item {
@@ -996,13 +1026,18 @@ PanelWindow {
         anchors.verticalCenter: parent.verticalCenter
         spacing: window.px(8)
 
-        readonly property var primary: {
+        readonly property var current: {
           window.selectedRow
           window.backend.storeRevision
           if (window.view.kind === "alias") return { title: "Save Alias", shortcut: "↵" }
           var list = window.actionsForSelected()
           return list.length ? list[0] : null
         }
+        // Keep the last action while a search is in flight: actionsForSelected
+        // is empty then, and blanking it made the footer flicker on each key.
+        property var primary: null
+        onCurrentChanged: if (!window.searchPending) footerActions.primary = footerActions.current
+        Component.onCompleted: footerActions.primary = footerActions.current
 
         Text {
           visible: footerActions.primary !== null
