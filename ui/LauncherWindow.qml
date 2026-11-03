@@ -6,6 +6,7 @@ import qs.Commons as Commons
 import qs.Ui
 import "../core/RootSearch.js" as RootSearch
 import "../core/Rows.js" as Rows
+import "../core/Emoji.js" as Emoji
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
 // overlay layer the shell's own emoji picker uses.
@@ -73,6 +74,9 @@ PanelWindow {
   // Ctrl+P root filter (RootSearch.FILTERS), Ctrl+T toast actions,
   // Ctrl+Shift+K About panel and the confirm alert.
   property string rootFilter: "all"
+  // Emoji & Symbols: the cell selected in a grid line.
+  property int selectedColumn: 0
+  readonly property bool grid: window.view.kind === "emoji"
   property bool dropdownOpen: false
   property bool toastPanelOpen: false
   property bool aboutOpen: false
@@ -98,6 +102,7 @@ PanelWindow {
   readonly property string placeholder: window.view.kind === "alias" ? "Type an alias, then press ↵"
     : window.view.kind === "menu" ? "Search " + window.view.title + "…"
     : window.view.kind === "calculator-history" ? "Search calculations…"
+    : window.grid ? "Search Emoji & Symbols…"
     : "Search for apps and commands…"
 
   readonly property int cardWidth: Math.min(px(750), width - Style.gapsOut * 2)
@@ -195,8 +200,19 @@ PanelWindow {
       window.select(-1)
       return
     }
-    var keepIndex = -1, next = []
-    for (var s = 0; s < result.data.length; s++) {
+    var keepIndex = -1, keepColumn = 0, next = []
+    if (window.grid) {
+      var lines = Emoji.gridLines(result.data, Emoji.COLUMNS)
+      for (var l = 0; l < lines.length; l++) {
+        if (lines[l].section) { next.push(window.rowData({ id: "section:" + lines[l].section.id, title: lines[l].section.title }, "section")); continue }
+        var cells = lines[l].cells
+        for (var k = 0; k < cells.length; k++) if (keepIndex < 0 && cells[k].id === keepId) { keepIndex = next.length; keepColumn = k }
+        var line = window.rowData({ id: "line:" + l }, "emoji-row")
+        line.cellsJson = JSON.stringify(cells.map(function(c) { return { id: c.id, symbol: c.symbol, title: c.title } }))
+        next.push(line)
+      }
+    }
+    for (var s = 0; s < (window.grid ? 0 : result.data.length); s++) {
       var section = result.data[s]
       if (section.title || s > 0) next.push(window.rowData({ id: "section:" + section.id, title: section.title }, "section"))
       for (var r = 0; r < section.rows.length; r++) {
@@ -207,7 +223,7 @@ PanelWindow {
     }
     Rows.update(rows, next)
     if (restoreIndex >= 0 && restoreIndex < rows.count && window.isSelectable(restoreIndex)) window.select(restoreIndex)
-    else window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1))
+    else window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1), keepIndex >= 0 ? keepColumn : 0)
   }
 
   function rowData(c, kind) {
@@ -228,13 +244,14 @@ PanelWindow {
       calcResult: String(c.calcResult || ""),
       calcInputCaption: String(c.calcInputCaption || ""),
       calcResultCaption: String(c.calcResultCaption || ""),
-      argsJson: JSON.stringify(c.arguments || [])
+      argsJson: JSON.stringify(c.arguments || []),
+      cellsJson: ""
     }
   }
 
   function isSelectable(index) {
     var kind = rows.get(index).rowKind
-    return kind === "item" || kind === "calculator"
+    return kind === "item" || kind === "calculator" || kind === "emoji-row"
   }
 
   function nextSelectable(from, direction) {
@@ -243,7 +260,7 @@ PanelWindow {
     return -1
   }
 
-  function select(index) {
+  function select(index, column) {
     if (index !== window.selectedIndex) {
       var previous = list.itemAtIndex(window.selectedIndex)
       if (previous) previous.selected = false
@@ -251,7 +268,17 @@ PanelWindow {
     window.selectedIndex = index
     var current = list.itemAtIndex(index)
     if (current) current.selected = true
-    window.selectedRow = Rows.snapshot(rows, index)
+    var snap = Rows.snapshot(rows, index)
+    // A grid line stands for its selected cell: actions, About and the
+    // footer all see that emoji.
+    if (snap && snap.rowKind === "emoji-row") {
+      var cells = JSON.parse(snap.cellsJson)
+      var col = Math.max(0, Math.min(cells.length - 1, column === undefined ? window.selectedColumn : column))
+      window.selectedColumn = col
+      snap.itemId = cells[col].id
+      snap.title = cells[col].title
+    }
+    window.selectedRow = snap
     // Argument values belong to one command; a different row starts empty.
     var id = window.selectedRow ? window.selectedRow.itemId : ""
     if (id !== window.argsForId) {
@@ -275,6 +302,17 @@ PanelWindow {
       target = next
     }
     window.select(target)
+  }
+
+  // ← → in the emoji grid, wrapping onto the neighbouring line.
+  function moveColumn(delta) {
+    if (!window.selectedRow || window.selectedRow.rowKind !== "emoji-row") return
+    pointerGate.reset()
+    var col = window.selectedColumn + delta
+    var count = JSON.parse(window.selectedRow.cellsJson).length
+    if (col >= 0 && col < count) { window.select(window.selectedIndex, col); return }
+    var line = window.nextSelectable(window.selectedIndex, delta)
+    if (line >= 0) window.select(line, delta > 0 ? 0 : Emoji.COLUMNS - 1)
   }
 
   function jumpSection(direction) {
@@ -622,12 +660,14 @@ PanelWindow {
         if (window.historyIndex >= 0) { window.recallHistory(-1); return true }
         window.move(1); return true
       }
+      if (window.grid && !ctrl && !alt && (key === Qt.Key_Left || key === Qt.Key_Right)) { window.moveColumn(key === Qt.Key_Left ? -1 : 1); return true }
+      if (ctrl && shift && key === Qt.Key_P) { window.performIfOffered(["pin", "unpin"]); return true }
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer"]); return true }
-      if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries"]); return true }
-      if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry"]); return true }
+      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-name"]); return true }
+      if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries", "clear-recent"]); return true }
+      if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry", "remove-recent"]); return true }
       if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }
       if (ctrl && key >= Qt.Key_1 && key <= Qt.Key_9) {
         var target = window.nthItem(key - Qt.Key_0)
@@ -883,6 +923,9 @@ PanelWindow {
         clip: true
         model: rows
         reuseItems: true
+        // Off-screen emoji lines still decode their color glyphs, which is
+        // most of what opening the picker costs (~100 ms); build only visible lines.
+        cacheBuffer: window.grid ? 0 : 320
         boundsBehavior: Flickable.StopAtBounds
 
         delegate: ResultRow {
@@ -892,8 +935,10 @@ PanelWindow {
           look: window.look
           appLibrary: window.appLibrary
           zoom: window.zoom
-          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i) }
-          onClicked: function(i) { window.perform("open", i) }
+          selectedColumn: window.selectedColumn
+          columns: Emoji.COLUMNS
+          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i, item.isGrid ? item.columnAt(mouse.x) : undefined) }
+          onClicked: function(i, column) { if (window.grid) window.select(i, column); window.perform("open", i) }
         }
       }
 
@@ -972,7 +1017,8 @@ PanelWindow {
           id: footerStatus
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
-          text: window.toast ? window.toast.title : window.loadingVisible ? "Loading…" : window.view.title
+          text: window.toast ? window.toast.title : window.loadingVisible ? "Loading…"
+            : window.grid && window.selectedRow ? window.selectedRow.title : window.view.title
           color: window.look.foreground
           opacity: window.toast ? 0.9 : 0.6
           elide: Text.ElideRight
