@@ -471,8 +471,15 @@ PanelWindow {
   function pasteClipboard() {
     clipboardInput.clear()
     clipboardInput.paste()
-    var text = clipboardInput.text.replace(/[\r\n\u2028\u2029]+/g, " ")
+    var text = clipboardInput.text
     clipboardInput.clear()
+    window.insertText(text)
+  }
+
+  // Pasted or input-method text (fcitx5, dictation apps), into whichever
+  // field has the keyboard.
+  function insertText(text) {
+    text = String(text).replace(/[\r\n\u2028\u2029]+/g, " ")
     if (!text) return
     if (window.actionPanelOpen) actionPanel.item.filter += text
     else if (window.argFocus >= 0) {
@@ -673,12 +680,19 @@ PanelWindow {
 
     MouseArea { anchors.fill: parent; onClicked: { window.closePopups(); keyCatcher.forceActiveFocus() } }
 
-    Item {
+    // A TextInput rather than a plain Item so input-method commits (fcitx5,
+    // dictation apps) reach the launcher; key presses still go to handleKey
+    // first, and anything committed moves straight into the query.
+    TextInput {
       id: keyCatcher
-      anchors.fill: parent
+      width: 0
+      height: 0
       focus: true
+      color: "transparent"
+      cursorDelegate: Item {}
       Keys.priority: Keys.BeforeItem
       Keys.onPressed: function(event) { if (window.handleKey(event)) event.accepted = true }
+      onTextChanged: if (text) { var committed = text; clear(); window.insertText(committed) }
     }
 
     Item {
