@@ -73,7 +73,10 @@ var configDefaults = {
   remToPxRate: 16,
   workHoursPerDay: 8,
   // "auto" follows the Qt locale; "12h" or "24h" forces a clock. [D]
-  clockFormat: "auto"
+  clockFormat: "auto",
+  // The All / Applications / Commands filter button (Ctrl+P) beside the root
+  // search; false hides it and leaves every result in one list. [D]
+  rootFilter: true
 }
 
 // Values a config key or general setting may take, beyond its type.
