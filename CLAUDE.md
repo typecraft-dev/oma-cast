@@ -152,6 +152,8 @@ Works:
 - **Latency:** show → mapped in 59–66 ms, hide in 24–42 ms on Omarchy 4.0.6 (`tests/smoke.sh`; it was 37–44 ms on the old `OverlayWindow`).
 - **Tests:** root search, calculator and privacy coverage (`node --test tests/*.test.js`).
 
+**Calculator formula corrections (#51, 2026-10-30):** denominator exponents bind to their unit atom, explicit compound conversion targets retain their units, unit quantities raised to zero return a plain number, and percent/percent division returns a ratio. Functions validate argument counts and units; invalid intermediate numbers and out-of-range dates return no row. Grouping parentheses accept grouped digits independently of function commas; negative Unix timestamps and a fixed epoch-zero clock work. Portable formula coverage lives in `tests/calculator-formulas.test.js`; precision and compatibility rules are recorded in SPEC §2.0. Currency policy and rate services are separate work in #52. No live shell reload was used for these pure-JavaScript changes.
+
 **Default-agent hand-off:** removed 2026-11-02 after the marketplace review; it exposed the question in process arguments (SPEC §2.0).
 
 Stubbed / not yet:
