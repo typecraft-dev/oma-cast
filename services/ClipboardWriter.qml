@@ -25,7 +25,15 @@ Item {
   // Constant scripts: no caller data ever reaches the command line.
   readonly property string copyScript: 'exec wl-copy'
   // Wait for the launcher to unmap, as omarchy-clipboard-paste-text does.
-  readonly property string pasteScript: 'wl-copy || exit; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true'
+  // Terminals take Ctrl+Shift+V (SPEC §5.3): most map Shift+Insert to the
+  // primary selection, and Herdr passes it to the pane's program.
+  readonly property string pasteScript: 'wl-copy || exit; sleep 0.15
+class=$(hyprctl activewindow -j 2>/dev/null | jq -r ".class // empty" 2>/dev/null)
+case ${class,,} in
+  *alacritty*|*kitty*|foot|footclient|*wezterm*|*ghostty*|*konsole*|*gnome-terminal*|*ptyxis*|*herdr*)
+    wtype -M ctrl -M shift -k v -m shift -m ctrl 2>/dev/null || true ;;
+  *) wtype -M shift -k Insert -m shift 2>/dev/null || true ;;
+esac'
 
   Process {
     id: proc
