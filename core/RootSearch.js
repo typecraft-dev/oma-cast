@@ -204,8 +204,11 @@ function rankOptions(ctx) {
   return { sensitivity: ctx.sensitivity || "medium", nowMs: ctx.nowMs, fleaHits: ctx.fleaHits || null }
 }
 
-function fallbackRows(query) {
-  return FALLBACKS.map(function(f) {
+function fallbackRows(query, engine) {
+  var first = "fallback:" + engine
+  var ordered = FALLBACKS.filter(function(f) { return f.id === first })
+    .concat(FALLBACKS.filter(function(f) { return f.id !== first }))
+  return ordered.map(function(f) {
     return {
       candidate: {
         id: f.id, type: "command", kind: "fallback", title: f.title, subtitle: f.subtitle || query,
@@ -292,7 +295,7 @@ function rootSections(candidates, query, ctx, deps) {
     var sections = []
     if (ctx.calculation && !filtered) sections.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
     if (results.length > 0) sections.push({ id: "results", title: "Results", rows: results })
-    if (!filtered) sections.push({ id: "fallback-commands", title: "Use “" + q + "” with…", rows: fallbackRows(q) })
+    if (!filtered) sections.push({ id: "fallback-commands", title: "Use “" + q + "” with…", rows: fallbackRows(q, ctx.searchEngine) })
     return sections
   }
 
