@@ -114,6 +114,19 @@ cache and state directories to the `omacast` names. In a development checkout, `
 the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` moves `oma-cast.lua` to
 `omacast.lua`, keeping your key. `omacast doctor` reports anything left over.
 
+## Large Type
+
+Type a message in the launcher and press **Ctrl+L** — it appears in very large
+characters across the whole screen, so someone across the room can read it.
+**Esc**, a click anywhere, or **Ctrl+L** again brings the launcher back with
+your text still in the search field, ready to edit. "Show in Large Type" also
+appears under the "Use \"<query>\" with…" fallbacks.
+
+The overlay follows your Omarchy theme, sizes the text to fit anything from a
+word to a wall of text, and renders the query as plain text — never markup.
+
+![Large Type showing 'Standup in 5 minutes' across the screen](docs/screenshots/large-type.png)
+
 ## Keyboard
 
 | Key | Does |
@@ -122,6 +135,7 @@ the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` mo
 | `Shift+↵` | Open a new window of an app (`↵` switches to the one already open) |
 | `Ctrl+K` | Open the action panel |
 | `Super+V` / `Ctrl+V` / `Ctrl+Shift+V` / `Shift+Insert` | Paste text into the query (also accepts clipboard-history selections) |
+| `Ctrl+L` | Show the query in Large Type (`Esc` dismisses) |
 | `Ctrl+1`…`9` | Pick a result |
 | `↑` on an empty search | Search history |
 | `Ctrl+↑` / `Ctrl+↓` | Jump between sections |
