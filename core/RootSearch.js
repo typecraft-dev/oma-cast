@@ -359,6 +359,7 @@ function actionsFor(candidate) {
     case "omarchy-menu":
     case "omarchy-link": primary = { id: "open", title: "Open Menu", icon: "" }; break
     case "fallback": primary = { id: "open", title: candidate.title, icon: "" }; break
+    case "script": primary = { id: "open", title: "Run Script", icon: "\uf120" }; break
     default: primary = { id: "open", title: "Open Command", icon: "" }
   }
   primary.shortcut = "↵"
@@ -463,6 +464,7 @@ function aboutFor(c, nowMs) {
   if (c.kind === "app") add("Desktop Entry", c.appId + ".desktop")
   if (c.kind === "omarchy-action") add("Command", c.action)
   if (c.kind === "omarchy-link") add("Opens", c.target)
+  if (c.kind === "script") { add("Script", c.script.path); add("Mode", c.script.mode) }
   add("URL", c.url || (c.run && c.run.url))
   add("Arguments", (c.arguments || []).map(function(a) { return a.name + (a.required ? "" : " (optional)") }).join(", "))
   add("Keywords", (c.keywords || []).join(", "))

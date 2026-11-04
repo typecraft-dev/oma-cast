@@ -6,6 +6,7 @@ import qs.Commons as Commons
 import qs.Ui
 import "../core/RootSearch.js" as RootSearch
 import "../core/Rows.js" as Rows
+import "../core/ScriptCommands.js" as ScriptCommands
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
 // overlay layer the shell's own emoji picker uses.
@@ -425,6 +426,14 @@ PanelWindow {
       return true
     }
     if (key === Qt.Key_Backspace && !value) { window.argFocus--; return true }
+    // A dropdown pill (script commands) steps through its options; typing
+    // doesn't edit it.
+    if (def.type === "dropdown") {
+      if (key === Qt.Key_Right || key === Qt.Key_Down) { set(ScriptCommands.cycleOption(def, value, 1)); return true }
+      if (key === Qt.Key_Left || key === Qt.Key_Up) { set(ScriptCommands.cycleOption(def, value, -1)); return true }
+      if (key === Qt.Key_Backspace) { set(""); return true }
+      return window.isTyping(event)
+    }
     if (Util.editsFilter(event, value)) { set(Util.editedFilter(event, value)); return true }
     if (window.isTyping(event)) { set(value + event.text); return true }
     return false
@@ -476,6 +485,7 @@ PanelWindow {
     if (!text) return
     if (window.actionPanelOpen) actionPanel.item.filter += text
     else if (window.argFocus >= 0) {
+      if (window.argDefs[window.argFocus].type === "dropdown") return
       var name = window.argDefs[window.argFocus].name
       var values = Object.assign({}, window.argValues)
       values[name] = (values[name] || "") + text
@@ -784,7 +794,12 @@ PanelWindow {
               anchors.rightMargin: window.px(10)
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: pill.value || (pill.modelData.placeholder + (pill.modelData.required ? "" : " (optional)"))
+              readonly property bool dropdown: pill.modelData.type === "dropdown"
+              readonly property string shownValue: dropdown ? ScriptCommands.optionTitle(pill.modelData, pill.value)
+                : pill.modelData.type === "password" ? "•".repeat(pill.value.length) : pill.value
+              text: (dropdown && pill.focused ? "‹ " : "")
+                + (shownValue || (pill.modelData.placeholder + (pill.modelData.required ? "" : " (optional)")))
+                + (dropdown && pill.focused ? " ›" : "")
               opacity: pill.value ? 1 : 0.5
               color: window.look.foreground
               elide: Text.ElideLeft
@@ -793,7 +808,7 @@ PanelWindow {
             }
 
             Rectangle {
-              visible: pill.focused && window.shown
+              visible: pill.focused && window.shown && !pillText.dropdown
               width: Math.max(1, Style.space(2))
               height: pillText.font.pixelSize + Style.space(2)
               anchors.verticalCenter: parent.verticalCenter
@@ -804,7 +819,15 @@ PanelWindow {
             MouseArea {
               anchors.fill: parent
               cursorShape: Qt.IBeamCursor
-              onClicked: { window.argFocus = pill.index; keyCatcher.forceActiveFocus() }
+              onClicked: {
+                if (pill.modelData.type === "dropdown" && pill.focused) {
+                  var values = Object.assign({}, window.argValues)
+                  values[pill.modelData.name] = ScriptCommands.cycleOption(pill.modelData, pill.value, 1)
+                  window.argValues = values
+                }
+                window.argFocus = pill.index
+                keyCatcher.forceActiveFocus()
+              }
             }
           }
         }

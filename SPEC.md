@@ -633,6 +633,7 @@ Each running menu-bar command owns one SNI item (ksni):
   - `silent`: close the window, then a HUD with the last line
   - `inline`: the first line becomes the root-item subtitle, refreshed every `refreshTime` (≥ 10 s)
 - Success = exit 0. A compatibility test corpus is the `raycast/script-commands` GitHub repo.
+- **Privacy [D, 2026-11-03]:** arguments are the one place user text reaches an argv: `$1..$3` are the Script Commands interface, and the script is the user's own. Everything else still follows the stdin rule.
 
 ---
 
