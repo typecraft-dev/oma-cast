@@ -333,6 +333,9 @@ PanelWindow {
       return
     }
     if (outcome.toast) window.showToast(outcome.toast.style, outcome.toast.title, outcome.toast.actions)
+    // A command that ran keeps the window open; a second ↵ starts it fresh.
+    window.argValues = ({})
+    window.argFocus = -1
     window.rebuild(false)
   }
 
