@@ -23,19 +23,6 @@ function titleCase(name) {
 
 function dirname(path) { return String(path).replace(/\/[^\/]*$/, "") || "/" }
 
-// "../x" relative to the script's folder, as Node's path.resolve would.
-function resolveDir(base, rel) {
-  var r = String(rel || ".")
-  var parts = (r.charAt(0) === "/" ? r : base + "/" + r).split("/")
-  var out = []
-  for (var i = 0; i < parts.length; i++) {
-    if (parts[i] === "" || parts[i] === ".") continue
-    if (parts[i] === "..") out.pop()
-    else out.push(parts[i])
-  }
-  return "/" + out.join("/")
-}
-
 // {command} or {error} for one script's text.
 function parse(text, path) {
   var h = {}
@@ -83,7 +70,8 @@ function parse(text, path) {
       packageName: h.packageName || titleCase(dir.replace(/^.*\//, "")),
       description: h.description || "",
       icon: h.icon || "",
-      cwd: resolveDir(dir, h.currentDirectoryPath),
+      // Relative to the script's folder; the runner's `cd` resolves "..".
+      cwd: (h.currentDirectoryPath || "").charAt(0) === "/" ? h.currentDirectoryPath : dir + "/" + (h.currentDirectoryPath || "."),
       needsConfirmation: h.needsConfirmation === "true" && mode !== "inline",
       arguments: args
     }
@@ -137,10 +125,12 @@ function lastLine(output) {
   return ""
 }
 
-// The toast or HUD a finished run shows: its last line of output (ref 03 §5).
-function outcome(cmd, exitCode, stdout, stderr) {
-  if (exitCode === 0) return { style: "success", title: lastLine(stdout) || cmd.title + " finished" }
-  return { style: "failure", title: lastLine(stderr) || lastLine(stdout) || cmd.title + " failed (exit " + exitCode + ")" }
+// The toast or HUD a finished run shows: the last line of its combined
+// stdout and stderr (ref 03 §5).
+function outcome(cmd, exitCode, output) {
+  var line = lastLine(output)
+  if (exitCode === 0) return { style: "success", title: line || cmd.title + " finished" }
+  return { style: "failure", title: line || cmd.title + " failed (exit " + exitCode + ")" }
 }
 
 // The dropdown option after `value`, `step` places on, wrapping.
@@ -162,6 +152,6 @@ function optionTitle(def, value) {
 if (typeof module !== "undefined") {
   module.exports = {
     splitScan: splitScan, parse: parse, candidate: candidate, argv: argv, lastLine: lastLine,
-    outcome: outcome, cycleOption: cycleOption, optionTitle: optionTitle, resolveDir: resolveDir
+    outcome: outcome, cycleOption: cycleOption, optionTitle: optionTitle
   }
 }

@@ -15,7 +15,7 @@ Item {
   function run(command, args) {
     var proc = processComponent.createObject(runner, {
       script: command,
-      command: ["bash", "-lc", 'cd -- "$1" || exit; shift; exec "$@" </dev/null', "script", command.cwd, command.path].concat(args)
+      command: ["bash", "-lc", 'cd -- "$1" || exit; shift; exec "$@" </dev/null 2>&1', "script", command.cwd, command.path].concat(args)
     })
     proc.running = true
   }
@@ -25,15 +25,16 @@ Item {
     Process {
       id: proc
       property var script: null
-      stdout: StdioCollector { id: out }
-      stderr: StdioCollector { id: err }
-      onExited: function(exitCode) {
-        // The collectors finish on the next tick; read them after it.
-        Qt.callLater(function() {
-          runner.finished(proc.script, ScriptCommands.outcome(proc.script, exitCode, out.text, err.text))
-          proc.destroy()
-        })
+      // Exit and end of output arrive in either order; report after both.
+      property var exitCode: null
+      property var output: null
+      function report() {
+        if (proc.exitCode === null || proc.output === null) return
+        runner.finished(proc.script, ScriptCommands.outcome(proc.script, proc.exitCode, proc.output))
+        proc.destroy()
       }
+      stdout: StdioCollector { onStreamFinished: { proc.output = text; proc.report() } }
+      onExited: function(code) { proc.exitCode = code; proc.report() }
     }
   }
 }
