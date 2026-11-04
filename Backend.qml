@@ -16,6 +16,7 @@ import "core/Calculator.js" as Calculator
 import "core/ClipboardHistory.js" as ClipboardHistory
 import "core/Themes.js" as Themes
 import "core/Emoji.js" as Emoji
+import "core/ScriptCommands.js" as ScriptCommands
 import "services"
 
 Item {
@@ -117,6 +118,7 @@ Item {
     var superseded = ({})
     RootSearch.BUILTINS.forEach(function(d) { (d.supersedes || []).forEach(function(id) { superseded[id] = true }) })
     next = next.filter(function(c) { return !superseded[c.id] })
+    for (var s = 0; s < scriptSource.commands.length; s++) next.push(ScriptCommands.candidate(scriptSource.commands[s]))
     var byId = ({})
     for (var j = 0; j < next.length; j++) byId[next[j].id] = next[j]
     var entries = FleaSearch.entries(next, Ranker.transliterate)
@@ -517,6 +519,19 @@ Item {
         case "fallback":
           Util.execArgv(["omarchy-launch-browser", RootSearch.fallbackUrl(candidate, query)])
           return { close: true }
+        case "script":
+          var script = candidate.script
+          var args = ScriptCommands.argv(script, (data && data.arguments) || {})
+          if (args.error) throw new Error(args.error)
+          if (script.needsConfirmation && !(data && data.confirmed))
+            return { confirm: { title: script.title, message: "Are you sure you want to run this script?", primary: "Run", destructive: false } }
+          backend.recordVisit(id, query)
+          scriptRunner.run(script, args.argv)
+          // silent closes and shows a HUD. shortcut: fullOutput and inline
+          // run as compact (toast with the last line); add the output view
+          // and inline refresh when a script needs them.
+          if (script.mode === "silent") return { close: true }
+          return { toast: { style: "success", title: "Running " + script.title + "…" } }
       }
       throw new Error("Cannot open " + id)
     }
@@ -852,6 +867,7 @@ Item {
   onNotification: function(method, data) {
     if (method === "window.visibilityChanged" && data && data.visible) {
       menuSource.refresh()
+      scriptSource.refresh()
       calculatorData.refresh()
       backend.pruneClipboard()
     }
@@ -875,6 +891,20 @@ Item {
   ThemeSource {
     id: themeSource
     onLoaded: backend.emit("themes.changed", null)
+  }
+
+  ScriptCommandSource {
+    id: scriptSource
+    directory: backend.directoriesReady ? backend.paths.scriptCommands : ""
+    onDirectoryChanged: refresh()
+    onRevisionChanged: rebuildTimer.restart()
+    onMessage: function(level, text, metadata) { backend.log(level, "script-commands", text, metadata) }
+  }
+
+  // Launcher.qml shows the result as a toast while the window is open, else a HUD.
+  ScriptRunner {
+    id: scriptRunner
+    onFinished: function(command, result) { backend.emit("scriptCommands.finished", { mode: command.mode, style: result.style, title: result.title }) }
   }
 
   AppFocuser {
