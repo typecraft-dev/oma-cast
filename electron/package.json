@@ -1,7 +1,7 @@
 {
   "name": "oma-cast",
   "productName": "oma-cast",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "Raycast-style launcher for Windows — the oma-cast Electron port",
   "main": "main.js",
   "license": "MIT",

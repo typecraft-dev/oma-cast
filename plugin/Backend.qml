@@ -406,6 +406,7 @@ Item {
       },
       getActions: function(data) {
         var rowId = String(data && data.id || "")
+        if (rowId === RootSearch.URL_ID) return RootSearch.actionsFor({ kind: "url" })
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
         if (rowId.indexOf("web-search:") === 0) {
@@ -425,6 +426,10 @@ Item {
       getItemInfo: function(data) {
         var rowId = String(data && data.id || "")
         var nowMs = Date.now()
+        if (rowId === RootSearch.URL_ID) {
+          var typedInfo = RootSearch.typedUrl(data.query)
+          return typedInfo ? RootSearch.aboutFor(RootSearch.urlCandidate(typedInfo), nowMs) : []
+        }
         if (rowId === RootSearch.CALCULATOR_ID) {
           var calc = backend.calculate(String(data.query || ""))
           return calc ? RootSearch.aboutFor(RootSearch.calculatorCandidate(calc), nowMs) : []
@@ -452,6 +457,18 @@ Item {
         if (!(data && data.confirmed)) {
           var confirm = RootSearch.confirmationFor(String(data && data.id || ""), String(data && data.action || "open"))
           if (confirm) return { confirm: confirm }
+        }
+        // A typed address opens in the default browser; the row is derived
+        // from the current query, so there is no stored candidate to look up.
+        if (data && data.id === RootSearch.URL_ID) {
+          var address = RootSearch.typedUrl(data.query)
+          if (!address) throw new Error("Type a web address first")
+          if (String(data.action || "open") === "copy-url") {
+            Util.execArgv(["wl-copy", "--", address.url])
+            return { close: true, hud: "Copied to Clipboard" }
+          }
+          Util.execArgv(["omarchy-launch-browser", address.url])
+          return { close: true }
         }
         var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === (data && data.id) })[0]
         if (fallback) {

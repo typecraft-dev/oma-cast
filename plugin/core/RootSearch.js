@@ -10,6 +10,101 @@ var FALLBACKS = [
   { id: "fallback:agent", title: "Ask default agent", icon: "󰚩", subtitle: "New terminal session · Ctrl+Alt+Enter" }
 ]
 
+// A typed web address opens in the default browser (Raycast does the same
+// with a typed URL); it is never sent to a search engine. The row is not a
+// stored command — the backend re-parses the current query — so its id is
+// constant and lives outside the candidate/frecency namespace. [D]
+var URL_ID = "url:open"
+
+// TLDs that carry real web sites. Bare tokens need a listed TLD, which
+// keeps file names out: "notes.md", "main.rs", "app.js" and "deploy.sh"
+// are searches, not web sites (all four are real country TLDs). An
+// explicit https:// bypasses the list, so any address still opens. Numeric
+// endings (1.5, 12.3.4) are rejected by the host check, so calculator
+// input never grows a URL row. [D]
+var URL_TLDS = {
+  com: 1, org: 1, net: 1, edu: 1, gov: 1, mil: 1, int: 1, info: 1, biz: 1,
+  name: 1, pro: 1, mobi: 1, asia: 1, aero: 1, coop: 1, museum: 1, travel: 1,
+  jobs: 1, cat: 1, tel: 1, xxx: 1, app: 1, dev: 1, page: 1, blog: 1,
+  shop: 1, store: 1, site: 1, online: 1, tech: 1, xyz: 1, club: 1, live: 1,
+  news: 1, world: 1, today: 1, life: 1, space: 1, website: 1, fun: 1,
+  cloud: 1, digital: 1, design: 1, studio: 1, software: 1, systems: 1,
+  codes: 1, tools: 1, run: 1, build: 1, works: 1, art: 1, email: 1,
+  group: 1, network: 1, agency: 1, media: 1, social: 1, video: 1,
+  music: 1, photo: 1, pics: 1, gallery: 1, wiki: 1, zone: 1, city: 1,
+  town: 1, house: 1, home: 1, estate: 1, rentals: 1, farm: 1, garden: 1,
+  kitchen: 1, recipes: 1, coffee: 1, beer: 1, wine: 1, food: 1, menu: 1,
+  pizza: 1, restaurant: 1, bar: 1, pub: 1, cafe: 1, hotel: 1, holidays: 1,
+  flights: 1, taxi: 1, cars: 1, auto: 1, bike: 1, boat: 1, yachts: 1,
+  land: 1, local: 1, test: 1, onion: 1, lan: 1,
+  // Country TLDs the launcher is likely to see. Deliberately not every
+  // ccTLD: the ones that double as code file extensions (js, md, py, rs,
+  // sh, ml, pm, mk, cc, ts…) stay out of the bare-token path.
+  eu: 1, uk: 1, de: 1, fr: 1, nl: 1, be: 1, at: 1, ch: 1, it: 1, es: 1,
+  pt: 1, se: 1, no: 1, fi: 1, dk: 1, ie: 1, is: 1, pl: 1, cz: 1, gr: 1,
+  tr: 1, ru: 1, ua: 1, br: 1, ar: 1, cl: 1, co: 1, mx: 1, ca: 1, us: 1,
+  au: 1, nz: 1, jp: 1, cn: 1, kr: 1, tw: 1, hk: 1, sg: 1, my: 1, th: 1,
+  vn: 1, id: 1, ph: 1, in: 1, io: 1, ai: 1, tv: 1, me: 1, to: 1, gg: 1,
+  je: 1, ly: 1
+}
+
+function webHost(host, explicit) {
+  var h = String(host || "").toLowerCase()
+  if (h === "localhost") return true
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) {
+    var parts = h.split(".")
+    for (var i = 0; i < 4; i++) if (Number(parts[i]) > 255) return false
+    return true
+  }
+  var labels = h.split(".")
+  if (labels.length < 2) return false
+  for (var j = 0; j < labels.length; j++) {
+    if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(labels[j])) return false
+  }
+  var tld = labels[labels.length - 1]
+  if (!/^[a-z]{2,}$/.test(tld)) return false
+  // An explicit scheme is the user saying "this is an address": take it.
+  if (explicit) return true
+  return Object.prototype.hasOwnProperty.call(URL_TLDS, tld)
+}
+
+// The typed query as a web address, or null. Accepts a bare domain
+// (apple.com, www.example.co.uk), an optional :port and path/query/fragment,
+// an IPv4 host, localhost, or an explicit http(s):// URL. Anything with
+// whitespace is a search, not an address.
+function typedUrl(query) {
+  var s = String(query === undefined || query === null ? "" : query).trim()
+  if (!s || /\s/.test(s)) return null
+  var scheme = ""
+  var m = /^(https?):\/\//i.exec(s)
+  if (m) { scheme = m[1].toLowerCase(); s = s.slice(m[0].length) }
+  else if (s.indexOf("://") >= 0) return null          // ftp://, oma-cast://, …
+  var cut = s.search(/[\/?#]/)
+  var authority = cut < 0 ? s : s.slice(0, cut)
+  var tail = cut < 0 ? "" : s.slice(cut)
+  if (!authority || authority.indexOf("@") >= 0) return null
+  var host = authority
+  var port = ""
+  var pm = /^([^:]+)(:\d{1,5})$/.exec(authority)
+  if (pm) {
+    host = pm[1]
+    port = pm[2]
+    if (Number(port.slice(1)) > 65535) return null
+  }
+  if (!webHost(host, !!scheme)) return null
+  return { url: (scheme || "https") + "://" + host + port + tail, display: host + port + tail }
+}
+
+// The "open this address" row shown above Results while the query is a URL.
+function urlCandidate(info) {
+  return {
+    id: URL_ID, type: "command", kind: "url",
+    title: info.display || info.url, subtitle: info.url, typeLabel: "Web",
+    glyph: "\uf0ac",                     // nf-fa-globe
+    url: info.url, rootSearch: { when: "searching" }
+  }
+}
+
 // Web searches as root commands that push a dedicated search view with a
 // full-width query bar (like Settings), instead of an inline argument pill.
 // The pill forced the query into a ~200 px box after the root text; the
@@ -358,6 +453,9 @@ function rootSections(candidates, query, ctx, deps) {
     if (ctx.calculation && !filtered) sectionsHit.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
     return sectionsHit.concat(_rankMemo.tail)
   }
+  // A typed address is a command, so the Applications filter drops it; a
+  // URL row depends only on the query, never on the clock. [D]
+  var typed = q && ctx.filter !== "applications" ? typedUrl(q) : null
   // Memoized decorated list (the backend caches it per data revision +
   // time bucket): decorating clones every candidate and runs Math.exp per
   // row, so redoing it per keystroke dominates app search. [D]
@@ -381,6 +479,7 @@ function rootSections(candidates, query, ctx, deps) {
     var results = deps.Ranker.rank(searchable, q, opts)
     var sections2 = []
     if (ctx.calculation && !filtered) sections2.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
+    if (typed) sections2.push({ id: "url", title: "", rows: [{ candidate: urlCandidate(typed), record: null }] })
     if (results.length > 0) sections2.push({ id: "results", title: "Results", rows: results })
     if (!filtered) sections2.push({ id: "fallback-commands", title: "Use “" + q + "” with…", rows: fallbackRows(q) })
     // Only memoize the calc-free tail: a calculator row depends on the
@@ -444,6 +543,12 @@ function actionsFor(candidate) {
       calc.push({ id: "delete-all-entries", title: "Delete All Entries", shortcut: "Ctrl Shift D", section: "delete", icon: "" })
     }
     return calc
+  }
+  if (candidate.kind === "url") {
+    return [
+      { id: "open", title: "Open in Default Browser", shortcut: "↵", section: "primary", icon: "" },
+      { id: "copy-url", title: "Copy URL", shortcut: "Ctrl Shift C", section: "copy", icon: "" }
+    ]
   }
   var primary
   var list = []
@@ -559,6 +664,12 @@ function aboutFor(c, nowMs) {
     add("ID", c.id)
     return rows
   }
+  if (c.kind === "url") {
+    add("URL", c.url)
+    add("Type", "Web")
+    add("ID", c.id)
+    return rows
+  }
   add("Title", c.title)
   add("Type", c.typeLabel)
   if (c.kind !== "fallback") add("Location", c.subtitle)
@@ -591,6 +702,9 @@ if (typeof module !== "undefined") {
     menuCandidates: menuCandidates,
     builtinCandidate: builtinCandidate,
     CALCULATOR_ID: CALCULATOR_ID,
+    URL_ID: URL_ID,
+    typedUrl: typedUrl,
+    urlCandidate: urlCandidate,
     calculatorCandidate: calculatorCandidate,
     historyCandidate: historyCandidate,
     historySections: historySections,

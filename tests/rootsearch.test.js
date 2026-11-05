@@ -150,6 +150,37 @@ test("fallback URLs encode the query", () => {
   assert.equal(RS.fallbackUrl(RS.FALLBACKS[0], " a&b c "), "https://www.google.com/search?q=a%26b%20c")
 })
 
+test("a typed domain opens in the browser instead of being searched", () => {
+  const sections = results("apple.com")
+  assert.deepEqual(sections.map((s) => s.id), ["url", "fallback-commands"])
+  const row = sections[0].rows[0].candidate
+  assert.equal(row.id, RS.URL_ID)
+  assert.equal(row.kind, "url")
+  assert.equal(row.url, "https://apple.com")
+  assert.equal(row.title, "apple.com")
+  assert.equal(row.subtitle, "https://apple.com")
+  assert.deepEqual(RS.actionsFor(row).map((a) => a.id), ["open", "copy-url"])
+  assert.ok(RS.aboutFor(row, NOW).some((r) => r.label === "URL" && r.value === "https://apple.com"))
+  // The Applications filter drops the command row; an empty query has none.
+  assert.deepEqual(results("apple.com", ctx({ filter: "applications" })).map((s) => s.id), [])
+  assert.ok(!results("").some((s) => s.id === "url"))
+})
+
+test("URL detection is conservative about ordinary searches", () => {
+  assert.equal(RS.typedUrl("www.org").url, "https://www.org")
+  assert.equal(RS.typedUrl("  apple.com  ").url, "https://apple.com")
+  assert.equal(RS.typedUrl("https://example.com/a?b=1#c").url, "https://example.com/a?b=1#c")
+  assert.equal(RS.typedUrl("http://localhost:3000/x").url, "http://localhost:3000/x")
+  assert.equal(RS.typedUrl("192.168.1.1:8080").url, "https://192.168.1.1:8080")
+  assert.equal(RS.typedUrl("sub.domain.co.uk/path").url, "https://sub.domain.co.uk/path")
+  // An explicit scheme always wins, even for a country TLD that doubles as
+  // a file extension.
+  assert.equal(RS.typedUrl("https://main.rs").url, "https://main.rs")
+  for (const q of ["apple pie", "1.5", "12.3.4", "notes", "notes.txt", "foo.js", "main.ts", "main.rs", "notes.md", "deploy.sh", "mailto:a@b.com", "https://", "ftp://x.com", "example.com:99999"]) {
+    assert.equal(RS.typedUrl(q), null, q)
+  }
+})
+
 test("web searches push a dedicated search view with a full query bar", () => {
   const google = results("google")[0].rows[0].candidate
   assert.equal(google.id, "builtin:google-search")

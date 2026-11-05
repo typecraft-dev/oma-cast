@@ -759,6 +759,7 @@ function createBackend(opts) {
       },
       getActions: function(data) {
         var rowId = String(data && data.id || "")
+        if (rowId === RootSearch.URL_ID) return RootSearch.actionsFor({ kind: "url" })
         if (rowId.indexOf("setting:") === 0) return actionsForSetting()
         if (rowId.indexOf("winset:") === 0) return actionsForWindowsSetting()
         if (rowId === "builtin:windows-settings") return [{ id: "open", title: "Open Windows Settings", shortcut: "↵", section: "primary", icon: "\uf17a" }]
@@ -781,6 +782,10 @@ function createBackend(opts) {
       },
       getItemInfo: function(data) {
         var rowId = String(data && data.id || "")
+        if (rowId === RootSearch.URL_ID) {
+          var typedInfo = RootSearch.typedUrl(data.query)
+          return typedInfo ? RootSearch.aboutFor(RootSearch.urlCandidate(typedInfo), Date.now()) : []
+        }
         if (rowId.indexOf("setting:") === 0) {
           var sdef = SettingsView.find(rowId)
           if (!sdef) throw new Error("Unknown setting " + rowId)
@@ -858,6 +863,18 @@ function createBackend(opts) {
               message: "PID " + kpid + " ends immediately. Unsaved data in " + krow.name + " is lost.",
               primary: "Kill Process", destructive: true } }
           }
+        }
+        // A typed address opens in the default browser; the row is derived
+        // from the current query, so there is no stored candidate to look up.
+        if (data && data.id === RootSearch.URL_ID) {
+          var address = RootSearch.typedUrl(data.query)
+          if (!address) throw new Error("Type a web address first")
+          if (String(data.action || "open") === "copy-url") {
+            if (host.copy) host.copy(address.url)
+            return { close: true, hud: "Copied to Clipboard" }
+          }
+          if (host.openExternal) host.openExternal(address.url)
+          return { close: true }
         }
         var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === (data && data.id) })[0]
         if (fallback) {

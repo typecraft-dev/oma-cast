@@ -244,6 +244,26 @@ test("an inline calculation appears as the Calculator row and ↵ copies", () =>
   backend.dispose()
 })
 
+test("a typed domain gets an Open in Browser row, and Enter opens it", () => {
+  const { backend, calls } = setup()
+  const r = backend.callSync("rootSearch.search", { query: "apple.com", view: null, filter: "all" })
+  assert.equal(r.ok, true)
+  const urlSection = r.data.find(function(s) { return s.id === "url" })
+  assert.ok(urlSection, "has a URL section above Results")
+  assert.equal(urlSection.rows[0].id, "url:open")
+  assert.equal(urlSection.rows[0].url, "https://apple.com")
+  const acts = backend.callSync("rootSearch.getActions", { id: "url:open" })
+  assert.deepEqual(acts.data.map(function(a) { return a.id }), ["open", "copy-url"])
+  const opened = backend.callSync("rootSearch.performAction", { id: "url:open", action: "open", query: "apple.com", confirmed: true })
+  assert.equal(opened.ok, true)
+  assert.equal(opened.data.close, true)
+  assert.deepEqual(calls.opened, ["https://apple.com"])
+  const copied = backend.callSync("rootSearch.performAction", { id: "url:open", action: "copy-url", query: "www.org", confirmed: true })
+  assert.equal(copied.ok, true)
+  assert.deepEqual(calls.copy, ["https://www.org"])
+  backend.dispose()
+})
+
 test("opening an app records a frecency visit and launches the link", () => {
   const { backend, calls } = setup()
   const r = backend.callSync("rootSearch.performAction", { id: "app:C:\\links\\Firefox.lnk", action: "open", query: "ff", confirmed: true })

@@ -447,7 +447,7 @@ function handleKey(e) {
     if (k === "PageUp") { move(-8); return true }
     if (k === "PageDown") { move(8); return true }
     if (ctrl && shift && kl === "f") { performIfOffered(["favorite-add", "favorite-remove"]); return true }
-    if (ctrl && shift && kl === "c") { performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-path", "copy-pid"]); return true }
+    if (ctrl && shift && kl === "c") { performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-path", "copy-pid", "copy-url"]); return true }
     if (ctrl && shift && kl === "d") { performIfOffered(["delete-all-entries"]); return true }
     if (ctrl && kl === "d") { performIfOffered(["delete-entry"]); return true }
     if (alt && shift && kl === "d") { performIfOffered(["disable"]); return true }
