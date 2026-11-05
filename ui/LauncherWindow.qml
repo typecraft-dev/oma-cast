@@ -643,8 +643,12 @@ PanelWindow {
   }
 
   function isTyping(event) {
+    // Qt adds KeypadModifier to numpad keys even when Num Lock is on. It is
+    // metadata about the key source, not a shortcut modifier, so ignore it
+    // when deciding whether printable text should enter the search field.
+    var modifiers = event.modifiers & ~Qt.KeypadModifier
     return event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127
-      && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)
+      && (modifiers === Qt.NoModifier || modifiers === Qt.ShiftModifier)
   }
 
   Connections {
