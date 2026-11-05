@@ -116,6 +116,8 @@ for (const kind of ["copy", "paste"]) {
     fs.writeFileSync(home + "/wl-copy", fake + 'cat >"$LOG.clipboard"\n', { mode: 0o755 })
     fs.writeFileSync(home + "/wtype", fake, { mode: 0o755 })
     fs.writeFileSync(home + "/sleep", "#!/bin/bash\nexit 0\n", { mode: 0o755 })
+    // Paste picks its key from the focused window; pretend it isn't a terminal.
+    fs.writeFileSync(home + "/hyprctl", '#!/bin/bash\necho \'{"class":"firefox"}\'\n', { mode: 0o755 })
     const secret = "1234 * 5678 = 7006652 my private question"
     const script = clipboardScripts()[kind]
     const r = spawnSync("bash", ["-c", script], {
@@ -126,7 +128,7 @@ for (const kind of ["copy", "paste"]) {
     assert.equal(fs.readFileSync(log + ".clipboard", "utf8"), secret)
     const cmdlines = fs.readFileSync(log, "utf8")
     assert.ok(!cmdlines.includes("private"), cmdlines)
-    assert.ok(!script.includes("$"), "the script takes no arguments")
+    assert.ok(!/\$[0-9@*]/.test(script), "the script takes no arguments")
     if (kind === "paste") assert.match(cmdlines, /wtype -M shift -k Insert -m shift/)
   })
 }
