@@ -74,6 +74,7 @@ Item {
   Backend {
     id: backend
     appLibrary: root.shell ? root.shell.appLibrary : null
+    dismiss: function() { root.hide() }
     summon: function(id, payload) { return root.shell ? root.shell.summon(id, payload) : false }
   }
 
