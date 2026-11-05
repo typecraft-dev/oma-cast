@@ -77,7 +77,7 @@ var BUILTINS = [
     glyph: "\uf1da",                     // nf-fa-history
     keywords: ["superwhisper", "dictation", "transcription", "history", "voice", "speech"],
     run: { push: { kind: "superwhisper-history", title: "Superwhisper History" } },
-    requires: "superwhisper",
+    requires: "superwhisper-history",
     rootSearch: { when: "always" }
   },
   {

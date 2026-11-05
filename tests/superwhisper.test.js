@@ -18,6 +18,14 @@ test("parses CLI history, newest first, dropping empty dictations", () => {
   assert.deepEqual(S.parseHistory("{}"), [])
 })
 
+test("the history view needs history on and at least one entry", () => {
+  const show = (enabled, entries) => JSON.stringify({ config: { linux: { historyEnabled: enabled } }, history: { entries } })
+  assert.equal(S.historyAvailable(show(true, 873)), true)
+  assert.equal(S.historyAvailable(show(false, 873)), false)
+  assert.equal(S.historyAvailable(show(true, 0)), false)
+  assert.equal(S.historyAvailable("oops"), false)
+})
+
 test("sections by day with search", () => {
   const list = S.parseHistory(raw)
   assert.deepEqual(S.sections(list, "", now).map((s) => s.title), ["Today", "Yesterday"])

@@ -14,6 +14,8 @@ Item {
   readonly property bool available: source.installed && source.isDefault
   property bool installed: false
   property bool isDefault: false
+  // History is on in Superwhisper and holds at least one dictation.
+  property bool hasHistory: false
   property var entries: []
   property double loadedAt: 0
   readonly property bool loading: history.running
@@ -26,8 +28,11 @@ Item {
   Process {
     id: detect
     running: true
-    command: ["bash", "-c", "command -v superwhisper"]
-    onExited: function(exitCode) { source.installed = exitCode === 0 }
+    command: ["bash", "-c", "command -v superwhisper >/dev/null || exit 127; superwhisper general show"]
+    stdout: StdioCollector {
+      onStreamFinished: source.hasHistory = Superwhisper.historyAvailable(text)
+    }
+    onExited: function(exitCode) { source.installed = exitCode !== 127 }
   }
 
   FileView {

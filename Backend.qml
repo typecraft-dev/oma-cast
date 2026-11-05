@@ -116,6 +116,7 @@ Item {
     for (var b = 0; b < RootSearch.BUILTINS.length; b++) {
       var def = RootSearch.BUILTINS[b]
       if (def.requires === "superwhisper" && !superwhisper.available) continue
+      if (def.requires === "superwhisper-history" && !(superwhisper.available && superwhisper.hasHistory)) continue
       next.push(RootSearch.builtinCandidate(def))
     }
     for (var s = 0; s < scriptSource.commands.length; s++) next.push(ScriptCommands.candidate(scriptSource.commands[s]))
@@ -923,6 +924,7 @@ Item {
   SuperwhisperSource {
     id: superwhisper
     onAvailableChanged: rebuildTimer.restart()
+    onHasHistoryChanged: rebuildTimer.restart()
     onHistoryChanged: backend.emit("superwhisper.historyChanged", null)
     onMessage: function(level, text) { backend.log(level, "superwhisper", text, null) }
   }

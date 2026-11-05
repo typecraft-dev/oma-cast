@@ -39,6 +39,15 @@ function parseHistory(raw) {
   return out
 }
 
+// `superwhisper general show` (JSON) → whether the history view has
+// anything to show: history recording is on and there is at least one entry.
+function historyAvailable(raw) {
+  var data
+  try { data = JSON.parse(String(raw || "")) } catch (e) { return false }
+  var linux = data && data.config && data.config.linux || {}
+  return linux.historyEnabled !== false && !!(data.history && data.history.entries > 0)
+}
+
 function relativeTime(ms, nowMs) {
   var s = Math.max(0, Math.round((nowMs - ms) / 1000))
   if (s < 60) return "Just now"
@@ -114,7 +123,7 @@ function actionsFor(entry, appName) {
 
 if (typeof module !== "undefined") {
   module.exports = {
-    HISTORY_LIMIT: HISTORY_LIMIT, parseHistory: parseHistory, candidate: candidate,
+    HISTORY_LIMIT: HISTORY_LIMIT, parseHistory: parseHistory, historyAvailable: historyAvailable, candidate: candidate,
     sections: sections, detail: detail, actionsFor: actionsFor
   }
 }
