@@ -118,6 +118,11 @@ PanelWindow {
   property var actions: []
   property var toast: null
   property int historyIndex: -1
+  // Shift+Home selected the whole query: the search field has no caret, so
+  // "to the start of the line" is all of it. The next Backspace or Delete
+  // clears it and typing replaces it, which is what omac's Super+Backspace
+  // sends outside terminals (Shift+Home, Backspace).
+  property bool querySelected: false
 
   // Ctrl+P root filter (RootSearch.FILTERS), Ctrl+T toast actions,
   // Ctrl+Shift+K About panel and the confirm alert.
@@ -200,6 +205,7 @@ PanelWindow {
     if (typeof payload.query === "string") window.query = payload.query
     window.closePopups()
     window.historyIndex = -1
+    window.querySelected = false
     // Hiding pops to root and rebuilds, so an unchanged root list is reused
     // and the card shows on the next frame instead of after a search.
     if (typeof payload.query === "string" || window.rootKey() !== window.builtRootKey) window.rebuild(true)
@@ -757,6 +763,10 @@ PanelWindow {
     var alt = (event.modifiers & Qt.AltModifier) !== 0
     var key = event.key
     var enter = key === Qt.Key_Return || key === Qt.Key_Enter
+    var modifierOnly = key === Qt.Key_Shift || key === Qt.Key_Control || key === Qt.Key_Alt || key === Qt.Key_Meta
+      || key === Qt.Key_Super_L || key === Qt.Key_Super_R
+    var selected = window.querySelected
+    if (!modifierOnly) window.querySelected = false
 
     if (window.alert) {
       if (key === Qt.Key_Escape) window.alert = null
@@ -837,8 +847,17 @@ PanelWindow {
       }
     }
 
+    if (window.argFocus < 0) {
+      if (key === Qt.Key_Home && shift && !ctrl && !alt) { window.querySelected = window.query.length > 0; return true }
+      // Super+Backspace deletes to the start of the line, as on a Mac.
+      if (key === Qt.Key_Backspace && meta) { window.setQuery(""); return true }
+      if (selected && (key === Qt.Key_Backspace || key === Qt.Key_Delete)) { window.setQuery(""); return true }
+      if (selected && window.isTyping(event)) { window.setQuery(event.text); return true }
+    }
     if (Util.editsFilter(event, window.query)) { window.setQuery(Util.editedFilter(event, window.query)); return true }
-    if (key === Qt.Key_Backspace && !window.query && !window.atRoot) { window.pop(); return true }
+    // Backspace never leaves a view: holding it to clear the search used to
+    // run on past the start and back out. Esc, Ctrl+[ and the arrow go back. [D]
+    if (key === Qt.Key_Backspace) return true
     if (window.isTyping(event)) { window.setQuery(window.query + event.text); return true }
     return false
   }
@@ -935,6 +954,16 @@ PanelWindow {
       // Room left of the filter button; argument pills sit right after the
       // typed text (ref 04 §2.2 WidthSizer).
       readonly property real queryRoom: (filterButton.visible ? filterButton.x - window.px(12) : header.width - window.px(20)) - queryText.x
+
+      Rectangle {
+        visible: window.querySelected && window.query.length > 0
+        x: queryText.x - Style.space(2)
+        anchors.verticalCenter: parent.verticalCenter
+        width: Math.min(queryText.contentWidth, queryText.width) + Style.space(4)
+        height: queryText.font.pixelSize + Style.space(8)
+        radius: Style.space(3)
+        color: window.look.selectedBackground
+      }
 
       Text {
         id: queryText

@@ -137,6 +137,7 @@ the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` mo
 | `Ctrl+Shift+C` | Copy |
 | `Alt+Shift+D` | Disable a command |
 | `Esc` / `Shift+Esc` | Back / back to root |
+| `Ctrl+U` / `Super+Backspace` / `Shift+Home` then `Backspace` | Clear the search (Backspace alone never leaves a view) |
 | `Ctrl +` / `Ctrl −` / `Ctrl 0` | Zoom |
 
 The All / Applications / Commands filter beside the root search is optional: set `"rootFilter": false` in
