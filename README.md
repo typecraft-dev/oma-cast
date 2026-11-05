@@ -1,73 +1,38 @@
-<div align="center">
-
-# omacast
-
-[![Built for Omarchy](https://img.shields.io/badge/Built%20for-Omarchy-e0af68?style=for-the-badge&labelColor=1a1b26)](https://omarchy.org)
-
-**A Raycast-esque launcher for [Omarchy](https://omarchy.org).**
-It learns what you use, searches your apps and every Omarchy action, and looks like it shipped with your theme.
-
-<img src="docs/screenshots/hero.png" alt="omacast showing suggestions for apps and Omarchy commands" width="760">
-
-</div>
-
----
-
-## Why
-
-Omarchy's built-in menu is great at what it does. omacast adds what Raycast users miss on Linux:
-
-* **Learns your habits.** Results are ranked with a port of Raycast's root-search algorithm, plus frecency and learned search terms. The things you actually use float to the top, and if you type `ff` and pick Firefox, `ff` keeps meaning Firefox.
-* **One search for everything.** Your apps, all ~400 Omarchy menu actions (with breadcrumbs and live ✓ state), and web-search fallbacks.
-* **Clipboard History, Raycast style.** Text, links, colours, files and images you copy, with a preview, where each came from, pins and a type filter.
-* **Theme switching with previews.** Browse every Omarchy theme with its preview beside the list, and apply one with ↵.
-* **Superwhisper built in.** Start and stop dictation, recover your last dictation, and switch microphone, language or processing mode without leaving the keyboard.
-* **Your shortcuts.** Give anything an alias, pin favorites, and hide the commands you never touch.
-* **Keyboard-first.** A Ctrl+K action panel, Ctrl+1–9 quick picks, search history on ↑, section jumping, and emacs-style navigation.
-* **Native to Omarchy.** It runs inside `omarchy-shell` as a plugin, with no Electron, no Node and no extra daemons. It opens in about 40 ms and follows your theme live when you run `omarchy theme set`.
-
-## Screenshots
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/search.png" alt="Searching 'screen' shows Omarchy actions with breadcrumbs"></td>
-    <td width="50%"><img src="docs/screenshots/actions.png" alt="The Ctrl+K action panel"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Every Omarchy action, with breadcrumbs</b></td>
-    <td align="center"><b>Ctrl+K: actions for any result</b></td>
-  </tr>
-</table>
+<h1 align="center">omacast</h1>
 
 <p align="center">
-  <img src="docs/screenshots/fallbacks.png" alt="Web-search fallbacks under the results" width="49%">
+  <strong>A Raycast-esque launcher for Linux.</strong><br>
+  Keyboard-first. Learns what you use. Built for Omarchy.
 </p>
-<p align="center"><b>No match? Send the query to Google or DuckDuckGo</b></p>
 
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/clipboard.gif" alt="Moving through Clipboard History: text, an image, colours, a link and a file, each previewed beside the list"></td>
-    <td width="50%"><img src="docs/screenshots/themes.gif" alt="Moving through Switch Theme: each Omarchy theme's preview shows beside the list"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Clipboard History with previews</b></td>
-    <td align="center"><b>Switch Theme with live previews</b></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/superwhisper.png" alt="Searching 'superwhisper' lists its commands: Switch Language, Superwhisper History, Paste Last Dictation, Switch Microphone, Copy Last Dictation"></td>
-    <td width="50%"><img src="docs/screenshots/superwhisper-language.png" alt="Switch Language lists Superwhisper's languages with English checked as current"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Superwhisper commands</b></td>
-    <td align="center"><b>Switch Superwhisper's language</b></td>
-  </tr>
-</table>
+<p align="center">
+  <a href="https://github.com/tcballard/omarchy-badges"><img src="https://raw.githubusercontent.com/tcballard/omarchy-badges/85f859029e236e784e7b05ada6dbe73506d07a91/badges/v1/built-for-omarchy.svg" alt="Built for Omarchy"></a>
+</p>
 
-### Follows your Omarchy theme
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#search">Search</a> ·
+  <a href="#clipboard-history">Clipboard History</a> ·
+  <a href="#switch-theme">Switch Theme</a> ·
+  <a href="#superwhisper">Superwhisper</a> ·
+  <a href="#keyboard">Keyboard</a>
+</p>
 
-There's no theme config. omacast binds to Omarchy's own colours, so it changes the moment you switch themes.
+<p align="center">
+  <img src="docs/screenshots/hero.gif" alt="omacast cycling through six Omarchy themes: Tokyo Night, Gruvbox, Rose Pine, Flexoki Light, Everforest and Kanagawa">
+</p>
 
-<img src="docs/screenshots/themes.png" alt="omacast in Tokyo Night, Gruvbox, Rose Pine, Flexoki Light, Everforest and Osaka Jade">
+omacast runs inside `omarchy-shell` as a plugin, with no Electron, no Node and no extra daemons. It opens in
+about 40 ms, searches your apps and every Omarchy action, and binds to Omarchy's own colours, so it changes
+the moment you switch themes.
+
+- **Learns your habits.** A port of Raycast's root-search ranking, plus frecency and learned search terms. Type `ff`, pick Firefox, and `ff` keeps meaning Firefox.
+- **One search for everything.** Your apps, all ~400 Omarchy menu actions with breadcrumbs and live ✓ state, a calculator and web-search fallbacks.
+- **Clipboard History.** Text, links, colours, files and images you copy, with a preview, where each came from, pins and a type filter.
+- **Switch Theme.** Every Omarchy theme with its preview beside the list.
+- **Superwhisper.** Start and stop dictation, recover your last dictation, and switch microphone, language or processing mode.
+- **Your shortcuts.** Aliases, favorites, a Ctrl+K action panel, Ctrl+1–9 quick picks and emacs or vim navigation.
+- **Script Commands.** Drop a Raycast-style script in a folder and it becomes a command.
 
 ## Install
 
@@ -94,6 +59,9 @@ o.bind("ALT + SPACE", "omacast launcher", hl.dsp.global("omacast:toggle"))
 ```
 
 Update with `omarchy plugin update typecraft.omacast`.
+
+<details>
+<summary>Removal, dependencies, privacy and upgrading from oma-cast</summary>
 
 ### Remove
 
@@ -145,29 +113,30 @@ cache and state directories to the `omacast` names. In a development checkout, `
 the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` moves `oma-cast.lua` to
 `omacast.lua`, keeping your key. `omacast doctor` reports anything left over.
 
-## Keyboard
+</details>
 
-| Key | Does |
-|---|---|
-| `↵` / `Ctrl+↵` / `Ctrl+Shift+↵` | Run the first, second or third action |
-| `Shift+↵` | Open a new window of an app (`↵` switches to the one already open) |
-| `Ctrl+K` | Open the action panel |
-| `Super+V` / `Ctrl+V` / `Ctrl+Shift+V` / `Shift+Insert` | Paste text into the query (also accepts clipboard-history selections) |
-| `Ctrl+1`…`9` | Pick a result |
-| `↑` on an empty search | Search history |
-| `Ctrl+↑` / `Ctrl+↓` | Jump between sections |
-| `Ctrl+N` / `Ctrl+P` | Next / previous |
-| `Ctrl+Shift+F` | Add to favorites (`Ctrl+Alt+↑↓` to reorder) |
-| `Ctrl+Shift+C` | Copy |
-| `Alt+Shift+D` | Disable a command |
-| `Esc` / `Shift+Esc` | Back / back to root |
-| `Ctrl+U` / `Super+Backspace` / `Shift+Home` then `Backspace` | Clear the search (Backspace alone never leaves a view) |
-| `Ctrl +` / `Ctrl −` / `Ctrl 0` | Zoom |
+## Search
 
-The All / Applications / Commands filter beside the root search is optional: set `"rootFilter": false` in
-`~/.config/omacast/config.json` to hide it and its shortcut.
+**Suggestions** learn from what you open. **Results** cover apps and every Omarchy action, with the menu path beside each one.
+
+<p align="center">
+  <img src="docs/screenshots/hero.png" width="49%" alt="The empty launcher with Suggestions: Search Emoji &amp; Symbols, Switch Theme, Clipboard History and Superwhisper commands">
+  <img src="docs/screenshots/search.png" width="49%" alt="Searching 'screen' lists Omarchy actions such as Screenshot and Screensaver with their menu paths">
+</p>
+
+**Ctrl+K** opens the actions for any result. **No match?** Send the query to Google or DuckDuckGo.
+
+<p align="center">
+  <img src="docs/screenshots/actions.png" width="49%" alt="The Ctrl+K action panel for Screenshot: Run, Open in Omarchy Menu, Copy Command, Add to Favorites, Set Alias, Disable Command">
+  <img src="docs/screenshots/fallbacks.png" width="49%" alt="A query with no matches offers Search Google and Search DuckDuckGo">
+</p>
 
 ## Clipboard History
+
+<p align="center">
+  <img src="docs/screenshots/clipboard.gif" width="49%" alt="Moving through Clipboard History: text, an image, colours, a link and a file, each previewed beside the list">
+  <img src="docs/screenshots/clipboard-filter.png" width="49%" alt="Clipboard History with the type filter open: All Types, Text, Images, Files, Links, Colors">
+</p>
 
 Search **Clipboard History** in the root search, or bind it directly:
 
@@ -177,8 +146,6 @@ o.bind("SUPER + CTRL + V", "omacast clipboard history", hl.dsp.global("omacast:c
 
 Pressing the binding again closes it; the emoji picker's `omacast:emoji` binding toggles the same way.
 
-<img src="docs/screenshots/clipboard-filter.png" alt="Clipboard History with the type filter open: All Types, Text, Images, Files, Links, Colors" width="760">
-
 - omacast records text, links, colours, files and images you copy, with the app you copied from, when, and how many times.
 - The list is on the left and a preview with its details is on the right. The type dropdown (`Ctrl+P`) filters by All Types, Text, Images, Files, Links or Colors.
 - `↵` pastes into the app you came from, `Ctrl+↵` copies, `Ctrl+O` opens a link or file, `Ctrl+Shift+P` pins, `Ctrl+D` deletes an entry and `Ctrl+Shift+D` deletes everything except pins.
@@ -187,6 +154,10 @@ Pressing the binding again closes it; the emoji picker's `omacast:emoji` binding
 - The history is in `~/.local/share/omacast/db/clipboard.json`, and images and long text are in `~/.local/share/omacast/clipboard/`, both readable only by you.
 
 ## Switch Theme
+
+<p align="center">
+  <img src="docs/screenshots/themes.gif" width="760" alt="Moving through Switch Theme: each Omarchy theme's preview shows beside the list">
+</p>
 
 **Switch Theme** lists your Omarchy themes, your own and Omarchy's, with the current one checked and a preview of the highlighted theme beside the list. `↵` applies it with `omarchy-theme-set`, and omacast changes with it. It replaces Omarchy's own theme picker in omacast's results. To open it from Omarchy's theme keys as well:
 
@@ -198,6 +169,11 @@ o.bind("SUPER + CTRL + T", "omacast switch theme", hl.dsp.global("omacast:theme"
 Pressing the key again closes it.
 
 ## Superwhisper
+
+<p align="center">
+  <img src="docs/screenshots/superwhisper.png" width="49%" alt="Searching 'superwhisper' lists its commands: Switch Language, Superwhisper History, Paste Last Dictation, Switch Microphone, Copy Last Dictation">
+  <img src="docs/screenshots/superwhisper-language.png" width="49%" alt="Switch Language lists Superwhisper's languages with English checked as current">
+</p>
 
 When [Superwhisper](https://superwhisper.com) is your dictation backend (Setup › Defaults › Dictation in the Omarchy menu) and installed, omacast adds these commands:
 
@@ -229,6 +205,28 @@ monitor-input-cycle "$1" && echo "Switching display"
 - `needsConfirmation` asks first, and `currentDirectoryPath` sets the folder the script runs in.
 - The folder is rescanned each time the launcher opens. Scripts need `chmod +x` and a shebang.
 
+## Keyboard
+
+| Key | Does |
+|---|---|
+| `↵` / `Ctrl+↵` / `Ctrl+Shift+↵` | Run the first, second or third action |
+| `Shift+↵` | Open a new window of an app (`↵` switches to the one already open) |
+| `Ctrl+K` | Open the action panel |
+| `Super+V` / `Ctrl+V` / `Ctrl+Shift+V` / `Shift+Insert` | Paste text into the query (also accepts clipboard-history selections) |
+| `Ctrl+1`…`9` | Pick a result |
+| `↑` on an empty search | Search history |
+| `Ctrl+↑` / `Ctrl+↓` | Jump between sections |
+| `Ctrl+N` / `Ctrl+P` | Next / previous |
+| `Ctrl+Shift+F` | Add to favorites (`Ctrl+Alt+↑↓` to reorder) |
+| `Ctrl+Shift+C` | Copy |
+| `Alt+Shift+D` | Disable a command |
+| `Esc` / `Shift+Esc` | Back / back to root |
+| `Ctrl+U` / `Super+Backspace` / `Shift+Home` then `Backspace` | Clear the search (Backspace alone never leaves a view) |
+| `Ctrl +` / `Ctrl −` / `Ctrl 0` | Zoom |
+
+The All / Applications / Commands filter beside the root search is optional: set `"rootFilter": false` in
+`~/.config/omacast/config.json` to hide it and its shortcut.
+
 ## CLI
 
 ```sh
@@ -251,7 +249,7 @@ omacast is early. Search, ranking and the Omarchy integration are done. Coming n
 
 The full plan is in [`SPEC.md`](SPEC.md).
 
-## Development
+## Build
 
 ```sh
 git clone https://github.com/typecraft-dev/oma-cast.git
@@ -267,4 +265,8 @@ Quickshell caches QML for the life of the process, so run `omacast reload` after
 
 ## Notes
 
-omacast is an independent, clean-room project. It isn't affiliated with or endorsed by Raycast, and it contains no Raycast code or assets. It never contacts Raycast's servers and has no telemetry. Its agent action explicitly hands your question to Omarchy's existing coding-agent launcher; it provides no embedded AI runtime.
+omacast is an independent, clean-room project. It isn't affiliated with or endorsed by Raycast, and it contains no Raycast code or assets. It never contacts Raycast's servers and has no telemetry.
+
+## Licence
+
+[MIT](LICENSE).
