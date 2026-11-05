@@ -126,7 +126,7 @@ PanelWindow {
   property string clipboardFilter: "all"
   readonly property bool clipboardView: window.view.kind === "clipboard"
   // List on the left, DetailPane on the right.
-  readonly property bool splitView: window.clipboardView || window.view.kind === "superwhisper-history"
+  readonly property bool splitView: window.clipboardView || window.view.kind === "superwhisper-history" || window.view.kind === "theme"
   readonly property bool hasFilter: window.clipboardView || (window.atRoot && window.backend.config.rootFilter)
   readonly property var filterOptions: window.clipboardView ? ClipboardHistory.FILTERS : RootSearch.FILTERS
   readonly property string activeFilter: window.clipboardView ? window.clipboardFilter : window.atRoot ? window.rootFilter : "all"
@@ -160,6 +160,7 @@ PanelWindow {
     : window.view.kind === "calculator-history" ? "Search calculations…"
     : window.clipboardView ? "Type to filter entries…"
     : window.view.kind === "superwhisper-history" ? "Search dictations…"
+    : window.view.kind === "theme" ? "Search themes…"
     : window.view.kind === "superwhisper-setting" ? Superwhisper.SETTINGS[window.view.setting].placeholder
     : window.grid ? "Search Emoji & Symbols…"
     : "Search for apps and commands…"
@@ -175,7 +176,8 @@ PanelWindow {
   readonly property var clipboardDetail: {
     window.clipboardRevision
     if (!window.splitView || !window.selectedRow) return null
-    var r = window.backend.callSync(window.clipboardView ? "clipboard.getDetail" : "superwhisper.getDetail", { id: window.selectedRow.itemId })
+    var method = window.clipboardView ? "clipboard.getDetail" : window.view.kind === "theme" ? "themes.getDetail" : "superwhisper.getDetail"
+    var r = window.backend.callSync(method, { id: window.selectedRow.itemId })
     return r.ok ? r.data : null
   }
 
@@ -354,8 +356,8 @@ PanelWindow {
         next.push(window.rowData(c, c.kind === "calculator" ? "calculator" : "item"))
       }
     }
-    // A Superwhisper setting list opens on its current choice.
-    if (keepIndex < 0 && window.view.kind === "superwhisper-setting")
+    // A Superwhisper setting list and Switch Theme open on the current choice.
+    if (keepIndex < 0 && (window.view.kind === "superwhisper-setting" || window.view.kind === "theme"))
       for (var n = 0; n < next.length; n++) if (next[n].checked) { keepIndex = n; break }
     Rows.update(rows, next)
     if (restoreIndex >= 0 && restoreIndex < rows.count && window.isSelectable(restoreIndex)) window.select(restoreIndex)
@@ -851,7 +853,7 @@ PanelWindow {
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
     // A copy, pin or delete: refresh an open Clipboard History.
     function onNotification(method) {
-      if (method !== "clipboard.stateChanged" && method !== "superwhisper.historyChanged") return
+      if (method !== "clipboard.stateChanged" && method !== "superwhisper.historyChanged" && method !== "themes.changed") return
       window.clipboardRevision++
       if (window.shown && (window.splitView || window.view.kind === "superwhisper-setting") && !window.actionPanelOpen && !window.alert) window.rebuild(false)
     }

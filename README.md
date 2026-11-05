@@ -159,6 +159,10 @@ Pressing the binding again closes it; the emoji picker's `omacast:emoji` binding
 - Copies from password managers are never recorded: anything marked sensitive, plus the apps in `"clipboardDisabledApplications"` (Wayland app ids; KeePassXC, Bitwarden, 1Password and Seahorse by default). `"clipboardHistory": false` stops recording.
 - The history is in `~/.local/share/omacast/db/clipboard.json`, and images and long text are in `~/.local/share/omacast/clipboard/`, both readable only by you.
 
+## Switch Theme
+
+**Switch Theme** lists your Omarchy themes, your own and Omarchy's, with the current one checked and a preview of the highlighted theme beside the list. `↵` applies it with `omarchy-theme-set`, and omacast changes with it.
+
 ## Superwhisper
 
 When [Superwhisper](https://superwhisper.com) is your dictation backend (Setup › Defaults › Dictation in the Omarchy menu) and installed, omacast adds three commands:

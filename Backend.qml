@@ -17,6 +17,7 @@ import "core/Emoji.js" as Emoji
 import "core/ScriptCommands.js" as ScriptCommands
 import "core/ClipboardHistory.js" as ClipboardHistory
 import "core/Superwhisper.js" as Superwhisper
+import "core/Themes.js" as Themes
 import "services"
 
 Item {
@@ -40,7 +41,7 @@ Item {
   property var candidates: []
   property var candidatesById: ({})
   property int candidatesRevision: 0
-  readonly property bool loading: menuSource.loading || superwhisper.loading || nativeSearch.pending !== null || emojiSearch.pending !== null
+  readonly property bool loading: menuSource.loading || superwhisper.loading || themeSource.loading || nativeSearch.pending !== null || emojiSearch.pending !== null
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
@@ -416,6 +417,13 @@ Item {
     throw new Error("Unknown action " + action)
   }
 
+  // ----------------------------------------------------------------- themes
+
+  function themeEntry(id) {
+    var slug = String(id).replace(/^theme:/, "")
+    return themeSource.themes.filter(function(t) { return t.slug === slug })[0] || null
+  }
+
   // ---------------------------------------------------------- superwhisper
 
   function superwhisperEntry(id) {
@@ -552,6 +560,7 @@ Item {
             superwhisper.run(candidate.run.superwhisper)
             return { close: true }
           }
+          if (candidate.run.push && candidate.run.push.kind === "theme") themeSource.refresh()
           if (candidate.run.push && candidate.run.push.kind === "superwhisper-setting") superwhisper.loadSetting(candidate.run.push.setting)
           if (candidate.run.push) return { push: candidate.run.push }
           if (candidate.run.summon) backend.summonPlugin(candidate.run.summon, candidate.run.payload || "{}")
@@ -707,6 +716,8 @@ Item {
           superwhisper.refreshIfStale()
           sections = Superwhisper.sections(superwhisper.entries, query, ctx.nowMs)
         }
+        else if (view && view.kind === "theme")
+          sections = Themes.sections(themeSource.themes, themeSource.current, query)
         else if (view && view.kind === "superwhisper-setting")
           sections = Superwhisper.settingSections(view.setting, superwhisper.settings[view.setting], query)
         else if (view && view.kind === "clipboard") sections = ClipboardHistory.sections(backend.clipboardEntries(), query, String(data && data.filter || "all"), ctx.nowMs)
@@ -725,6 +736,11 @@ Item {
         var rowId = String(data && data.id || "")
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
+        if (rowId.indexOf("theme:") === 0) {
+          var shown = backend.themeEntry(rowId)
+          if (!shown) throw new Error("No such theme")
+          return Themes.actionsFor(shown, themeSource.current)
+        }
         if (rowId.indexOf("superwhisper-setting:") === 0)
           return [{ id: "open", title: "Select", shortcut: "↵", section: "primary", icon: "" }]
         if (rowId.indexOf("superwhisper:") === 0) {
@@ -780,6 +796,12 @@ Item {
         return RootSearch.aboutFor(candidate, nowMs)
       },
       performAction: function(data) {
+        if (data && String(data.id).indexOf("theme:") === 0) {
+          var theme = backend.themeEntry(data.id)
+          if (!theme) throw new Error("No such theme")
+          themeSource.apply(theme.slug)
+          return { close: true }
+        }
         if (data && String(data.id).indexOf("superwhisper-setting:") === 0) {
           var pick = Superwhisper.parseSettingId(data.id)
           var state = pick && superwhisper.settings[pick.setting]
@@ -882,6 +904,14 @@ Item {
       deleteAll: function() { return backend.clipboardAction("delete-all-entries", "", true) }
     })
 
+    Rpc.register(backend.registry, "themes", {
+      getAll: function() { return { current: themeSource.current, themes: themeSource.themes } },
+      getDetail: function(data) {
+        var t = backend.themeEntry(String(data && data.id || ""))
+        return t ? Themes.detail(t, themeSource.current) : null
+      }
+    })
+
     Rpc.register(backend.registry, "superwhisper", {
       getHistory: function() { return superwhisper.entries },
       getDetail: function(data) {
@@ -944,6 +974,11 @@ Item {
     enabled: backend.config.clipboardHistory
     onCaptured: function(observation) { backend.recordClipboard(observation) }
     onMessage: function(level, text) { backend.log(level, "clipboard", text, null) }
+  }
+
+  ThemeSource {
+    id: themeSource
+    onLoaded: backend.emit("themes.changed", null)
   }
 
   SuperwhisperSource {

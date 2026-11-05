@@ -131,6 +131,15 @@ var BUILTINS = [
     rootSearch: { when: "always" }
   },
   {
+    id: "builtin:switch-theme",
+    title: "Switch Theme",
+    subtitle: "Omarchy",
+    glyph: "\uf1fc",                     // nf-fa-paint_brush
+    keywords: ["theme", "themes", "appearance", "colors", "colours", "dark", "light", "omarchy"],
+    run: { push: { kind: "theme", title: "Switch Theme" } },
+    rootSearch: { when: "always" }
+  },
+  {
     id: "builtin:calculator-history",
     title: "Calculator History",
     subtitle: "Calculator",
