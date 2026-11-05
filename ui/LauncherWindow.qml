@@ -37,13 +37,30 @@ PanelWindow {
 
   signal dismissRequested()
 
-  visible: window.shown
+  // The surface stays mapped once opened: hidden, it is fully transparent,
+  // takes no input and no keyboard. Mapping a new surface costs ~130 ms (the
+  // output's size and scale arrive a few frames late); flipping these is one
+  // commit. It is remapped only to move to another monitor.
+  property bool mapped: false
+  visible: window.mapped
+  screen: window.pinnedScreen
+  property var pinnedScreen: null
+  function focusedScreen() {
+    var monitor = Hyprland.focusedMonitor
+    var screens = Quickshell.screens
+    for (var i = 0; i < screens.length; i++) {
+      if (monitor && screens[i].name === monitor.name) return screens[i]
+    }
+    return window.pinnedScreen || (screens.length ? screens[0] : null)
+  }
+  mask: window.shown ? null : noInput
+  Region { id: noInput }
   anchors { top: true; bottom: true; left: true; right: true }
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
   WlrLayershell.namespace: "omacast"
   WlrLayershell.layer: WlrLayer.Overlay
-  WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+  WlrLayershell.keyboardFocus: window.shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
   readonly property var general: {
     window.backend.storeRevision
@@ -160,7 +177,10 @@ PanelWindow {
     if (typeof payload.query === "string") window.query = payload.query
     window.closePopups()
     window.historyIndex = -1
-    window.rebuild(true)
+    // Hiding pops to root and rebuilds, so an unchanged root list is reused
+    // and the card shows on the next frame instead of after a search.
+    if (typeof payload.query === "string" || window.rootKey() !== window.builtRootKey) window.rebuild(true)
+    else window.select(window.nextSelectable(-1, 1), 0)
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
@@ -190,10 +210,15 @@ PanelWindow {
   Binding {
     target: window.contentItem
     property: "opacity"
-    value: window.contentRevealed ? 1 : 0
+    value: window.shown && window.contentRevealed ? 1 : 0
   }
 
   onShownChanged: {
+    if (window.shown) {
+      var target = window.focusedScreen()
+      if (target !== window.pinnedScreen) window.pinnedScreen = target
+      window.mapped = true
+    }
     if (window.shown) Hyprland.refreshMonitors()
     if (window.shown) glassToggle.reload()
     if (window.shown) return
@@ -252,8 +277,17 @@ PanelWindow {
   }
 
 
+  // What the root list depends on; "" when not at an empty root.
+  property string builtRootKey: ""
+  function rootKey() {
+    return window.atRoot && window.query === "" && window.rootFilter === "all"
+      ? window.backend.candidatesRevision + ":" + window.backend.storeRevision : ""
+  }
+
   function rebuild(resetSelection, restoreIndex) {
     var serial = ++window.searchSerial
+    window.builtRootKey = ""
+    var key = window.rootKey()
     window.backend.cancelSearch()
     pointerGate.reset()
     var keepId = !resetSelection && window.selectedRow ? window.selectedRow.itemId : ""
@@ -265,6 +299,7 @@ PanelWindow {
       if (serial !== window.searchSerial || revision !== window.backend.candidatesRevision) return
       window.applySearch(result, keepId, restoreIndex)
       window.searchPending = false
+      if (result.ok) window.builtRootKey = key
     })
   }
 
