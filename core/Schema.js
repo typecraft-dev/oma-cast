@@ -46,6 +46,21 @@ var calculatorMigrations = [
   }
 ]
 
+// Emoji & Symbols: frecency per base emoji (Frecency.recordVisit entries,
+// ref 02 §4.6 "emoji recents use the same formula"), pins and skin tone.
+var emojiMigrations = [
+  {
+    version: 1,
+    name: "emoji",
+    up: function(doc) {
+      doc.items = {}            // symbol -> frecency entry
+      doc.pinned = []           // symbols, in pin order
+      doc.skinTone = "none"     // Emoji.TONES id
+      return doc
+    }
+  }
+]
+
 var SEARCH_HISTORY_LIMIT = 20
 
 function pushSearchHistory(history, query) {
@@ -60,7 +75,8 @@ function pushSearchHistory(history, query) {
 var documents = {
   settings: { file: "settings.json", migrations: settingsMigrations },
   frecency: { file: "frecency.json", migrations: frecencyMigrations },
-  calculator: { file: "calculator.json", migrations: calculatorMigrations }
+  calculator: { file: "calculator.json", migrations: calculatorMigrations },
+  emoji: { file: "emoji.json", migrations: emojiMigrations }
 }
 
 var configDefaults = {
@@ -114,6 +130,7 @@ if (typeof module !== "undefined") {
     settingsMigrations: settingsMigrations,
     frecencyMigrations: frecencyMigrations,
     calculatorMigrations: calculatorMigrations,
+    emojiMigrations: emojiMigrations,
     pushSearchHistory: pushSearchHistory,
     SEARCH_HISTORY_LIMIT: SEARCH_HISTORY_LIMIT,
     documents: documents,
