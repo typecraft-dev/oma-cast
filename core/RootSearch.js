@@ -32,6 +32,15 @@ var BUILTINS = [
     rootSearch: { when: "always" }
   },
   {
+    id: "builtin:clipboard-history",
+    title: "Clipboard History",
+    subtitle: "Clipboard History",
+    glyph: "\uf0ea",                     // nf-fa-clipboard
+    keywords: ["clipboard", "history", "paste", "copy", "pasteboard"],
+    run: { push: { kind: "clipboard", title: "Clipboard History" } },
+    rootSearch: { when: "always" }
+  },
+  {
     id: "builtin:calculator-history",
     title: "Calculator History",
     subtitle: "Calculator",
