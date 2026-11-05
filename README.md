@@ -151,7 +151,14 @@ Pressing the binding again closes it.
 
 ## Switch Theme
 
-**Switch Theme** lists your Omarchy themes, your own and Omarchy's, with the current one checked and a preview of the highlighted theme beside the list. `↵` applies it with `omarchy-theme-set`, and omacast changes with it.
+**Switch Theme** lists your Omarchy themes, your own and Omarchy's, with the current one checked and a preview of the highlighted theme beside the list. `↵` applies it with `omarchy-theme-set`, and omacast changes with it. It replaces Omarchy's own theme picker in omacast's results. To open it from Omarchy's theme keys as well:
+
+```lua
+hl.unbind("SUPER + CTRL + T")
+o.bind("SUPER + CTRL + T", "omacast switch theme", hl.dsp.global("omacast:theme"))
+```
+
+Pressing the key again closes it.
 
 ## CLI
 

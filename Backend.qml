@@ -98,6 +98,10 @@ Item {
     for (var i = 0; i < apps.length; i++) if (apps[i] && apps[i].id) next.push(RootSearch.appCandidate(apps[i]))
     next = next.concat(RootSearch.menuCandidates(menuSource.tree, menuSource.guards, menuSource.providerItems, backend.deps))
     for (var b = 0; b < RootSearch.BUILTINS.length; b++) next.push(RootSearch.builtinCandidate(RootSearch.BUILTINS[b]))
+    // A built-in that replaces an Omarchy command hides that command.
+    var superseded = ({})
+    RootSearch.BUILTINS.forEach(function(d) { (d.supersedes || []).forEach(function(id) { superseded[id] = true }) })
+    next = next.filter(function(c) { return !superseded[c.id] })
     var byId = ({})
     for (var j = 0; j < next.length; j++) byId[next[j].id] = next[j]
     var entries = FleaSearch.entries(next, Ranker.transliterate)

@@ -34,7 +34,7 @@ function sections(themes, current, query) {
     return { candidate: {
       id: "theme:" + t.slug, type: "command", kind: "theme", title: t.name, subtitle: "",
       typeLabel: t.slug === current ? "Current" : "", checked: t.slug === current,
-      glyph: "", rootSearch: { when: "always" }   // nf-fa-palette
+      glyph: "", rootSearch: { when: "always" }
     } }
   })
   return rows.length ? [{ id: "themes", title: "", rows: rows }] : []

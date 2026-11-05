@@ -99,6 +99,14 @@ Item {
     onPressed: root.toggle()
   }
 
+  // Toggles Switch Theme directly: hl.dsp.global("omacast:theme").
+  GlobalShortcut {
+    appid: "omacast"
+    name: "theme"
+    description: "Toggle omacast Switch Theme"
+    onPressed: root.toggleView("builtin:switch-theme", "theme")
+  }
+
   // Toggles Clipboard History directly: hl.dsp.global("omacast:clipboard").
   GlobalShortcut {
     appid: "omacast"

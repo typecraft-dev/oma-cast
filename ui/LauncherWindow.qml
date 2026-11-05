@@ -252,7 +252,9 @@ PanelWindow {
       calcResult: String(c.calcResult || ""),
       calcInputCaption: String(c.calcInputCaption || ""),
       calcResultCaption: String(c.calcResultCaption || ""),
-      argsJson: JSON.stringify(c.arguments || [])
+      argsJson: JSON.stringify(c.arguments || []),
+      // Switch Theme's rows are names only, flush left.
+      iconless: c.kind === "theme"
     }
   }
 
