@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
@@ -40,6 +41,21 @@ PanelWindow {
   WlrLayershell.namespace: "omacast"
   WlrLayershell.layer: WlrLayer.Overlay
   WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+
+  // [D] Match Omarchy's overlays: an unmapped layer must not linger in a
+  // compositor fade when Text/OCR freezes the screen. Runtime rules are lost
+  // on config reload, so reapply without changing the user's Hyprland files.
+  function applyLayerRule() {
+    Quickshell.execDetached(["hyprctl", "eval",
+      'hl.layer_rule({ name = "omacast", match = { namespace = "^omacast$" }, no_anim = true, animation = "none" })'])
+  }
+  Component.onCompleted: window.applyLayerRule()
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event && String(event.name) === "configreloaded") window.applyLayerRule()
+    }
+  }
 
   readonly property var general: {
     window.backend.storeRevision

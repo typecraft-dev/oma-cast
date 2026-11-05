@@ -23,6 +23,7 @@ Item {
 
   property var appLibrary: null
   property var summon: null
+  property var dismiss: null
 
   property var config: Schema.withConfigDefaults(null)
   property bool directoriesReady: false
@@ -210,6 +211,8 @@ Item {
   }
 
   function runShell(command) {
+    // Match Omarchy's menu: hide before a command can freeze/capture the screen.
+    if (backend.dismiss) backend.dismiss()
     var summon = OmarchyMenu.summonAction(command)
     if (summon) backend.summonPlugin(summon.id, summon.payload)
     else Util.execDetached(command)

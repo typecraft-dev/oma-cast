@@ -129,6 +129,7 @@ Works:
   - **Alerts:** Shut Down, Restart, Log Out and Delete All Entries ask first (↵ confirms, Esc cancels). `omacast run` skips the alert.
 - **Feedback:** toasts in the footer and a HUD through Omarchy's OSD when the window closes; static footer "Loading…" appears only after 500 ms of visible loading, yields to toasts and resets on hide. The header divider stays still.
 - **Window behaviour:**
+  - Omarchy actions dismiss the launcher before executing (including Text/OCR). A runtime Hyprland layer rule disables compositor fades for `omacast`, like the stock overlays, and is reapplied after config reload. No user keybindings or config files are changed.
   - The `escapeKeyBehavior` setting works both ways.
   - Pop-to-root runs after `popToRootTimeout`.
   - Compact mode shows only the header until you type.
