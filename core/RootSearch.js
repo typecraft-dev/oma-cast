@@ -137,6 +137,8 @@ var BUILTINS = [
     glyph: "\uf1fc",                     // nf-fa-paint_brush
     keywords: ["theme", "themes", "appearance", "colors", "colours", "dark", "light", "omarchy"],
     run: { push: { kind: "theme", title: "Switch Theme" } },
+    // Replaces Omarchy's theme picker in omacast's results. [D]
+    supersedes: ["omarchy:appearance.theme"],
     rootSearch: { when: "always" }
   },
   {

@@ -383,6 +383,8 @@ PanelWindow {
       calcInputCaption: String(c.calcInputCaption || ""),
       calcResultCaption: String(c.calcResultCaption || ""),
       argsJson: JSON.stringify(c.arguments || []),
+      // Pick lists (themes, Superwhisper settings) are names only, flush left.
+      iconless: c.kind === "theme" || c.kind === "superwhisper-setting",
       cellsJson: ""
     }
   }

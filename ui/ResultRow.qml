@@ -16,6 +16,7 @@ Item {
   required property string typeLabel
   required property string alias
   required property bool checked
+  required property bool iconless
   required property bool disabled
   required property bool favorite
   required property string calcInput
@@ -186,7 +187,7 @@ Item {
 
     Item {
       id: iconBox
-      width: row.px(22)
+      width: row.iconless ? 0 : row.px(22)
       height: row.px(22)
       anchors.left: parent.left
       anchors.leftMargin: row.px(12)
@@ -281,7 +282,7 @@ Item {
 
     Row {
       anchors.left: iconBox.right
-      anchors.leftMargin: row.px(10)
+      anchors.leftMargin: row.iconless ? 0 : row.px(10)
       anchors.right: accessories.left
       anchors.rightMargin: row.px(10)
       anchors.verticalCenter: parent.verticalCenter

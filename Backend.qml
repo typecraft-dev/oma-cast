@@ -121,6 +121,10 @@ Item {
       next.push(RootSearch.builtinCandidate(def))
     }
     for (var s = 0; s < scriptSource.commands.length; s++) next.push(ScriptCommands.candidate(scriptSource.commands[s]))
+    // A built-in that replaces an Omarchy command hides that command.
+    var superseded = ({})
+    RootSearch.BUILTINS.forEach(function(d) { (d.supersedes || []).forEach(function(id) { superseded[id] = true }) })
+    next = next.filter(function(c) { return !superseded[c.id] })
     var byId = ({})
     for (var j = 0; j < next.length; j++) byId[next[j].id] = next[j]
     var entries = FleaSearch.entries(next, Ranker.transliterate)
