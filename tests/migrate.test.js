@@ -96,5 +96,8 @@ test("config rejects out-of-range calculator values and unknown choices", () => 
   assert.equal(Schema.withConfigDefaults({}).rootFilter, true)
   assert.equal(Schema.withConfigDefaults({ rootFilter: false }).rootFilter, false)
   assert.equal(Schema.withConfigDefaults({ rootFilter: "no" }).rootFilter, true)
+  assert.equal(Schema.withConfigDefaults({ clipboardHistoryDuration: "P2W" }).clipboardHistoryDuration, "P1W")
+  assert.deepEqual(Schema.withConfigDefaults({ clipboardDisabledApplications: ["a"] }).clipboardDisabledApplications, ["a"])
+  assert.equal(Schema.withConfigDefaults({ clipboardDisabledApplications: "a" }).clipboardDisabledApplications.length, 5)
   assert.deepEqual(Schema.generalChoices.navigationBindings, ["emacs", "vim-motions"])
 })

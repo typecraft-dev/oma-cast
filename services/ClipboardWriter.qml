@@ -11,23 +11,27 @@ Item {
   property var queued: null
   signal failed(string message)
 
-  function copy(text) { writer.send(String(text), false) }
-  function paste(text) { writer.send(String(text), true) }
+  function copy(text, mime) { writer.send({ text: String(text), mime: mime || "", paste: false }) }
+  function paste(text, mime) { writer.send({ text: String(text), mime: mime || "", paste: true }) }
+  // A file of ours (a Clipboard History image or long text): its path and
+  // MIME type are on the command line, never its contents.
+  function copyFile(path, mime, paste) { writer.send({ file: String(path), mime: String(mime), paste: !!paste }) }
 
-  function send(text, paste) {
-    if (proc.running) { writer.queued = { text: text, paste: paste }; return }
-    proc.text = text
-    proc.command = ["bash", "-lc", paste ? writer.pasteScript : writer.copyScript]
-    proc.stdinEnabled = true
+  function send(item) {
+    if (proc.running) { writer.queued = item; return }
+    proc.text = item.file ? "" : item.text
+    proc.command = ["bash", "-lc", item.paste ? writer.pasteScript : writer.copyScript, "omacast-copy", item.mime || "", item.file || ""]
+    proc.stdinEnabled = !item.file
     proc.running = true
   }
 
-  // Constant scripts: no caller data ever reaches the command line.
-  readonly property string copyScript: 'exec wl-copy'
+  // Constant scripts: no caller text ever reaches the command line. $1 is a
+  // MIME type, $2 a file to copy instead of stdin.
+  readonly property string copyScript: 'if [[ $2 ]]; then exec wl-copy ${1:+--type "$1"} <"$2"; else exec wl-copy ${1:+--type "$1"}; fi'
   // Wait for the launcher to unmap, as omarchy-clipboard-paste-text does.
   // Terminals take Ctrl+Shift+V (SPEC §5.3): most map Shift+Insert to the
   // primary selection, and Herdr passes it to the pane's program.
-  readonly property string pasteScript: 'wl-copy || exit; sleep 0.15
+  readonly property string pasteScript: 'if [[ $2 ]]; then wl-copy ${1:+--type "$1"} <"$2"; else wl-copy ${1:+--type "$1"}; fi || exit; sleep 0.15
 class=$(hyprctl activewindow -j 2>/dev/null | jq -r ".class // empty" 2>/dev/null)
 case ${class,,} in
   *alacritty*|*kitty*|foot|footclient|*wezterm*|*ghostty*|*konsole*|*gnome-terminal*|*ptyxis*|*herdr*)
@@ -39,6 +43,7 @@ esac'
     id: proc
     property string text: ""
     onStarted: {
+      if (!proc.stdinEnabled) return
       write(proc.text)
       proc.text = ""
       proc.stdinEnabled = false
@@ -47,7 +52,7 @@ esac'
       if (exitCode !== 0) writer.failed("Could not copy to the clipboard")
       var next = writer.queued
       writer.queued = null
-      if (next) writer.send(next.text, next.paste)
+      if (next) writer.send(next)
     }
   }
 }
