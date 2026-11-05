@@ -49,6 +49,37 @@ var BUILTINS = [
     run: { push: { kind: "clipboard", title: "Clipboard History" } },
     rootSearch: { when: "always" }
   },
+  // Superwhisper dictation; shown only when the superwhisper CLI is installed.
+  {
+    id: "builtin:superwhisper-start",
+    title: "Start Recording",
+    subtitle: "Superwhisper",
+    glyph: "\uf130",                     // nf-fa-microphone
+    keywords: ["superwhisper", "dictation", "dictate", "record", "voice", "speech", "transcribe"],
+    run: { superwhisper: "start" },
+    requires: "superwhisper",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-stop",
+    title: "Stop Recording",
+    subtitle: "Superwhisper",
+    glyph: "\uf04d",                     // nf-fa-stop
+    keywords: ["superwhisper", "dictation", "dictate", "record", "voice", "speech", "transcribe"],
+    run: { superwhisper: "stop" },
+    requires: "superwhisper",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-history",
+    title: "Superwhisper History",
+    subtitle: "Superwhisper",
+    glyph: "\uf1da",                     // nf-fa-history
+    keywords: ["superwhisper", "dictation", "transcription", "history", "voice", "speech"],
+    run: { push: { kind: "superwhisper-history", title: "Superwhisper History" } },
+    requires: "superwhisper",
+    rootSearch: { when: "always" }
+  },
   {
     id: "builtin:calculator-history",
     title: "Calculator History",

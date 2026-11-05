@@ -16,6 +16,7 @@ import "core/Calculator.js" as Calculator
 import "core/Emoji.js" as Emoji
 import "core/ScriptCommands.js" as ScriptCommands
 import "core/ClipboardHistory.js" as ClipboardHistory
+import "core/Superwhisper.js" as Superwhisper
 import "services"
 
 Item {
@@ -39,7 +40,7 @@ Item {
   property var candidates: []
   property var candidatesById: ({})
   property int candidatesRevision: 0
-  readonly property bool loading: menuSource.loading || nativeSearch.pending !== null || emojiSearch.pending !== null
+  readonly property bool loading: menuSource.loading || superwhisper.loading || nativeSearch.pending !== null || emojiSearch.pending !== null
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
@@ -112,7 +113,11 @@ Item {
     var apps = backend.appEntries()
     for (var i = 0; i < apps.length; i++) if (apps[i] && apps[i].id) next.push(RootSearch.appCandidate(apps[i]))
     next = next.concat(RootSearch.menuCandidates(menuSource.tree, menuSource.guards, menuSource.providerItems, backend.deps))
-    for (var b = 0; b < RootSearch.BUILTINS.length; b++) next.push(RootSearch.builtinCandidate(RootSearch.BUILTINS[b]))
+    for (var b = 0; b < RootSearch.BUILTINS.length; b++) {
+      var def = RootSearch.BUILTINS[b]
+      if (def.requires === "superwhisper" && !superwhisper.available) continue
+      next.push(RootSearch.builtinCandidate(def))
+    }
     for (var s = 0; s < scriptSource.commands.length; s++) next.push(ScriptCommands.candidate(scriptSource.commands[s]))
     var byId = ({})
     for (var j = 0; j < next.length; j++) byId[next[j].id] = next[j]
@@ -410,6 +415,36 @@ Item {
     throw new Error("Unknown action " + action)
   }
 
+  // ---------------------------------------------------------- superwhisper
+
+  function superwhisperEntry(id) {
+    var key = String(id).replace(/^superwhisper:/, "")
+    var list = superwhisper.entries
+    for (var i = 0; i < list.length; i++) if (list[i].id === key) return list[i]
+    return null
+  }
+
+  function superwhisperAction(action, id) {
+    var e = backend.superwhisperEntry(id)
+    if (!e) throw new Error("No such dictation")
+    switch (action) {
+      case "open":
+      case "paste":
+        clipboard.paste(e.text)
+        return { close: true }
+      case "copy":
+        clipboard.copy(e.text)
+        return { close: true, hud: "Copied to Clipboard" }
+      case "copy-raw":
+        clipboard.copy(e.raw)
+        return { close: true, hud: "Copied to Clipboard" }
+      case "open-in-superwhisper":
+        Util.execArgv(["superwhisper", "settings", "history"])
+        return { close: true }
+    }
+    throw new Error("Unknown action " + action)
+  }
+
   // ------------------------------------------------------------- execution
 
   function summonPlugin(id, payload) {
@@ -500,6 +535,10 @@ Item {
             return { close: true }
           }
           backend.recordVisit(id, query)
+          if (candidate.run.superwhisper) {
+            superwhisper.run(candidate.run.superwhisper)
+            return { close: true }
+          }
           if (candidate.run.push) return { push: candidate.run.push }
           if (candidate.run.summon) backend.summonPlugin(candidate.run.summon, candidate.run.payload || "{}")
           return { close: true }
@@ -650,6 +689,10 @@ Item {
         var sections
         if (view && view.kind === "menu") sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
         else if (view && view.kind === "emoji") sections = Emoji.sections(backend.emoji.list, query, Object.assign(backend.emojiState(), { fleaHits: data.fleaHits || null }))
+        else if (view && view.kind === "superwhisper-history") {
+          superwhisper.refreshIfStale()
+          sections = Superwhisper.sections(superwhisper.entries, query, ctx.nowMs)
+        }
         else if (view && view.kind === "clipboard") sections = ClipboardHistory.sections(backend.clipboardEntries(), query, String(data && data.filter || "all"), ctx.nowMs)
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else {
@@ -666,6 +709,12 @@ Item {
         var rowId = String(data && data.id || "")
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
+        if (rowId.indexOf("superwhisper:") === 0) {
+          var dictation = backend.superwhisperEntry(rowId)
+          if (!dictation) throw new Error("No such dictation")
+          var target = backend.activeApp()
+          return Superwhisper.actionsFor(dictation, target ? target.name : "")
+        }
         if (rowId.indexOf("clipboard:") === 0) {
           var clip = backend.clipboardEntry(rowId)
           if (!clip) throw new Error("No such clipboard entry")
@@ -696,6 +745,10 @@ Item {
           var clip = backend.clipboardEntry(rowId)
           return clip ? ClipboardHistory.detail(clip).info : []
         }
+        if (rowId.indexOf("superwhisper:") === 0) {
+          var dictation = backend.superwhisperEntry(rowId)
+          return dictation ? Superwhisper.detail(dictation).info : []
+        }
         if (rowId.indexOf("emoji:") === 0) {
           var found = backend.emojiCandidate(rowId)
           return Emoji.aboutFor(found.candidate, found.entry)
@@ -709,6 +762,8 @@ Item {
         return RootSearch.aboutFor(candidate, nowMs)
       },
       performAction: function(data) {
+        if (data && String(data.id).indexOf("superwhisper:") === 0)
+          return backend.superwhisperAction(String(data.action || "open"), data.id)
         if (data && String(data.id).indexOf("clipboard:") === 0)
           return backend.clipboardAction(String(data.action || "open"), data.id, !!data.confirmed)
         // Destructive commands come back as a confirmation unless confirmed.
@@ -801,6 +856,16 @@ Item {
       deleteAll: function() { return backend.clipboardAction("delete-all-entries", "", true) }
     })
 
+    Rpc.register(backend.registry, "superwhisper", {
+      getHistory: function() { return superwhisper.entries },
+      getDetail: function(data) {
+        var e = backend.superwhisperEntry(String(data && data.id || ""))
+        return e ? Superwhisper.detail(e) : null
+      },
+      start: function() { superwhisper.run("start"); return null },
+      stop: function() { superwhisper.run("stop"); return null }
+    })
+
     Rpc.register(backend.registry, "frecency", {
       visit: function(data) { backend.recordVisit(String(data.id), String(data.query || "")); return null },
       get: function(data) {
@@ -852,6 +917,13 @@ Item {
     enabled: backend.config.clipboardHistory
     onCaptured: function(observation) { backend.recordClipboard(observation) }
     onMessage: function(level, text) { backend.log(level, "clipboard", text, null) }
+  }
+
+  SuperwhisperSource {
+    id: superwhisper
+    onAvailableChanged: rebuildTimer.restart()
+    onHistoryChanged: backend.emit("superwhisper.historyChanged", null)
+    onMessage: function(level, text) { backend.log(level, "superwhisper", text, null) }
   }
 
   ScriptCommandSource {

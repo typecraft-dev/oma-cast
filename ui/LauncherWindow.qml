@@ -124,6 +124,8 @@ PanelWindow {
   // Clipboard History's type dropdown (ref 04 App. A: All/Text/Images/…).
   property string clipboardFilter: "all"
   readonly property bool clipboardView: window.view.kind === "clipboard"
+  // List on the left, DetailPane on the right.
+  readonly property bool splitView: window.clipboardView || window.view.kind === "superwhisper-history"
   readonly property bool hasFilter: window.clipboardView || (window.atRoot && window.backend.config.rootFilter)
   readonly property var filterOptions: window.clipboardView ? ClipboardHistory.FILTERS : RootSearch.FILTERS
   readonly property string activeFilter: window.clipboardView ? window.clipboardFilter : window.atRoot ? window.rootFilter : "all"
@@ -156,6 +158,7 @@ PanelWindow {
     : window.view.kind === "menu" ? "Search " + window.view.title + "…"
     : window.view.kind === "calculator-history" ? "Search calculations…"
     : window.clipboardView ? "Type to filter entries…"
+    : window.view.kind === "superwhisper-history" ? "Search dictations…"
     : window.grid ? "Search Emoji & Symbols…"
     : "Search for apps and commands…"
 
@@ -169,8 +172,8 @@ PanelWindow {
   property int clipboardRevision: 0
   readonly property var clipboardDetail: {
     window.clipboardRevision
-    if (!window.clipboardView || !window.selectedRow) return null
-    var r = window.backend.callSync("clipboard.getDetail", { id: window.selectedRow.itemId })
+    if (!window.splitView || !window.selectedRow) return null
+    var r = window.backend.callSync(window.clipboardView ? "clipboard.getDetail" : "superwhisper.getDetail", { id: window.selectedRow.itemId })
     return r.ok ? r.data : null
   }
 
@@ -814,7 +817,7 @@ PanelWindow {
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-name"]); return true }
+      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-name", "copy-raw"]); return true }
       if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries", "clear-recent"]); return true }
       if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry", "remove-recent"]); return true }
       if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }
@@ -843,9 +846,9 @@ PanelWindow {
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
     // A copy, pin or delete: refresh an open Clipboard History.
     function onNotification(method) {
-      if (method !== "clipboard.stateChanged") return
+      if (method !== "clipboard.stateChanged" && method !== "superwhisper.historyChanged") return
       window.clipboardRevision++
-      if (window.shown && window.clipboardView && !window.actionPanelOpen && !window.alert) window.rebuild(false)
+      if (window.shown && window.splitView && !window.actionPanelOpen && !window.alert) window.rebuild(false)
     }
   }
 
@@ -1096,7 +1099,7 @@ PanelWindow {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         // Clipboard History is list on the left, detail on the right (ref 04 §2 master-detail).
-        width: window.clipboardView ? Math.round(parent.width * 0.4) : parent.width
+        width: window.splitView ? Math.round(parent.width * 0.4) : parent.width
         anchors.topMargin: window.px(4)
         anchors.bottomMargin: window.px(4)
         visible: window.view.kind !== "alias"
@@ -1123,7 +1126,7 @@ PanelWindow {
       }
 
       DetailPane {
-        visible: window.clipboardView && rows.count > 0 && !!detail
+        visible: window.splitView && rows.count > 0 && !!detail
         anchors.left: list.right
         anchors.right: parent.right
         anchors.top: parent.top
@@ -1152,6 +1155,7 @@ PanelWindow {
           text: window.view.kind === "alias" ? window.view.title
             : window.view.kind === "calculator-history" && !window.query ? "No Calculations Yet"
             : window.clipboardView && !window.query && window.clipboardFilter === "all" ? "No Clipboard Entries"
+            : window.view.kind === "superwhisper-history" && !window.query ? (window.backend.loading ? "Loading…" : "No Dictations Yet")
             : (window.backend.ready ? "No results" : "Loading…")
           color: window.look.foreground
           font.family: window.look.fontFamily

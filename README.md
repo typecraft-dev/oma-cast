@@ -159,6 +159,13 @@ Pressing the binding again closes it; the emoji picker's `omacast:emoji` binding
 - Copies from password managers are never recorded: anything marked sensitive, plus the apps in `"clipboardDisabledApplications"` (Wayland app ids; KeePassXC, Bitwarden, 1Password and Seahorse by default). `"clipboardHistory": false` stops recording.
 - The history is in `~/.local/share/omacast/db/clipboard.json`, and images and long text are in `~/.local/share/omacast/clipboard/`, both readable only by you.
 
+## Superwhisper
+
+When the [Superwhisper](https://superwhisper.com) CLI is installed, omacast adds three commands:
+
+- **Start Recording** and **Stop Recording** run `superwhisper start` / `stop` once the launcher has closed, so the dictation lands in the window you came from.
+- **Superwhisper History** lists your recent dictations (the newest 500) by day, with the full text and its details beside the list. `↵` pastes one into the app you came from, `Ctrl+↵` copies it, `Ctrl+Shift+C` copies the raw transcript when it differs, and the action panel opens it in Superwhisper.
+
 ## Script Commands
 
 Executable scripts in `~/.config/omacast/script-commands/` become commands, using the same
