@@ -111,6 +111,8 @@ files: omacast creates its `~/.config`, `~/.local/share`, `~/.cache` and `~/.loc
 `0700` and its database files as `0600`, and tightens any it finds readable by other users. Text you copy
 or paste from the calculator goes to `wl-copy` on stdin, never on a command line, so other local users
 can't read it from the process list. Paste sends Shift+Insert after copying, as Omarchy's clipboard history does.
+The one exception is a script command's arguments: they reach your script as `$1`…`$3`, so they are on its
+command line while it runs.
 
 ### Upgrading from oma-cast
 
@@ -140,6 +142,29 @@ the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` mo
 The All / Applications / Commands filter beside the root search is optional: set `"rootFilter": false` in
 `~/.config/omacast/config.json` to hide it and its shortcut.
 
+## Script Commands
+
+Executable scripts in `~/.config/omacast/script-commands/` become commands, using the same
+[Raycast Script Commands](https://github.com/raycast/script-commands) headers:
+
+```bash
+#!/bin/bash
+# @raycast.schemaVersion 1
+# @raycast.title Switch Display
+# @raycast.mode silent
+# @raycast.icon 🖥️
+# @raycast.argument1 { "type": "dropdown", "placeholder": "Input", "data": [{"title": "Mac mini", "value": "x0091"}, {"title": "MacBook Pro", "value": "x00d0"}] }
+
+monitor-input-cycle "$1" && echo "Switching display"
+```
+
+- Arguments (`text`, `password`, `dropdown`, up to three) appear as pills after the query: `Tab` moves into them,
+  and `←`/`→` pick a dropdown option.
+- The last line the script prints becomes the result: a HUD for `silent`, a toast for `compact`.
+- `fullOutput` and `inline` scripts run as `compact` for now.
+- `needsConfirmation` asks first, and `currentDirectoryPath` sets the folder the script runs in.
+- The folder is rescanned each time the launcher opens. Scripts need `chmod +x` and a shebang.
+
 ## CLI
 
 ```sh
@@ -154,7 +179,6 @@ omacast doctor
 omacast is early. Search, ranking and the Omarchy integration are done. Coming next:
 
 - [ ] Settings window
-- [ ] Script Commands
 - [ ] Clipboard history, snippets, quicklinks, calculator
 - [ ] Running Raycast extensions built from the open-source [`raycast/extensions`](https://github.com/raycast/extensions) repo
 - [ ] Window management

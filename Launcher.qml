@@ -77,6 +77,17 @@ Item {
     summon: function(id, payload) { return root.shell ? root.shell.summon(id, payload) : false }
   }
 
+  // A script command's last line of output: a toast if the launcher is still
+  // open, else a HUD (SPEC §10.2 Toast → HUD).
+  Connections {
+    target: backend
+    function onNotification(method, data) {
+      if (method !== "scriptCommands.finished") return
+      if (root.opened && data.mode !== "silent") launcher.showToast(data.style, data.title)
+      else launcher.hud(data.title)
+    }
+  }
+
   LauncherWindow {
     id: launcher
     shown: root.opened
