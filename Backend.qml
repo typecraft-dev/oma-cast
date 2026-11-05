@@ -14,6 +14,7 @@ import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
 import "core/Calculator.js" as Calculator
 import "core/ClipboardHistory.js" as ClipboardHistory
+import "core/Themes.js" as Themes
 import "services"
 
 Item {
@@ -37,7 +38,7 @@ Item {
   property var candidates: []
   property var candidatesById: ({})
   property int candidatesRevision: 0
-  readonly property bool loading: menuSource.loading || nativeSearch.pending !== null
+  readonly property bool loading: menuSource.loading || themeSource.loading || nativeSearch.pending !== null
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
@@ -320,6 +321,13 @@ Item {
     throw new Error("Unknown action " + action)
   }
 
+  // ----------------------------------------------------------------- themes
+
+  function themeEntry(id) {
+    var slug = String(id).replace(/^theme:/, "")
+    return themeSource.themes.filter(function(t) { return t.slug === slug })[0] || null
+  }
+
   // ------------------------------------------------------------- execution
 
   function summonPlugin(id, payload) {
@@ -410,6 +418,7 @@ Item {
             return { close: true }
           }
           backend.recordVisit(id, query)
+          if (candidate.run.push && candidate.run.push.kind === "theme") themeSource.refresh()
           if (candidate.run.push) return { push: candidate.run.push }
           if (candidate.run.summon) backend.summonPlugin(candidate.run.summon, candidate.run.payload || "{}")
           return { close: true }
@@ -546,6 +555,8 @@ Item {
         if (data && data.fleaHits) ctx.fleaHits = data.fleaHits
         var sections
         if (view && view.kind === "menu") sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
+        else if (view && view.kind === "theme")
+          sections = Themes.sections(themeSource.themes, themeSource.current, query)
         else if (view && view.kind === "clipboard") sections = ClipboardHistory.sections(backend.clipboardEntries(), query, String(data && data.filter || "all"), ctx.nowMs)
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else {
@@ -561,6 +572,11 @@ Item {
         var rowId = String(data && data.id || "")
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
+        if (rowId.indexOf("theme:") === 0) {
+          var shown = backend.themeEntry(rowId)
+          if (!shown) throw new Error("No such theme")
+          return Themes.actionsFor(shown, themeSource.current)
+        }
         if (rowId.indexOf("clipboard:") === 0) {
           var clip = backend.clipboardEntry(rowId)
           if (!clip) throw new Error("No such clipboard entry")
@@ -599,6 +615,12 @@ Item {
         return RootSearch.aboutFor(candidate, nowMs)
       },
       performAction: function(data) {
+        if (data && String(data.id).indexOf("theme:") === 0) {
+          var theme = backend.themeEntry(data.id)
+          if (!theme) throw new Error("No such theme")
+          themeSource.apply(theme.slug)
+          return { close: true }
+        }
         if (data && String(data.id).indexOf("clipboard:") === 0)
           return backend.clipboardAction(String(data.action || "open"), data.id, !!data.confirmed)
         // Destructive commands come back as a confirmation unless confirmed.
@@ -667,6 +689,14 @@ Item {
       deleteAll: function() { return backend.clipboardAction("delete-all-entries", "", true) }
     })
 
+    Rpc.register(backend.registry, "themes", {
+      getAll: function() { return { current: themeSource.current, themes: themeSource.themes } },
+      getDetail: function(data) {
+        var t = backend.themeEntry(String(data && data.id || ""))
+        return t ? Themes.detail(t, themeSource.current) : null
+      }
+    })
+
     Rpc.register(backend.registry, "frecency", {
       visit: function(data) { backend.recordVisit(String(data.id), String(data.query || "")); return null },
       get: function(data) {
@@ -717,6 +747,11 @@ Item {
     enabled: backend.config.clipboardHistory
     onCaptured: function(observation) { backend.recordClipboard(observation) }
     onMessage: function(level, text) { backend.log(level, "clipboard", text, null) }
+  }
+
+  ThemeSource {
+    id: themeSource
+    onLoaded: backend.emit("themes.changed", null)
   }
 
   AppFocuser {

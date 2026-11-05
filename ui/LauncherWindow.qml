@@ -77,6 +77,8 @@ PanelWindow {
   // Clipboard History's type dropdown (ref 04 App. A: All/Text/Images/…).
   property string clipboardFilter: "all"
   readonly property bool clipboardView: window.view.kind === "clipboard"
+  // List on the left, DetailPane on the right.
+  readonly property bool splitView: window.clipboardView || window.view.kind === "theme"
   readonly property bool hasFilter: window.clipboardView || window.atRoot
   readonly property var filterOptions: window.clipboardView ? ClipboardHistory.FILTERS : RootSearch.FILTERS
   readonly property string activeFilter: window.clipboardView ? window.clipboardFilter : window.atRoot ? window.rootFilter : "all"
@@ -106,6 +108,7 @@ PanelWindow {
     : window.view.kind === "menu" ? "Search " + window.view.title + "…"
     : window.view.kind === "calculator-history" ? "Search calculations…"
     : window.clipboardView ? "Type to filter entries…"
+    : window.view.kind === "theme" ? "Search themes…"
     : "Search for apps and commands…"
 
   readonly property int cardWidth: Math.min(px(750), width - Style.gapsOut * 2)
@@ -118,8 +121,8 @@ PanelWindow {
   property int clipboardRevision: 0
   readonly property var clipboardDetail: {
     window.clipboardRevision
-    if (!window.clipboardView || !window.selectedRow) return null
-    var r = window.backend.callSync("clipboard.getDetail", { id: window.selectedRow.itemId })
+    if (!window.splitView || !window.selectedRow) return null
+    var r = window.backend.callSync(window.clipboardView ? "clipboard.getDetail" : "themes.getDetail", { id: window.selectedRow.itemId })
     return r.ok ? r.data : null
   }
 
@@ -223,6 +226,9 @@ PanelWindow {
         next.push(window.rowData(c, c.kind === "calculator" ? "calculator" : "item"))
       }
     }
+    // Switch Theme opens on the current theme.
+    if (keepIndex < 0 && window.view.kind === "theme")
+      for (var n = 0; n < next.length; n++) if (next[n].checked) { keepIndex = n; break }
     Rows.update(rows, next)
     if (restoreIndex >= 0 && restoreIndex < rows.count && window.isSelectable(restoreIndex)) window.select(restoreIndex)
     else window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1))
@@ -675,9 +681,9 @@ PanelWindow {
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
     // A copy, pin or delete: refresh an open Clipboard History.
     function onNotification(method) {
-      if (method !== "clipboard.stateChanged") return
+      if (method !== "clipboard.stateChanged" && method !== "themes.changed") return
       window.clipboardRevision++
-      if (window.shown && window.clipboardView && !window.actionPanelOpen && !window.alert) window.rebuild(false)
+      if (window.shown && window.splitView && !window.actionPanelOpen && !window.alert) window.rebuild(false)
     }
   }
 
@@ -907,7 +913,7 @@ PanelWindow {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         // Clipboard History is list on the left, detail on the right (ref 04 §2 master-detail).
-        width: window.clipboardView ? Math.round(parent.width * 0.4) : parent.width
+        width: window.splitView ? Math.round(parent.width * 0.4) : parent.width
         anchors.topMargin: window.px(4)
         anchors.bottomMargin: window.px(4)
         visible: window.view.kind !== "alias"
@@ -929,7 +935,7 @@ PanelWindow {
       }
 
       DetailPane {
-        visible: window.clipboardView && rows.count > 0 && !!detail
+        visible: window.splitView && rows.count > 0 && !!detail
         anchors.left: list.right
         anchors.right: parent.right
         anchors.top: parent.top
