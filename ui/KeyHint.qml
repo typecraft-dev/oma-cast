@@ -19,7 +19,8 @@ Row {
       required property string modelData
       height: label.implicitHeight + Math.round(Style.space(4) * hint.zoom)
       width: Math.max(height, label.implicitWidth + Math.round(Style.space(10) * hint.zoom))
-      radius: Math.round(Style.space(4) * hint.zoom)
+      // Keycap: follow Hyprland down to square, capped like Menu.qml.
+      radius: Math.min(Style.cornerRadius, Math.round(Style.space(4) * hint.zoom))
       color: Util.alpha(hint.color, 0.1)
 
       Text {
