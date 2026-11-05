@@ -2,6 +2,8 @@
 
 # omacast
 
+[![Built for Omarchy](https://img.shields.io/badge/Built%20for-Omarchy-e0af68?style=for-the-badge&labelColor=1a1b26)](https://omarchy.org)
+
 **A Raycast-esque launcher for [Omarchy](https://omarchy.org).**
 It learns what you use, searches your apps and every Omarchy action, and looks like it shipped with your theme.
 
@@ -17,6 +19,9 @@ Omarchy's built-in menu is great at what it does. omacast adds what Raycast user
 
 * **Learns your habits.** Results are ranked with a port of Raycast's root-search algorithm, plus frecency and learned search terms. The things you actually use float to the top, and if you type `ff` and pick Firefox, `ff` keeps meaning Firefox.
 * **One search for everything.** Your apps, all ~400 Omarchy menu actions (with breadcrumbs and live ✓ state), and web-search fallbacks.
+* **Clipboard History, Raycast style.** Text, links, colours, files and images you copy, with a preview, where each came from, pins and a type filter.
+* **Theme switching with previews.** Browse every Omarchy theme with its preview beside the list, and apply one with ↵.
+* **Superwhisper built in.** Start and stop dictation, recover your last dictation, and switch microphone, language or processing mode without leaving the keyboard.
 * **Your shortcuts.** Give anything an alias, pin favorites, and hide the commands you never touch.
 * **Keyboard-first.** A Ctrl+K action panel, Ctrl+1–9 quick picks, search history on ↑, section jumping, and emacs-style navigation.
 * **Native to Omarchy.** It runs inside `omarchy-shell` as a plugin, with no Electron, no Node and no extra daemons. It opens in about 40 ms and follows your theme live when you run `omarchy theme set`.
@@ -38,6 +43,25 @@ Omarchy's built-in menu is great at what it does. omacast adds what Raycast user
   <img src="docs/screenshots/fallbacks.png" alt="Web-search fallbacks under the results" width="49%">
 </p>
 <p align="center"><b>No match? Send the query to Google or DuckDuckGo</b></p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/clipboard.gif" alt="Moving through Clipboard History: text, an image, colours, a link and a file, each previewed beside the list"></td>
+    <td width="50%"><img src="docs/screenshots/themes.gif" alt="Moving through Switch Theme: each Omarchy theme's preview shows beside the list"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Clipboard History with previews</b></td>
+    <td align="center"><b>Switch Theme with live previews</b></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/superwhisper.png" alt="Searching 'superwhisper' lists its commands: Switch Language, Superwhisper History, Paste Last Dictation, Switch Microphone, Copy Last Dictation"></td>
+    <td width="50%"><img src="docs/screenshots/superwhisper-language.png" alt="Switch Language lists Superwhisper's languages with English checked as current"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Superwhisper commands</b></td>
+    <td align="center"><b>Switch Superwhisper's language</b></td>
+  </tr>
+</table>
 
 ### Follows your Omarchy theme
 
@@ -106,7 +130,7 @@ It adds no packages and no background services.
 
 ### Privacy
 
-Your search history, learned search terms and calculator history stay on your machine, in owner-only
+Your search history, learned search terms, calculator history and clipboard history stay on your machine, in owner-only
 files: omacast creates its `~/.config`, `~/.local/share`, `~/.cache` and `~/.local/state` directories as
 `0700` and its database files as `0600`, and tightens any it finds readable by other users. Text you copy
 or paste from the calculator goes to `wl-copy` on stdin, never on a command line, so other local users
@@ -153,6 +177,8 @@ o.bind("SUPER + CTRL + V", "omacast clipboard history", hl.dsp.global("omacast:c
 
 Pressing the binding again closes it; the emoji picker's `omacast:emoji` binding toggles the same way.
 
+<img src="docs/screenshots/clipboard-filter.png" alt="Clipboard History with the type filter open: All Types, Text, Images, Files, Links, Colors" width="760">
+
 - omacast records text, links, colours, files and images you copy, with the app you copied from, when, and how many times.
 - The list is on the left and a preview with its details is on the right. The type dropdown (`Ctrl+P`) filters by All Types, Text, Images, Files, Links or Colors.
 - `↵` pastes into the app you came from, `Ctrl+↵` copies, `Ctrl+O` opens a link or file, `Ctrl+Shift+P` pins, `Ctrl+D` deletes an entry and `Ctrl+Shift+D` deletes everything except pins.
@@ -173,7 +199,7 @@ Pressing the key again closes it.
 
 ## Superwhisper
 
-When [Superwhisper](https://superwhisper.com) is your dictation backend (Setup › Defaults › Dictation in the Omarchy menu) and installed, omacast adds three commands:
+When [Superwhisper](https://superwhisper.com) is your dictation backend (Setup › Defaults › Dictation in the Omarchy menu) and installed, omacast adds these commands:
 
 - **Start Recording** and **Stop Recording** run `superwhisper start` / `stop` once the launcher has closed, so the dictation lands in the window you came from.
 - **Paste Last Dictation** and **Copy Last Dictation** recover your newest dictation, for when it landed in the wrong window.
