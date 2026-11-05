@@ -70,6 +70,24 @@ PanelWindow {
   })
   readonly property var borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
 
+  // Omarchy's Glassy windows (`omarchy hyprland window transparency glassy`):
+  // the card turns see-through and Hyprland blurs what is behind it, through
+  // the blur rule on the omacast layer in omacast.lua. Panels drawn over the
+  // card stay solid. Checked on every show, so switching modes needs no restart.
+  property bool glassy: false
+  readonly property color cardBackground: window.glassy
+    ? Qt.rgba(window.look.background.r, window.look.background.g, window.look.background.b, Math.min(window.look.background.a, 0.65))
+    : window.look.background
+  FileView {
+    id: glassToggle
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy/toggles/hypr/window-glassy.lua"
+    // A few bytes on local disk: read in place so the first frame already has the right card.
+    blockLoading: true
+    printErrors: false
+    onLoaded: window.glassy = true
+    onLoadFailed: window.glassy = false
+  }
+
   property var stack: [{ kind: "root", title: "omacast", query: "" }]
   readonly property var view: window.stack[window.stack.length - 1]
   property string query: ""
@@ -177,6 +195,7 @@ PanelWindow {
 
   onShownChanged: {
     if (window.shown) Hyprland.refreshMonitors()
+    if (window.shown) glassToggle.reload()
     if (window.shown) return
     window.searchSerial++
     window.backend.cancelSearch()
@@ -782,7 +801,7 @@ PanelWindow {
     radius: Style.cornerRadius
     anchors.horizontalCenter: parent.horizontalCenter
     y: Math.max(Style.gapsOut, Math.min(Math.round(window.height / 4), window.height - window.fullHeight - Style.gapsOut))
-    color: window.look.background
+    color: window.cardBackground
     borderSpec: window.borderSpec
     clip: true
 
