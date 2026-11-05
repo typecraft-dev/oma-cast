@@ -260,6 +260,9 @@ cmd_setup_hyprland() {
 -- Alt+Space reaches the plugin's global shortcut directly, so no process
 -- starts per keypress. Omarchy's own menu stays on Super+Space.
 o.bind("ALT + SPACE", "omacast launcher", hl.dsp.global("omacast:toggle"))
+-- Blur behind the launcher; it only shows under Omarchy's Glassy windows,
+-- where the card is see-through.
+hl.layer_rule({ match = { namespace = "^omacast$" }, blur = true, ignore_alpha = 0.3 })
 LUA
     echo "wrote $file"
   fi
