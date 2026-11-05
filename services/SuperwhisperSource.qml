@@ -8,17 +8,35 @@ import "../core/Superwhisper.js" as Superwhisper
 Item {
   id: source
 
-  property bool available: false
+  // Shown only when Superwhisper is Omarchy's dictation backend (Setup >
+  // Defaults > Dictation) and its CLI is installed, the same test Omarchy's
+  // own dictation bindings use.
+  readonly property bool available: source.installed && source.isDefault
+  property bool installed: false
+  property bool isDefault: false
   property var entries: []
   property double loadedAt: 0
   readonly property bool loading: history.running
   signal historyChanged()
   signal message(string level, string text)
 
+  // Re-checked on every launcher open, so installing or removing it shows up.
+  function refresh() { if (!detect.running) detect.running = true }
+
   Process {
+    id: detect
     running: true
     command: ["bash", "-c", "command -v superwhisper"]
-    onExited: function(exitCode) { source.available = exitCode === 0 }
+    onExited: function(exitCode) { source.installed = exitCode === 0 }
+  }
+
+  FileView {
+    path: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/omarchy/defaults/dictation"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: source.isDefault = text().trim() === "superwhisper"
+    onLoadFailed: source.isDefault = false
   }
 
   // The history view asks on every search; reload at most every 5 s.

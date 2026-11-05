@@ -901,6 +901,7 @@ Item {
       scriptSource.refresh()
       calculatorData.refresh()
       backend.pruneClipboard()
+      superwhisper.refresh()
     }
   }
 
