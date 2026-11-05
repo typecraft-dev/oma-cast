@@ -19,7 +19,12 @@ Item {
   property var entries: []
   property double loadedAt: 0
   readonly property bool loading: history.running
+  // Switch Processing Mode / Microphone / Language: setting → {current, options}.
+  property var settings: ({})
   signal historyChanged()
+  signal settingsLoaded()
+  // A selection or a last-dictation fetch finished: style "success"|"failure".
+  signal finished(string style, string title)
   signal message(string level, string text)
 
   // Re-checked on every launcher open, so installing or removing it shows up.
@@ -61,6 +66,74 @@ Item {
       }
     }
     onExited: function(exitCode) { if (exitCode !== 0) source.message("warning", "superwhisper history list exited " + exitCode) }
+  }
+
+  // Loads a setting's list when its view opens (and again on every open).
+  function loadSetting(setting) {
+    var def = Superwhisper.SETTINGS[setting]
+    if (!def || !source.available) return
+    var proc = settingLoader.createObject(source, { setting: setting, command: ["superwhisper"].concat(def.show) })
+    proc.running = true
+  }
+
+  Component {
+    id: settingLoader
+    Process {
+      id: loader
+      property string setting: ""
+      stdout: StdioCollector {
+        onStreamFinished: {
+          var next = Object.assign({}, source.settings)
+          next[loader.setting] = Superwhisper.settingOptions(loader.setting, text)
+          source.settings = next
+          source.settingsLoaded()
+        }
+      }
+      onExited: loader.destroy()
+    }
+  }
+
+  // Picks a value; the toast or HUD reports the outcome.
+  function select(setting, value, label) {
+    var proc = selector.createObject(source, { title: label, command: ["superwhisper"].concat(Superwhisper.selectArgv(setting, value)) })
+    proc.running = true
+  }
+
+  Component {
+    id: selector
+    Process {
+      id: sel
+      property string title: ""
+      stderr: StdioCollector { id: selErr }
+      onExited: function(exitCode) {
+        if (exitCode === 0) source.finished("success", sel.title)
+        else {
+          source.message("warning", "superwhisper " + sel.command.slice(1).join(" ") + " exited " + exitCode + ": " + selErr.text.trim())
+          source.finished("failure", "Superwhisper couldn't switch: " + (selErr.text.trim().split("\n").pop() || "exit " + exitCode))
+        }
+        sel.destroy()
+      }
+    }
+  }
+
+  // The newest dictation with text, read fresh: callback(entry or null).
+  property var lastCallbacks: []
+  function withLastDictation(callback) {
+    source.lastCallbacks = source.lastCallbacks.concat([callback])
+    if (!last.running) last.running = true
+  }
+
+  Process {
+    id: last
+    command: ["superwhisper", "history", "list", "--limit", "10"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var entries = Superwhisper.parseHistory(text)
+        var callbacks = source.lastCallbacks
+        source.lastCallbacks = []
+        callbacks.forEach(function(cb) { cb(entries.length ? entries[0] : null) })
+      }
+    }
   }
 
   // Starts or stops dictation once the launcher has unmapped, so the

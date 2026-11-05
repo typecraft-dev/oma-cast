@@ -164,6 +164,8 @@ Pressing the binding again closes it; the emoji picker's `omacast:emoji` binding
 When [Superwhisper](https://superwhisper.com) is your dictation backend (Setup › Defaults › Dictation in the Omarchy menu) and installed, omacast adds three commands:
 
 - **Start Recording** and **Stop Recording** run `superwhisper start` / `stop` once the launcher has closed, so the dictation lands in the window you came from.
+- **Paste Last Dictation** and **Copy Last Dictation** recover your newest dictation, for when it landed in the wrong window.
+- **Switch Processing Mode**, **Switch Microphone** and **Switch Language** list Superwhisper's own choices (only modes whose models are downloaded) with the current one checked; `↵` switches.
 - **Superwhisper History** (shown once history is on in Superwhisper and holds a dictation) lists your recent dictations (the newest 500) by day, with the full text and its details beside the list. `↵` pastes one into the app you came from, `Ctrl+↵` copies it, `Ctrl+Shift+C` copies the raw transcript when it differs, and the action panel opens it in Superwhisper.
 
 ## Script Commands

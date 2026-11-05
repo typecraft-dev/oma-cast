@@ -11,6 +11,7 @@ import "../core/Rows.js" as Rows
 import "../core/Emoji.js" as Emoji
 import "../core/ScriptCommands.js" as ScriptCommands
 import "../core/ClipboardHistory.js" as ClipboardHistory
+import "../core/Superwhisper.js" as Superwhisper
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
 // overlay layer the shell's own emoji picker uses.
@@ -159,6 +160,7 @@ PanelWindow {
     : window.view.kind === "calculator-history" ? "Search calculations…"
     : window.clipboardView ? "Type to filter entries…"
     : window.view.kind === "superwhisper-history" ? "Search dictations…"
+    : window.view.kind === "superwhisper-setting" ? Superwhisper.SETTINGS[window.view.setting].placeholder
     : window.grid ? "Search Emoji & Symbols…"
     : "Search for apps and commands…"
 
@@ -352,6 +354,9 @@ PanelWindow {
         next.push(window.rowData(c, c.kind === "calculator" ? "calculator" : "item"))
       }
     }
+    // A Superwhisper setting list opens on its current choice.
+    if (keepIndex < 0 && window.view.kind === "superwhisper-setting")
+      for (var n = 0; n < next.length; n++) if (next[n].checked) { keepIndex = n; break }
     Rows.update(rows, next)
     if (restoreIndex >= 0 && restoreIndex < rows.count && window.isSelectable(restoreIndex)) window.select(restoreIndex)
     else window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1), keepIndex >= 0 ? keepColumn : 0)
@@ -848,7 +853,7 @@ PanelWindow {
     function onNotification(method) {
       if (method !== "clipboard.stateChanged" && method !== "superwhisper.historyChanged") return
       window.clipboardRevision++
-      if (window.shown && window.splitView && !window.actionPanelOpen && !window.alert) window.rebuild(false)
+      if (window.shown && (window.splitView || window.view.kind === "superwhisper-setting") && !window.actionPanelOpen && !window.alert) window.rebuild(false)
     }
   }
 

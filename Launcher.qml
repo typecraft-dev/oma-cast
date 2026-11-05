@@ -89,6 +89,11 @@ Item {
   Connections {
     target: backend
     function onNotification(method, data) {
+      if (method === "superwhisper.finished") {
+        if (root.opened) launcher.showToast(data.style, data.title)
+        else launcher.hud(data.title)
+        return
+      }
       if (method !== "scriptCommands.finished") return
       if (root.opened && data.mode !== "silent") launcher.showToast(data.style, data.title)
       else launcher.hud(data.title)

@@ -121,9 +121,75 @@ function actionsFor(entry, appName) {
   return list
 }
 
+// ------------------------------------------------------------- settings
+// Switch Processing Mode / Microphone / Language: a list read from the CLI
+// with the current choice checked, and the CLI command that picks one.
+
+var SETTINGS = {
+  mode: { title: "Switch Processing Mode", show: ["models", "show"], placeholder: "Search processing modes…" },
+  microphone: { title: "Switch Microphone", show: ["audio", "show"], placeholder: "Search microphones…" },
+  language: { title: "Switch Language", show: ["general", "show"], placeholder: "Search languages…" }
+}
+
+// The show command's JSON → {current, options:[{value, label}]}, or null.
+// Modes are the ones ready to use (processingOptions: models downloaded).
+// Languages are Superwhisper's own list.
+function settingOptions(setting, raw) {
+  var d
+  try { d = JSON.parse(String(raw || "")) } catch (e) { return null }
+  if (!d || typeof d !== "object") return null
+  if (setting === "mode") {
+    return { current: String(d.processing || ""), options: (d.processingOptions || []).map(function(o) { return { value: String(o.value), label: String(o.label || o.value) } }) }
+  }
+  if (setting === "microphone") {
+    var c = d.config || {}
+    var options = [{ value: "", label: "System Default" }]
+    ;(d.devices || []).forEach(function(dev) {
+      if (!dev.ignored && dev.name) options.push({ value: String(dev.name), label: String(dev.label || dev.description || dev.name) })
+    })
+    return { current: c.useDefaultInputDevice ? "" : String(c.selectedDeviceID || ""), options: options }
+  }
+  if (setting === "language") {
+    var langs = (d.options && d.options.languages) || []
+    return { current: String((d.config && d.config.language) || ""), options: langs.map(function(o) { return { value: String(o.value), label: String(o.label || o.value) } }) }
+  }
+  return null
+}
+
+function settingSections(setting, state, query) {
+  if (!state) return []
+  var needle = String(query || "").trim().toLowerCase()
+  var rows = state.options.filter(function(o) {
+    return !needle || o.label.toLowerCase().indexOf(needle) >= 0 || o.value.toLowerCase() === needle
+  }).map(function(o) {
+    return { candidate: {
+      id: "superwhisper-setting:" + setting + ":" + o.value, type: "command", kind: "superwhisper-setting",
+      title: o.label, subtitle: "", typeLabel: o.value === state.current ? "Current" : "",
+      checked: o.value === state.current, glyph: "", rootSearch: { when: "always" }
+    } }
+  })
+  return rows.length ? [{ id: "superwhisper-" + setting, title: "", rows: rows }] : []
+}
+
+// "superwhisper-setting:<setting>:<value>" → {setting, value}.
+function parseSettingId(id) {
+  var m = /^superwhisper-setting:([a-z]+):(.*)$/.exec(String(id))
+  return m && SETTINGS[m[1]] ? { setting: m[1], value: m[2] } : null
+}
+
+// argv after `superwhisper` that picks a value. Values come from
+// Superwhisper's own lists, never from what the user typed.
+function selectArgv(setting, value) {
+  if (setting === "mode") return ["models", "select", value]
+  if (setting === "microphone") return ["audio", "select", value]
+  if (setting === "language") return ["general", "set", "language", JSON.stringify(value)]
+  throw new Error("Unknown Superwhisper setting " + setting)
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     HISTORY_LIMIT: HISTORY_LIMIT, parseHistory: parseHistory, historyAvailable: historyAvailable, candidate: candidate,
-    sections: sections, detail: detail, actionsFor: actionsFor
+    sections: sections, detail: detail, actionsFor: actionsFor,
+    SETTINGS: SETTINGS, settingOptions: settingOptions, settingSections: settingSections, parseSettingId: parseSettingId, selectArgv: selectArgv
   }
 }

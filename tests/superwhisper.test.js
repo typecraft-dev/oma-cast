@@ -40,3 +40,21 @@ test("detail and actions", () => {
   assert.deepEqual(S.actionsFor(yesterday, "Ghostty").map((a) => a.id), ["paste", "copy", "copy-raw", "open-in-superwhisper"])
   assert.ok(!S.actionsFor(today).some((a) => a.id === "copy-raw"))
 })
+
+test("settings lists: options, current choice, search and the select command", () => {
+  const mode = S.settingOptions("mode", JSON.stringify({ processing: "cloud", processingOptions: [{ label: "Cloud", value: "cloud" }, { label: "Offline Lite", value: "offline_lite" }] }))
+  assert.deepEqual(mode, { current: "cloud", options: [{ value: "cloud", label: "Cloud" }, { value: "offline_lite", label: "Offline Lite" }] })
+  const mic = S.settingOptions("microphone", JSON.stringify({ config: { selectedDeviceID: "alsa_in", useDefaultInputDevice: false },
+    devices: [{ name: "alsa_in", label: "Built-in Microphones" }, { name: "usb", label: "USB", ignored: true }] }))
+  assert.deepEqual(mic.options.map((o) => o.label), ["System Default", "Built-in Microphones"])
+  assert.equal(mic.current, "alsa_in")
+  const lang = S.settingOptions("language", JSON.stringify({ config: { language: "en" }, options: { languages: [{ label: "Automatic", value: "auto" }, { label: "English", value: "en" }, { label: "French", value: "fr" }] } }))
+  const rows = S.settingSections("language", lang, "")[0].rows.map((r) => r.candidate)
+  assert.deepEqual(rows.filter((c) => c.checked).map((c) => c.title), ["English"])
+  assert.deepEqual(S.settingSections("language", lang, "fren")[0].rows.map((r) => r.candidate.id), ["superwhisper-setting:language:fr"])
+  assert.deepEqual(S.parseSettingId("superwhisper-setting:microphone:"), { setting: "microphone", value: "" })
+  assert.equal(S.parseSettingId("superwhisper-setting:bogus:x"), null)
+  assert.deepEqual(S.selectArgv("language", "en-GB"), ["general", "set", "language", '"en-GB"'])
+  assert.deepEqual(S.selectArgv("mode", "offline_lite"), ["models", "select", "offline_lite"])
+  assert.equal(S.settingOptions("mode", "nope"), null)
+})

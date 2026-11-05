@@ -71,6 +71,56 @@ var BUILTINS = [
     rootSearch: { when: "always" }
   },
   {
+    id: "builtin:superwhisper-paste-last",
+    title: "Paste Last Dictation",
+    subtitle: "Superwhisper",
+    glyph: "\uf0ea",                     // nf-fa-clipboard
+    keywords: ["superwhisper", "dictation", "transcription", "last", "paste", "recover"],
+    run: { superwhisperLast: "paste" },
+    requires: "superwhisper-history",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-copy-last",
+    title: "Copy Last Dictation",
+    subtitle: "Superwhisper",
+    glyph: "\uf0c5",                     // nf-fa-files_o
+    keywords: ["superwhisper", "dictation", "transcription", "last", "copy", "recover"],
+    run: { superwhisperLast: "copy" },
+    requires: "superwhisper-history",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-mode",
+    title: "Switch Processing Mode",
+    subtitle: "Superwhisper",
+    glyph: "\uf0c2",                     // nf-fa-cloud
+    keywords: ["superwhisper", "dictation", "processing", "mode", "offline", "cloud", "lite"],
+    run: { push: { kind: "superwhisper-setting", setting: "mode", title: "Switch Processing Mode" } },
+    requires: "superwhisper",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-microphone",
+    title: "Switch Microphone",
+    subtitle: "Superwhisper",
+    glyph: "\uf130",                     // nf-fa-microphone
+    keywords: ["superwhisper", "dictation", "microphone", "mic", "input", "audio", "device"],
+    run: { push: { kind: "superwhisper-setting", setting: "microphone", title: "Switch Microphone" } },
+    requires: "superwhisper",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-language",
+    title: "Switch Language",
+    subtitle: "Superwhisper",
+    glyph: "\uf1ab",                     // nf-fa-language
+    keywords: ["superwhisper", "dictation", "language", "locale", "translate"],
+    run: { push: { kind: "superwhisper-setting", setting: "language", title: "Switch Language" } },
+    requires: "superwhisper",
+    rootSearch: { when: "always" }
+  },
+  {
     id: "builtin:superwhisper-history",
     title: "Superwhisper History",
     subtitle: "Superwhisper",

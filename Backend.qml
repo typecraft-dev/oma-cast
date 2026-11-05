@@ -536,10 +536,23 @@ Item {
             return { close: true }
           }
           backend.recordVisit(id, query)
+          if (candidate.run.superwhisperLast) {
+            var verb = candidate.run.superwhisperLast
+            superwhisper.withLastDictation(function(entry) {
+              if (!entry) { backend.emit("superwhisper.finished", { style: "failure", title: "No dictations yet" }); return }
+              if (verb === "paste") clipboard.paste(entry.text)
+              else {
+                clipboard.copy(entry.text)
+                backend.emit("superwhisper.finished", { style: "success", title: "Copied to Clipboard" })
+              }
+            })
+            return { close: true }
+          }
           if (candidate.run.superwhisper) {
             superwhisper.run(candidate.run.superwhisper)
             return { close: true }
           }
+          if (candidate.run.push && candidate.run.push.kind === "superwhisper-setting") superwhisper.loadSetting(candidate.run.push.setting)
           if (candidate.run.push) return { push: candidate.run.push }
           if (candidate.run.summon) backend.summonPlugin(candidate.run.summon, candidate.run.payload || "{}")
           return { close: true }
@@ -694,6 +707,8 @@ Item {
           superwhisper.refreshIfStale()
           sections = Superwhisper.sections(superwhisper.entries, query, ctx.nowMs)
         }
+        else if (view && view.kind === "superwhisper-setting")
+          sections = Superwhisper.settingSections(view.setting, superwhisper.settings[view.setting], query)
         else if (view && view.kind === "clipboard") sections = ClipboardHistory.sections(backend.clipboardEntries(), query, String(data && data.filter || "all"), ctx.nowMs)
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else {
@@ -710,6 +725,8 @@ Item {
         var rowId = String(data && data.id || "")
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
+        if (rowId.indexOf("superwhisper-setting:") === 0)
+          return [{ id: "open", title: "Select", shortcut: "↵", section: "primary", icon: "" }]
         if (rowId.indexOf("superwhisper:") === 0) {
           var dictation = backend.superwhisperEntry(rowId)
           if (!dictation) throw new Error("No such dictation")
@@ -763,6 +780,14 @@ Item {
         return RootSearch.aboutFor(candidate, nowMs)
       },
       performAction: function(data) {
+        if (data && String(data.id).indexOf("superwhisper-setting:") === 0) {
+          var pick = Superwhisper.parseSettingId(data.id)
+          var state = pick && superwhisper.settings[pick.setting]
+          var option = state && state.options.filter(function(o) { return o.value === pick.value })[0]
+          if (!option) throw new Error("No such option")
+          superwhisper.select(pick.setting, option.value, { mode: "Processing mode", microphone: "Microphone", language: "Language" }[pick.setting] + " set to " + option.label)
+          return { close: true }
+        }
         if (data && String(data.id).indexOf("superwhisper:") === 0)
           return backend.superwhisperAction(String(data.action || "open"), data.id)
         if (data && String(data.id).indexOf("clipboard:") === 0)
@@ -926,6 +951,8 @@ Item {
     onAvailableChanged: rebuildTimer.restart()
     onHasHistoryChanged: rebuildTimer.restart()
     onHistoryChanged: backend.emit("superwhisper.historyChanged", null)
+    onSettingsLoaded: backend.emit("superwhisper.historyChanged", null)
+    onFinished: function(style, title) { backend.emit("superwhisper.finished", { style: style, title: title }) }
     onMessage: function(level, text) { backend.log(level, "superwhisper", text, null) }
   }
 
