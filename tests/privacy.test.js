@@ -89,7 +89,7 @@ test("setup hyprland keeps a private legacy oma-cast.lua private", (t) => {
   fs.writeFileSync(hypr + "/hyprland.lua", 'require("hypr.oma-cast")\n')
   fs.writeFileSync(hypr + "/oma-cast.lua", 'o.bind("ALT + SPACE", "oma-cast launcher", hl.dsp.global("oma-cast:toggle"))\n-- token = "private"\n')
   fs.chmodSync(hypr + "/oma-cast.lua", 0o600)
-  fs.writeFileSync(bin + "/hyprctl", "#!/bin/bash\nexit 0\n", { mode: 0o755 })
+  fs.writeFileSync(bin + "/hyprctl", '#!/bin/bash\nif [[ $1 == -j && $2 == binds ]]; then echo "[]"; fi\nexit 0\n', { mode: 0o755 })
   const r = spawnSync("bash", ["-c", 'umask 022; exec "$@"', "umask-022", path.join(root, "bin/omacast"), "setup", "hyprland", "--yes"], {
     env: { HOME: home, XDG_CONFIG_HOME: home + "/.config", OMARCHY_PATH: home + "/omarchy", PATH: bin + ":" + process.env.PATH },
     encoding: "utf8"
