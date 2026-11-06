@@ -191,3 +191,12 @@ test("root search puts the Calculator section first; ↵ copies, Ctrl ↵ pastes
   const calcHistory = RS.rootSections(RS.BUILTINS.map(RS.builtinCandidate), "calc hist", { commands: {}, frecency: {}, nowMs: NOW }, deps)
   assert.equal(calcHistory[0].rows[0].candidate.title, "Calculator History")
 })
+
+test("maybeTimeZone gates the lazy zone build", () => {
+  assert.equal(C.maybeTimeZone("time in tokyo"), true)
+  assert.equal(C.maybeTimeZone("3pm london to nyc"), true)
+  assert.equal(C.maybeTimeZone("firefox"), false)
+  assert.equal(C.maybeTimeZone("1+1"), false)
+  assert.equal(C.maybeTimeZone("notes"), false)
+  assert.equal(C.maybeTimeZone("flat white"), false)
+})

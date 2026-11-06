@@ -63,8 +63,10 @@ function createData(opts) {
   function cachePath() { return data.cacheDir ? path.join(data.cacheDir, "currencies.json") : "" }
 
   data.refresh = function() {
+    // Zones are purely on-demand (ensureZones from tz-shaped calculator
+    // queries): rebuilding them here reintroduces jank every 10 min on
+    // the show path. [D]
     var now = Date.now()
-    if (now - data.zonesAt > ZONES_MAX_AGE_MS) data.refreshZones()
     if (data.ratesEnabled && data.cacheRead && !data.request
         && now - data.ratesFetchedAt > RATES_MAX_AGE_MS && now - data.ratesTriedAt > RETRY_AFTER_MS)
       data.fetchRates()
@@ -110,9 +112,15 @@ function createData(opts) {
     data.zonesAt = Date.now()
   }
 
+  // Zones are built lazily (66 Intl constructors, ~30 ms cold): the
+  // backend calls ensureZones only for queries that name a place.
+  // Nothing at startup runs Intl or the network on the show path. [D]
+  data.ensureZones = function() {
+    if (Date.now() - data.zonesAt > ZONES_MAX_AGE_MS) data.refreshZones()
+  }
+
   // Read the disk cache first (like FileView onLoaded), then refresh.
   data.start = function() {
-    data.refreshZones()
     var p = cachePath()
     if (p) {
       try {
@@ -125,7 +133,12 @@ function createData(opts) {
       } catch (e) { log("warning", "ignoring unreadable exchange-rate cache", null) }
     }
     data.cacheRead = true
-    data.refresh()
+    // Post-show: zones + the first rates fetch (undici lazy-init alone is
+    // ~70 ms) must never block the window. Rates are cached daily, so a
+    // one-loop delay is invisible. [D]
+    setImmediate(function() {
+      try { data.refresh() } catch (e) {}
+    })
   }
 
   return data

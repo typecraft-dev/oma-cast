@@ -143,10 +143,12 @@ test("the index walks, excludes, hides, and round-trips its cache", async () => 
   assert.ok(!names.includes(".hidden"), "hidden dir excluded by default")
   assert.ok(fs.existsSync(cachePath), "cache written")
 
-  // Second instance: cache loads synchronously, no re-walk needed yet.
+  // Second instance: cache loads in the background (launch never parses
+  // it synchronously), then serves without a re-walk.
   const idx2 = createFileIndex({ roots: [root], home: root, cachePath })
   idx2.start()
-  assert.equal(idx2.ready, true, "cache is ready synchronously")
+  await new Promise(r => setTimeout(r, 200))
+  assert.equal(idx2.ready, true, "cache is ready after background load")
   assert.equal(idx2.entries.length, idx.entries.length)
 
   // includeHidden pulls dotfiles in on the next walk.

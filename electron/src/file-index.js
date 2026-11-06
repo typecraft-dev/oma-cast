@@ -255,7 +255,6 @@ function createFileIndex(opts) {
     get provider() { return provider },
     roots: roots,
     start: function() {
-      var fromCache = loadCache()
       if (useEverything()) {
         // No walk: Everything answers live. The cache (possibly empty)
         // seeds the fallback pool; ready so the section works at once. [D]
@@ -263,8 +262,16 @@ function createFileIndex(opts) {
         emit()
         return
       }
-      if (!fromCache || Date.now() - state.lastIndexedAt > STALE_AFTER_MS) walk()
-      else emit()
+      // Launch must not parse a 16 MB cache (~200 ms) or open a disk
+      // walk: load in the background, land via changed → rebuild. A
+      // first-show files query before it lands simply shows no section. [D]
+      setImmediate(function() {
+        try {
+          var fromCache = loadCache()
+          if (!fromCache || Date.now() - state.lastIndexedAt > STALE_AFTER_MS) walk()
+          else emit()
+        } catch (e) {}
+      })
     },
     refresh: function() { walk() },
     refreshIfStale: refreshIfStale,

@@ -399,7 +399,15 @@ var PLACES = {
   "new zealand": ["Pacific/Auckland", "New Zealand"], "reykjavik": ["Atlantic/Reykjavik", "Reykjavík"]
 }
 
-// Every IANA zone above: the host resolves their current UTC offsets.
+// Cheap pre-gate for lazy zone offsets: true when the query mentions a
+// known place (word-boundary scan, no Intl). The backend builds the 66
+// Intl formatters only then, instead of on every startup. [D]
+function maybeTimeZone(query) {
+  var q = " " + String(query || "").toLowerCase() + " "
+  if (q.indexOf(" time ") >= 0 || q.indexOf(" timezone") >= 0 || q.indexOf(" gmt") >= 0) return true
+  for (var k in PLACES) if (q.indexOf(" " + k + " ") >= 0) return true
+  return false
+}
 function zoneList() {
   var seen = {}, out = []
   for (var k in PLACES) if (!seen[PLACES[k][0]] && PLACES[k][0] !== "UTC") { seen[PLACES[k][0]] = true; out.push(PLACES[k][0]) }
@@ -1457,6 +1465,7 @@ if (typeof module !== "undefined") {
     words: numberWords,
     zoneList: zoneList,
     pushHistory: pushHistory,
+    maybeTimeZone: maybeTimeZone,
     filterHistory: filterHistory,
     HISTORY_LIMIT: HISTORY_LIMIT,
     HISTORY_MAX_AGE_MS: HISTORY_MAX_AGE_MS,

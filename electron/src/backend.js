@@ -11,9 +11,16 @@ var Schema = require("../../plugin/core/Schema.js")
 var Ranker = require("../../plugin/core/Ranker.js")
 var Frecency = require("../../plugin/core/Frecency.js")
 var RootSearch = require("../../plugin/core/RootSearch.js")
-var Calculator = require("../../plugin/core/Calculator.js")
+// Heavy modules stay off the launch path: FileSearch (~43 ms parse),
+// themes (~9 ms) and Calculator (~8 ms) load on first use. The show path
+// (root search over apps/commands) never touches them. [D]
+var _Calculator = null
+function CalculatorMod() { if (!_Calculator) _Calculator = require("../../plugin/core/Calculator.js"); return _Calculator }
+var _FileSearch = null
+function FileSearchMod() { if (!_FileSearch) _FileSearch = require("../../plugin/core/FileSearch.js"); return _FileSearch }
+var _themes = null
+function themesMod() { if (!_themes) _themes = require("./themes"); return _themes }
 var Agent = require("../../plugin/core/Agent.js")
-var FileSearch = require("../../plugin/core/FileSearch.js")
 var SettingsView = require("../../plugin/core/SettingsView.js")
 var winSettings = require("./windows-settings")
 var themes = require("./themes")
@@ -188,7 +195,10 @@ function createBackend(opts) {
   }
   function calculate(query) {
     try {
-      return Calculator.evaluate(query, calculatorEnv())
+      // Zones are lazy: only tz-shaped queries pay the Intl build, and
+      // ensureZones is a no-op when they are fresh. [D]
+      if (CalculatorMod().maybeTimeZone(query)) calculatorData.ensureZones()
+      return CalculatorMod().evaluate(query, calculatorEnv())
     } catch (e) {
       log("error", "calculator", "evaluating failed: " + e, { query: query })
       return null
@@ -196,7 +206,7 @@ function createBackend(opts) {
   }
   function saveCalculation(entry) {
     calculatorStore.update(function(doc) {
-      doc.history = Calculator.pushHistory(doc.history, {
+      doc.history = CalculatorMod().pushHistory(doc.history, {
         id: String(nowMs()), query: entry.query, result: entry.result, copy: entry.copy, kind: entry.kind
       }, nowMs())
     })
@@ -355,7 +365,7 @@ function createBackend(opts) {
     userDir: paths.config ? pathLib.join(paths.config, "themes") : ""
   }
   function themeNames() {
-    return themes.listThemes(themeRoots).map(function(t) { return t.name })
+    return themesMod().listThemes(themeRoots).map(function(t) { return t.name })
   }
   function themeChoiceBag() { return { themes: themeNames() } }
   // ↵ on a settings row cycles to the next value: "general" goes through
@@ -689,7 +699,7 @@ function createBackend(opts) {
             return !needle || r.name.toLowerCase().indexOf(needle) >= 0 || String(r.pid).indexOf(needle) === 0
           }).map(processCandidate)
           sections = prows.length ? [{ id: "processes", title: "", rows: prows.map(toRow) }] : []
-        } else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
+        } else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, CalculatorMod().filterHistory)
         else if (view && view.kind === "web-search") sections = RootSearch.webSearchSections(view.engine, query)
         else {
           ctx.filter = String(data && data.filter || "all")
@@ -737,9 +747,9 @@ function createBackend(opts) {
               var esPool = fileIndex.searchEverything(fq, 100)
               if (esPool) pool = esPool
             }
-            var matches = FileSearch.match(pool, fq, { limit: 30, nameOnly: !pathLike })
+            var matches = FileSearchMod().match(pool, fq, { limit: 30, nameOnly: !pathLike })
             if (matches.length > 0) {
-              var fileSection = { id: "files", title: "Files", rows: matches.map(function(m) { return toRow(FileSearch.candidate(m.entry)) }) }
+              var fileSection = { id: "files", title: "Files", rows: matches.map(function(m) { return toRow(FileSearchMod().candidate(m.entry)) }) }
               var at = -1, fb = -1
               for (var si = 0; si < sections.length; si++) {
                 if (sections[si].id === "results") at = si
@@ -764,7 +774,7 @@ function createBackend(opts) {
         if (rowId.indexOf("winset:") === 0) return actionsForWindowsSetting()
         if (rowId === "builtin:windows-settings") return [{ id: "open", title: "Open Windows Settings", shortcut: "↵", section: "primary", icon: "\uf17a" }]
         if (rowId.indexOf("process:") === 0) return actionsForProcess(processRow(String(rowId).slice("process:".length)))
-        if (rowId.indexOf("file:") === 0) return FileSearch.actionsForFile()
+        if (rowId.indexOf("file:") === 0) return FileSearchMod().actionsForFile()
         if (rowId.indexOf("web-search:") === 0) {
           var wfb = RootSearch.engineFallback("fallback:" + rowId.slice("web-search:".length))
           if (!wfb) throw new Error("Unknown command " + rowId)
@@ -909,9 +919,9 @@ function createBackend(opts) {
     Rpc.register(registry, "themes", {
       // The bundled + user themes on disk (name, dir, source) — also what
       // the Theme setting row cycles through.
-      list: function() { return themes.listThemes(themeRoots) },
+      list: function() { return themesMod().listThemes(themeRoots) },
       resolve: function(data) {
-        var r = themes.resolve(String(data && data.name || ""), themeRoots)
+        var r = themesMod().resolve(String(data && data.name || ""), themeRoots)
         return { name: r.name, source: r.source }
       }
     })
@@ -1019,6 +1029,12 @@ function createBackend(opts) {
       apps.refresh()
     }
     rebuildCandidates()
+    // Post-show JIT warmup through the real search wrapper (skipFiles:
+    // no es.exe spawn, no frecency writes — search never mutates). First
+    // keystroke ~10 ms becomes ~1 ms. [D]
+    setImmediate(function() {
+      try { api.callSync("rootSearch.search", { query: "zzqv warmup", skipFiles: true }) } catch (e) {}
+    })
     return api
   }
 
