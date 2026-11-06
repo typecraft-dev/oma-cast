@@ -59,6 +59,10 @@ omacast doctor                                                      # check ever
 
 Press **Alt+Space**. Super+Space stays the Omarchy menu.
 
+Run hotkey setup inside a running Hyprland session. It checks active bindings,
+so a default removed with `hl.unbind("ALT + SPACE")` does not block setup.
+Reload Hyprland after removing a conflicting binding, then rerun setup.
+
 `omacast setup hyprland` lists what it will change and asks before changing it. It writes
 `~/.config/hypr/omacast.lua` and appends one `require("hypr.omacast")` line to
 `~/.config/hypr/hyprland.lua`; it never edits Omarchy's own files. To use another key, edit
