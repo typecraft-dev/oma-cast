@@ -1,11 +1,13 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 import "../core/RootSearch.js" as RootSearch
 import "../core/Rows.js" as Rows
+import "../core/KeyText.js" as KeyText
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
 // overlay layer the shell's own emoji picker uses.
@@ -15,6 +17,11 @@ PanelWindow {
   required property var backend
   property var appLibrary: null
   property bool shown: false
+  // Omarchy starts with NumLock on. The launcher owns the keypad mode while
+  // it has exclusive focus: NumLock flips this, and a locked pad types digits
+  // instead of moving the list.
+  property bool numLock: true
+  property bool numLockTouched: false
   readonly property bool busy: window.shown && window.backend.loading
   readonly property int loadingFeedbackDelay: 500
   property bool loadingVisible: false
@@ -131,7 +138,12 @@ PanelWindow {
   }
 
   onShownChanged: {
-    if (window.shown) return
+    if (window.shown) {
+      window.numLockTouched = false
+      numLockProbe.running = false
+      numLockProbe.running = true
+      return
+    }
     window.searchSerial++
     window.backend.cancelSearch()
     window.searchPending = false
@@ -144,6 +156,31 @@ PanelWindow {
   Timer {
     id: popTimer
     onTriggered: window.popToRoot()
+  }
+
+  Process {
+    id: numLockProbe
+    command: ["hyprctl", "devices", "-j"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (window.numLockTouched) return
+        var boards = []
+        try { boards = JSON.parse(text).keyboards || [] } catch (e) { return }
+        var i
+        for (i = 0; i < boards.length; i++) {
+          if (boards[i].main && typeof boards[i].numLock === "boolean") {
+            window.numLock = boards[i].numLock
+            return
+          }
+        }
+        for (i = 0; i < boards.length; i++) {
+          if (typeof boards[i].numLock === "boolean") {
+            window.numLock = boards[i].numLock
+            return
+          }
+        }
+      }
+    }
   }
 
   function popToRoot() {
@@ -426,7 +463,8 @@ PanelWindow {
     }
     if (key === Qt.Key_Backspace && !value) { window.argFocus--; return true }
     if (Util.editsFilter(event, value)) { set(Util.editedFilter(event, value)); return true }
-    if (window.isTyping(event)) { set(value + event.text); return true }
+    var typed = KeyText.character(event, window.numLock)
+    if (typed) { set(value + typed); return true }
     return false
   }
 
@@ -530,6 +568,9 @@ PanelWindow {
   // -1 up, 1 down or 0, per the navigation bindings. Ctrl+P only moves up
   // inside popups: in the list it opens the dropdown.
   function direction(event, ctrl, alt, inPopup) {
+    // Locked numpad 8/2 still arrive as Up/Down. Don't move the list then:
+    // Up at the top reads search history synchronously.
+    if (window.numLock && KeyText.isKeypad(event)) return 0
     var key = event.key
     if (!ctrl && !alt && key === Qt.Key_Down) return 1
     if (!ctrl && !alt && key === Qt.Key_Up) return -1
@@ -545,11 +586,12 @@ PanelWindow {
 
   // Keys for a popup list (action panel, dropdown, toast actions).
   function handlePopupKey(event, panel, ctrl, alt) {
+    var typed = KeyText.character(event, window.numLock)
+    if (typed) { panel.filter += typed; return true }
     var dir = window.direction(event, ctrl, alt, true)
     if (dir) { panel.move(dir); return true }
     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { panel.activateSelected(); return true }
     if (Util.editsFilter(event, panel.filter)) { panel.filter = Util.editedFilter(event, panel.filter); return true }
-    if (window.isTyping(event)) { panel.filter += event.text; return true }
     return true
   }
 
@@ -566,13 +608,23 @@ PanelWindow {
       return true
     }
     if (key === Qt.Key_Escape) { window.handleEscape(shift); return true }
+    if (key === Qt.Key_NumLock) {
+      if (!event.isAutoRepeat) {
+        window.numLockTouched = true
+        window.numLock = !window.numLock
+      }
+      return true
+    }
     if (ctrl && (key === Qt.Key_Plus || key === Qt.Key_Equal)) { window.setZoom(window.zoom + 0.1); return true }
     if (ctrl && key === Qt.Key_Minus) { window.setZoom(window.zoom - 0.1); return true }
     if (ctrl && key === Qt.Key_0) { window.setZoom(1); return true }
     if (ctrl && key === Qt.Key_BracketLeft) { window.closePopups(); window.pop(); return true }
-    // Ctrl+V, Ctrl+Shift+V (the terminal habit) and Shift+Insert paste.
+    // Ctrl+V, Ctrl+Shift+V, and Shift+Insert paste.
+    // Numpad 0 is Insert with NumLock off; that types "0" instead of pasting.
     var meta = (event.modifiers & Qt.MetaModifier) !== 0
-    if ((key === Qt.Key_V && ctrl && !alt && !meta) || (key === Qt.Key_Insert && shift && !ctrl && !alt && !meta)) {
+    var insertPaste = key === Qt.Key_Insert && shift && !ctrl && !alt && !meta
+      && !KeyText.isKeypad(event)
+    if ((key === Qt.Key_V && ctrl && !alt && !meta) || insertPaste) {
       window.pasteClipboard()
       return true
     }
@@ -622,8 +674,8 @@ PanelWindow {
         if (window.historyIndex >= 0) { window.recallHistory(-1); return true }
         window.move(1); return true
       }
-      if (key === Qt.Key_PageUp) { window.move(-8); return true }
-      if (key === Qt.Key_PageDown) { window.move(8); return true }
+      if (key === Qt.Key_PageUp && !(window.numLock && KeyText.isKeypad(event))) { window.move(-8); return true }
+      if (key === Qt.Key_PageDown && !(window.numLock && KeyText.isKeypad(event))) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
       if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer"]); return true }
       if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries"]); return true }
@@ -638,13 +690,9 @@ PanelWindow {
 
     if (Util.editsFilter(event, window.query)) { window.setQuery(Util.editedFilter(event, window.query)); return true }
     if (key === Qt.Key_Backspace && !window.query && !window.atRoot) { window.pop(); return true }
-    if (window.isTyping(event)) { window.setQuery(window.query + event.text); return true }
+    var typed = KeyText.character(event, window.numLock)
+    if (typed) { window.setQuery(window.query + typed); return true }
     return false
-  }
-
-  function isTyping(event) {
-    return event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127
-      && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)
   }
 
   Connections {
