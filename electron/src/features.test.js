@@ -522,6 +522,7 @@ test("the window wires the services the pushed views read", () => {
   const appSrc = fs.readFileSync(path.join(__dirname, "..", "ui", "app.js"), "utf8")
   assert.match(appSrc, /processes:\s*processesLib\.createProcesses\(/, "Kill Process gets its snapshot service")
   assert.match(appSrc, /fileIndex:\s*fileIndexLib\.createFileIndex\(/, "Files gets its index")
+  assert.match(appSrc, /cachePath:[^\n]*apps\.json/, "the app library preloads its disk cache for cold starts")
   assert.match(appSrc, /excludePaths:\s*\[process\.execPath\]/, "the launcher's own processes stay out of the list")
   const keysSrc = fs.readFileSync(path.join(__dirname, "..", "ui", "keys.js"), "utf8")
   assert.match(keysSrc, /backend\.visibility\(visible\)/, "show refreshes rates, apps and files")

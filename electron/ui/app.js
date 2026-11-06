@@ -71,7 +71,7 @@ var fileRoots = (config.fileSearchScopes && config.fileSearchScopes.length) ? co
 
 var backend = backendLib.createBackend({
   paths: paths,
-  apps: appsLib.createApps({ iconDir: path.join(paths.cache, "icons") }),
+  apps: appsLib.createApps({ iconDir: path.join(paths.cache, "icons"), cachePath: path.join(paths.cache, "apps.json") }),
   fileIndex: fileIndexLib.createFileIndex({
     roots: fileRoots,
     home: paths.home,

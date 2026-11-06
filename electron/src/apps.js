@@ -124,8 +124,20 @@ function fileUrl(p) {
   return "file:///" + encodeURI(String(p).replace(/\\/g, "/")).replace(/#/g, "%23")
 }
 
+// The app library's disk cache ({ v, at, entries }, slim rows): the scan
+// is an async PowerShell pass that takes seconds on a cold boot, and
+// without it the first shows searched commands/files/fallbacks but zero
+// apps. Slim rows ({id,name,target,link}) rebuild icon/keywords on load,
+// so the cache stays forward-compatible. [D]
+var APPS_CACHE_VERSION = 1
+
 function createApps(opts) {
   opts = opts || {}
+  var execFile = opts.execFile || childProcess.execFile
+  var cachePath = opts.cachePath || ""
+  function log(level, message, metadata) {
+    if (opts.log) { try { opts.log(level, message, metadata) } catch (e) {} }
+  }
   var apps = {
     entries: [],
     loading: false,
@@ -185,9 +197,62 @@ function createApps(opts) {
       })
   }
 
+  function buildEntry(row) {
+    if (!row || !row.name) return null
+    var link = String(row.link || "")
+    var appid = String(row.appid || "")
+    if (!link && !appid) return null
+    var id = link || ("uwp:" + appid)
+    return {
+      id: id,
+      name: String(row.name),
+      icon: id,
+      target: String(row.target || ""),
+      link: link,
+      genericName: "",
+      keywords: keywordsFor(row.name),
+      noDisplay: false
+    }
+  }
+  function slimEntry(e) {
+    return { id: e.id, name: e.name, target: e.target, link: e.link }
+  }
+  function loadCache() {
+    if (!cachePath) return false
+    try {
+      var doc = JSON.parse(fs.readFileSync(cachePath, "utf8"))
+      if (doc && doc.v === APPS_CACHE_VERSION && Array.isArray(doc.entries) && doc.entries.length > 0) {
+        var rows = doc.entries.map(function(r) {
+          var e = buildEntry(r)
+          return e && e.id && e.name ? e : null
+        }).filter(Boolean)
+        if (rows.length > 0) {
+          rows.sort(function(a, b) { return a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) })
+          apps.entries = rows
+          apps.scanned = true
+          return true
+        }
+      }
+    } catch (e) {}
+    return false
+  }
+  function saveCache() {
+    if (!cachePath || apps.entries.length === 0) return
+    try {
+      fs.mkdirSync(path.dirname(cachePath), { recursive: true })
+      var tmp = cachePath + ".tmp"
+      fs.writeFileSync(tmp, JSON.stringify({ v: APPS_CACHE_VERSION, at: Date.now(), entries: apps.entries.map(slimEntry) }))
+      fs.renameSync(tmp, cachePath)
+    } catch (e) {}
+  }
+  // Preload synchronously: the file is ~100 KB next to the 9 MB
+  // file-index cache (which stays background-loaded), so the first show
+  // paints cached apps instead of an empty Applications section. [D]
+  try { loadCache() } catch (e) {}
+
   function runPowerShell(script, timeoutMs) {
     return new Promise(function(resolve) {
-      childProcess.execFile("powershell.exe",
+      execFile("powershell.exe",
         ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
         { timeout: timeoutMs || 30000, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
         function(err, stdout) { resolve({ error: err, stdout: String(stdout || "") }) })
@@ -202,8 +267,13 @@ function createApps(opts) {
     apps.loading = true
     return runPowerShell(SCAN_SCRIPT).then(function(res) {
       apps.loading = false
+      // Harden the parse: PowerShell can emit a BOM (the es.exe path
+      // already strips \uFEFF for this reason) or stray blank lines, and
+      // either one used to throw here and silently empty the whole library
+      // — a cold show then searched everything except apps. [D]
+      var text = String(res.stdout || "").replace(/^\uFEFF/, "").trim()
       var parsed = []
-      try { parsed = JSON.parse(res.stdout) || [] } catch (e) { parsed = [] }
+      try { parsed = (text ? JSON.parse(text) : []) || [] } catch (e) { parsed = [] }
       if (!Array.isArray(parsed)) parsed = [parsed]
       var seen = {}
       var seenTargets = {}
@@ -216,40 +286,33 @@ function createApps(opts) {
       // Word); the shortcut rows record their targets for that. [D]
       for (var i = 0; i < parsed.length; i++) {
         var row = parsed[i]
-        if (!row || !row.name) continue
-        var link = String(row.link || "")
-        var appid = String(row.appid || "")
-        if (!link && !appid) continue
-        var key = String(row.name).toLowerCase()
+        var entry = buildEntry(row)
+        if (!entry) continue
+        var key = entry.name.toLowerCase()
         if (seen[key]) continue
-        var normTarget = String(row.target || "").toLowerCase().replace(/\//g, "\\")
+        var normTarget = entry.target.toLowerCase().replace(/\//g, "\\")
         if (row.apppaths) {
           if (normTarget && seenTargets[normTarget]) continue
-        } else if (link && normTarget) {
+        } else if (entry.link && normTarget) {
           seenTargets[normTarget] = true
         }
         seen[key] = true
-        // A Store/MSIX row has no file on disk: a uwp: id routes launch
-        // through shell:AppsFolder and the icon slot to apps.iconSource,
-        // which answers \"\" so the row shows the generic window glyph. [D]
-        var id = link || ("uwp:" + appid)
-        out.push({
-          id: id,
-          name: String(row.name),
-          // The icon slot is the .lnk path itself: apps.iconSource extracts
-          // and caches its associated icon lazily. [D]
-          icon: id,
-          target: String(row.target || ""),
-          link: link,
-          genericName: "",
-          keywords: keywordsFor(row.name),
-          noDisplay: false
-        })
+        out.push(entry)
       }
       out.sort(function(a, b) { return a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) })
+      // An empty scan is a failed scan, never a real library: Windows
+      // always has registered exes. Keep the previous (or cached) entries
+      // so one bad pass cannot wipe apps until the next show, and never
+      // persist the empty result over a good cache. [D]
+      if (out.length === 0 && apps.entries.length > 0) {
+        log("warning", "app scan returned 0 rows, keeping " + apps.entries.length + " cached", null)
+        apps.scanned = true
+        return apps.entries
+      }
       apps.entries = out
       lastScanAt = Date.now()
       apps.scanned = true
+      saveCache()
       emit()
       return out
     }, function() { apps.loading = false; apps.scanned = true; return apps.entries })
@@ -303,5 +366,5 @@ function launchArg(id) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { createApps: createApps, SCAN_SCRIPT: SCAN_SCRIPT, ICON_SCRIPT: ICON_SCRIPT, psQuote: psQuote, fileUrl: fileUrl, launchArg: launchArg, APP_KEYWORDS: APP_KEYWORDS, keywordsFor: keywordsFor }
+  module.exports = { createApps: createApps, SCAN_SCRIPT: SCAN_SCRIPT, ICON_SCRIPT: ICON_SCRIPT, psQuote: psQuote, fileUrl: fileUrl, launchArg: launchArg, APP_KEYWORDS: APP_KEYWORDS, keywordsFor: keywordsFor, APPS_CACHE_VERSION: APPS_CACHE_VERSION }
 }
