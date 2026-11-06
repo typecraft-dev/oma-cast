@@ -244,7 +244,7 @@ Item {
   }
 
   function openMenu(item) {
-    if (item.provider && !OmarchyMenu.PROVIDERS[item.provider]) {
+    if (item.provider && !OmarchyMenu.providerSpec(item.provider)) {
       backend.summonPlugin("omarchy.menu", JSON.stringify({ menu: item.id }))
       return { close: true }
     }

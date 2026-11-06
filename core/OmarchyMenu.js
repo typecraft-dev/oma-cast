@@ -10,6 +10,23 @@ function parentOf(id) {
   return dot < 0 ? "root" : id.slice(0, dot)
 }
 
+// A provider is the name of one in PROVIDERS or, as Omarchy's menu allows, an
+// extension's own object: a `command` printing `label\tvalue\tcurrent\tdescription`
+// lines and an `action` run with `{value}` replaced by the chosen row's quoted
+// value. Anything else is dropped, so a malformed entry stays an empty submenu.
+function normalizeProvider(value) {
+  if (typeof value === "string") return value
+  if (!value || typeof value !== "object") return ""
+  if (typeof value.command !== "string" || !value.command.trim()) return ""
+  if (typeof value.action !== "string" || value.action.indexOf("{value}") < 0) return ""
+  return {
+    command: value.command,
+    action: value.action,
+    icon: typeof value.icon === "string" ? value.icon : "",
+    volatile: value.volatile === true
+  }
+}
+
 function normalizeItem(id, raw) {
   var aliases = Array.isArray(raw.aliases) ? raw.aliases.filter(function(a) { return typeof a === "string" && a })
     : (typeof raw.aliases === "string" && raw.aliases ? [raw.aliases] : [])
@@ -24,7 +41,7 @@ function normalizeItem(id, raw) {
     description: String(raw.description || ""),
     action: String(raw.action || ""),
     target: String(raw.target || ""),
-    provider: String(raw.provider || ""),
+    provider: normalizeProvider(raw.provider),
     aliases: aliases,
     when: String(raw.when || ""),
     checked: String(raw.checked || ""),
@@ -179,8 +196,26 @@ function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item"
 }
 
-function providerItems(menuId, providerName, output) {
-  var spec = PROVIDERS[providerName]
+// Every {value} in an extension provider's action becomes the row's value,
+// quoted, so a value can never break out of the command.
+function providerAction(template, value) {
+  return String(template || "").split("{value}").join(shellQuote(value))
+}
+
+// A named provider comes from PROVIDERS; an extension's object becomes the same
+// kind of spec, so both run and turn into rows alike.
+function providerSpec(provider) {
+  if (!provider) return null
+  if (typeof provider === "string") return PROVIDERS[provider] || null
+  return {
+    script: provider.command,
+    icon: provider.icon,
+    actionFor: function(value) { return providerAction(provider.action, value) }
+  }
+}
+
+function providerItems(menuId, provider, output) {
+  var spec = providerSpec(provider)
   if (!spec) return []
   var rows = []
   var taken = {}
@@ -192,11 +227,12 @@ function providerItems(menuId, providerName, output) {
     var label = parts[0] || ""
     var value = parts[1] || label
     var current = parts[2] || ""
+    var description = parts[3] || ""
     if (!label) continue
     var id = menuId + "." + slugify(value)
     while (taken[id]) id += "-"
     taken[id] = true
-    var item = normalizeItem(id, { icon: spec.icon, label: label, action: spec.actionFor(value) })
+    var item = normalizeItem(id, { icon: spec.icon, label: label, description: description, action: spec.actionFor(value) })
     item.parent = menuId
     item.isCurrent = value === current
     rows.push(item)
@@ -221,6 +257,8 @@ if (typeof module !== "undefined") {
     parseGuardOutput: parseGuardOutput,
     shellQuote: shellQuote,
     PROVIDERS: PROVIDERS,
+    providerAction: providerAction,
+    providerSpec: providerSpec,
     providerItems: providerItems,
     summonAction: summonAction,
     slugify: slugify
