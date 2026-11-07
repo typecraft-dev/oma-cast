@@ -42,16 +42,32 @@ Item {
       font.pixelSize: Math.round(Style.font.bodySmall * pane.zoom)
     }
 
-    Image {
-      anchors.fill: parent
-      visible: !!pane.detail && !!pane.detail.image
-      source: pane.detail && pane.detail.image ? Util.fileUrl(pane.detail.image) : ""
-      fillMode: Image.PreserveAspectFit
-      asynchronous: true
-      cache: false
-      // Decode at the pane's size: a 4K screenshot needn't cost 33 MB.
-      sourceSize.width: Math.max(1, Math.round(width * 2))
-      sourceSize.height: Math.max(1, Math.round(height * 2))
+    // Two images: the new one decodes hidden and the old one stays up until it's
+    // ready, so moving through a list doesn't flash an empty pane.
+    readonly property url wanted: pane.detail && pane.detail.image ? Util.fileUrl(pane.detail.image) : ""
+    property int front: 0
+    onWantedChanged: {
+      var back = images.itemAt(1 - preview.front)
+      if (!back) return
+      back.source = preview.wanted
+      if (back.status === Image.Ready || !preview.wanted) preview.front = 1 - preview.front
+    }
+
+    Repeater {
+      id: images
+      model: 2
+      Image {
+        anchors.fill: parent
+        visible: index === preview.front && !!pane.detail && !!pane.detail.image
+        fillMode: Image.PreserveAspectFit
+        asynchronous: true
+        cache: false
+        // Decode at the pane's size: a 4K screenshot needn't cost 33 MB.
+        sourceSize.width: Math.max(1, Math.round(width * 2))
+        sourceSize.height: Math.max(1, Math.round(height * 2))
+        Component.onCompleted: if (index === 0) source = preview.wanted
+        onStatusChanged: if (index !== preview.front && source === preview.wanted && status !== Image.Loading) preview.front = index
+      }
     }
 
     Column {
