@@ -242,7 +242,11 @@ PanelWindow {
     value: window.shown && window.contentRevealed ? 1 : 0
   }
 
+  // A reload or disable while shown would otherwise leave Hyprland in the submap.
+  Component.onDestruction: if (window.shown) Hyprland.dispatch('hl.dsp.submap("reset")')
   onShownChanged: {
+    // The "omacast" submap (omacast.lua) lets Super+H/J/K/L past Hyprland's binds.
+    Hyprland.dispatch('hl.dsp.submap("' + (window.shown ? "omacast" : "reset") + '")')
     if (window.shown) {
       var target = window.focusedScreen()
       if (target !== window.pinnedScreen) window.pinnedScreen = target
@@ -737,9 +741,15 @@ PanelWindow {
     var key = event.key
     if (!ctrl && !alt && key === Qt.Key_Down) return 1
     if (!ctrl && !alt && key === Qt.Key_Up) return -1
+    if (window.superOnly(event)) return key === Qt.Key_J ? 1 : (key === Qt.Key_K ? -1 : 0)
     if (!ctrl || alt || (event.modifiers & Qt.ShiftModifier)) return 0
     if (window.vim) return key === Qt.Key_J ? 1 : (key === Qt.Key_K ? -1 : 0)
     return key === Qt.Key_N ? 1 : (key === Qt.Key_P && inPopup ? -1 : 0)
+  }
+
+  // Super+H/J/K/L are arrow keys; see the submap dispatch in onShownChanged. [D]
+  function superOnly(event) {
+    return (event.modifiers & ~Qt.KeypadModifier) === Qt.MetaModifier
   }
 
   function isActionPanelKey(ctrl, alt, shift, key) {
@@ -780,7 +790,8 @@ PanelWindow {
     if (ctrl && key === Qt.Key_BracketLeft) { window.closePopups(); window.pop(); return true }
     // Ctrl+V, Ctrl+Shift+V (the terminal habit) and Shift+Insert paste.
     var meta = (event.modifiers & Qt.MetaModifier) !== 0
-    if ((key === Qt.Key_V && ctrl && !alt && !meta) || (key === Qt.Key_Insert && shift && !ctrl && !alt && !meta)) {
+    // Super+V too: the "omacast" submap keeps Omarchy's universal paste from turning it into Shift+Insert.
+    if ((key === Qt.Key_V && ((ctrl && !alt && !meta) || window.superOnly(event))) || (key === Qt.Key_Insert && shift && !ctrl && !alt && !meta)) {
       window.pasteClipboard()
       return true
     }
@@ -830,7 +841,9 @@ PanelWindow {
         if (window.historyIndex >= 0) { window.recallHistory(-1); return true }
         window.move(1); return true
       }
-      if (window.grid && !ctrl && !alt && (key === Qt.Key_Left || key === Qt.Key_Right)) { window.moveColumn(key === Qt.Key_Left ? -1 : 1); return true }
+      var hdir = !ctrl && !alt && !meta ? (key === Qt.Key_Left ? -1 : key === Qt.Key_Right ? 1 : 0)
+        : window.superOnly(event) ? (key === Qt.Key_H ? -1 : key === Qt.Key_L ? 1 : 0) : 0
+      if (window.grid && hdir) { window.moveColumn(hdir); return true }
       if (ctrl && shift && key === Qt.Key_P) { window.performIfOffered(["pin", "unpin"]); return true }
       if (ctrl && !shift && key === Qt.Key_O) { window.performIfOffered(["open-link"]); return true }
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
@@ -849,6 +862,8 @@ PanelWindow {
 
     if (window.argFocus < 0) {
       if (key === Qt.Key_Home && shift && !ctrl && !alt) { window.querySelected = window.query.length > 0; return true }
+      // Super+A is Omarchy's select all; the submap delivers it raw.
+      if (key === Qt.Key_A && window.superOnly(event)) { window.querySelected = window.query.length > 0; return true }
       // Super+Backspace deletes to the start of the line, as on a Mac.
       if (key === Qt.Key_Backspace && meta) { window.setQuery(""); return true }
       if (selected && (key === Qt.Key_Backspace || key === Qt.Key_Delete)) { window.setQuery(""); return true }
