@@ -98,6 +98,15 @@ test("hidden menu rows (when: false) and disabled commands are left out", () => 
   assert.ok(!off.some((s) => s.id === "results" && titles(s).includes("Signal")))
 })
 
+test("guard-disabled Omarchy items (installed apps) leave root search but stay in their submenu", () => {
+  const guards = { when: {}, checked: {}, disabled: { "trigger.toggle.nightlight": true } }
+  const used = ctx({ frecency: { "omarchy:trigger.toggle.nightlight": { anchor: NOW / 1000 + 50 } } })
+  assert.ok(!RS.rootSections(candidates(guards), "night", used, deps).some((s) => s.id === "results"))
+  assert.ok(!RS.rootSections(candidates(guards), "", used, deps).some((s) => titles(s).includes("Nightlight")))
+  const inside = RS.submenuSections(candidates(guards), "trigger", "night", ctx(), deps)
+  assert.equal(inside[0].rows[0].candidate.disabled, true)
+})
+
 test("a submenu lists its children, and searches its descendants", () => {
   const children = RS.submenuSections(candidates(), "trigger", "", ctx(), deps)
   assert.deepEqual(titles(children[0]), ["Toggle"])

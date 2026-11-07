@@ -392,6 +392,9 @@ function rootSections(candidates, query, ctx, deps) {
   var decorated = []
   for (var i = 0; i < candidates.length; i++) {
     if (!isEnabled(candidates[i], ctx) || !passesFilter(candidates[i], ctx.filter)) continue
+    // An Omarchy item its guard disables (an installer for an app that's already
+    // installed) can't run, so root search drops it; its submenu still shows it greyed. [D]
+    if (candidates[i].disabled) continue
     decorated.push(decorate(candidates[i], ctx, deps))
   }
   var opts = rankOptions(ctx)
