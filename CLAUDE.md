@@ -123,6 +123,7 @@ Works:
 - **Navigation:** pushed Omarchy submenus (search within them), the alias editor, back with Esc / Ctrl+[ / Backspace on an empty query / the header arrow, and Shift+Esc to pop to root.
 - **Keyboard:** Ctrl+K action panel (filterable, per-row shortcuts), ↵ / Ctrl+↵ / Ctrl+Shift+↵ for the first three actions, Ctrl+1–9, Ctrl+↑↓ to jump sections, PageUp/PageDown, ↑ on an empty root for search history, Ctrl+Shift+C copy, Alt+Shift+D disable, Ctrl + / − / 0 zoom.
   - Navigation bindings (`general.navigationBindings`): `emacs` moves down with Ctrl+N; `vim-motions` moves with Ctrl+J/K and puts the action panel on **Alt+K**. Set it with `omacast call settings.updateGeneralSettings '{"navigationBindings":"vim-motions"}'`.
+  - **Super+J/K** move down/up in every mode (H/L are kept for left/right once a grid view lands). While omacast is shown it dispatches `hl.dsp.submap("omacast")` (`reset` on hide); `omacast.lua` defines that submap and marks omacast's own hotkeys `submap_universal`, so Hyprland's Super binds (Super+J split, etc.) don't grab them. An `omacast.lua` without the submap just leaves Hyprland in its default submap.
   - **Ctrl+P** opens the root dropdown (All / Applications / Commands); emacs Ctrl+P = up only works inside popups.
   - **Ctrl+T** opens the toast's actions (Copy Error Message on failures, Undo after Disable Command). **Ctrl+Shift+K** opens the About panel for the selected row.
   - **Argument pills:** "Search Google" / "Search DuckDuckGo" take a query in a pill after the search text (Tab in, Shift+Tab out).
