@@ -31,7 +31,7 @@ the moment you switch themes.
 - **Clipboard History.** Text, links, colours, files and images you copy, with a preview, where each came from, pins and a type filter.
 - **Switch Theme.** Every Omarchy theme with its preview beside the list.
 - **Superwhisper.** Start and stop dictation, recover your last dictation, and switch microphone, language or processing mode.
-- **Your shortcuts.** Aliases, favorites, a Ctrl+K action panel, Ctrl+1–9 quick picks and emacs or vim navigation.
+- **Your shortcuts.** Aliases, favorites, a Ctrl+K action panel, Ctrl+1–9 quick picks, emacs or vim navigation, and Super+H/J/K/L arrows.
 - **Script Commands.** Drop a Raycast-style script in a folder and it becomes a command.
 
 ## Install
@@ -55,8 +55,15 @@ Press **Alt+Space**. Super+Space stays the Omarchy menu.
 this to your Hyprland config:
 
 ```lua
-o.bind("ALT + SPACE", "omacast launcher", hl.dsp.global("omacast:toggle"))
+o.bind("ALT + SPACE", "omacast launcher", hl.dsp.global("omacast:toggle"), { submap_universal = true })
+-- Lets Super+H/J/K/L reach omacast while it's open (see Keyboard).
+hl.define_submap("omacast", function()
+  hl.bind("SUPER + F24", hl.dsp.no_op()) -- a submap needs one bind to exist
+end)
 ```
+
+If your `omacast.lua` predates Super+H/J/K/L, add the `define_submap` block and
+`{ submap_universal = true }` on each omacast binding; setup won't rewrite a file that exists.
 
 Update with `omarchy plugin update typecraft.omacast`.
 
@@ -117,7 +124,7 @@ the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` mo
 
 ## Search
 
-**Suggestions** learn from what you open. **Results** cover apps and every Omarchy action, with the menu path beside each one.
+**Suggestions** learn from what you open. **Results** cover apps and every Omarchy action, with the menu path beside each one. Installers for apps you already have stay out of results, so the app itself comes up.
 
 <p align="center">
   <img src="docs/screenshots/hero.png" width="49%" alt="The empty launcher with Suggestions: Search Emoji &amp; Symbols, Switch Theme, Clipboard History and Superwhisper commands">
@@ -217,12 +224,19 @@ monitor-input-cycle "$1" && echo "Switching display"
 | `↑` on an empty search | Search history |
 | `Ctrl+↑` / `Ctrl+↓` | Jump between sections |
 | `Ctrl+N` / `Ctrl+P` | Next / previous |
+| `Super+J` / `Super+K` · `Super+H` / `Super+L` | Down / up · left / right in the emoji grid, in every navigation mode |
 | `Ctrl+Shift+F` | Add to favorites (`Ctrl+Alt+↑↓` to reorder) |
 | `Ctrl+Shift+C` | Copy |
 | `Alt+Shift+D` | Disable a command |
 | `Esc` / `Shift+Esc` | Back / back to root |
 | `Ctrl+U` / `Super+Backspace` / `Shift+Home` then `Backspace` | Clear the search (Backspace alone never leaves a view) |
 | `Ctrl +` / `Ctrl −` / `Ctrl 0` | Zoom |
+
+**Super+H/J/K/L.** While omacast is open it switches Hyprland to its own `omacast` submap, so Super keys
+reach the launcher instead of your window manager bindings (Omarchy's Super+J and the like), and switches
+back when it closes. `Super+V` pastes, `Super+A` selects the search and `Super+Backspace` clears it, as
+Omarchy's own bindings do elsewhere. Other Hyprland bindings, media keys included, wait until it closes;
+omacast's own hotkeys keep working.
 
 The All / Applications / Commands filter beside the root search is optional: set `"rootFilter": false` in
 `~/.config/omacast/config.json` to hide it and its shortcut.
