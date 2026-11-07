@@ -93,5 +93,8 @@ test("config rejects out-of-range calculator values and unknown choices", () => 
   assert.equal(c.workHoursPerDay, 8, "zero hours falls back to the default")
   assert.equal(c.clockFormat, "24h")
   assert.equal(Schema.withConfigDefaults({ clockFormat: "36h" }).clockFormat, "auto")
+  assert.equal(Schema.withConfigDefaults({ clipboardHistoryDuration: "P2W" }).clipboardHistoryDuration, "P1W")
+  assert.deepEqual(Schema.withConfigDefaults({ clipboardDisabledApplications: ["a"] }).clipboardDisabledApplications, ["a"])
+  assert.equal(Schema.withConfigDefaults({ clipboardDisabledApplications: "a" }).clipboardDisabledApplications.length, 5)
   assert.deepEqual(Schema.generalChoices.navigationBindings, ["emacs", "vim-motions"])
 })

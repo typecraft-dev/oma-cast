@@ -132,6 +132,34 @@ the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` mo
 | `Esc` / `Shift+Esc` | Back / back to root |
 | `Ctrl +` / `Ctrl −` / `Ctrl 0` | Zoom |
 
+## Clipboard History
+
+Search **Clipboard History** in the root search, or bind it directly:
+
+```lua
+o.bind("SUPER + CTRL + V", "omacast clipboard history", hl.dsp.global("omacast:clipboard"))
+```
+
+Pressing the binding again closes it.
+
+- omacast records text, links, colours, files and images you copy, with the app you copied from, when, and how many times.
+- The list is on the left and a preview with its details is on the right. The type dropdown (`Ctrl+P`) filters by All Types, Text, Images, Files, Links or Colors.
+- `↵` pastes into the app you came from, `Ctrl+↵` copies, `Ctrl+O` opens a link or file, `Ctrl+Shift+P` pins, `Ctrl+D` deletes an entry and `Ctrl+Shift+D` deletes everything except pins.
+- Entries are kept for a week, as in Raycast. Pinned entries are always kept. Change it with `"clipboardHistoryDuration"` in `config.json` (`P1D`, `P1W`, `P1M`, `P3M`, `P6M`, `P1Y` or `unlimited`).
+- Copies from password managers are never recorded: anything marked sensitive, plus the apps in `"clipboardDisabledApplications"` (Wayland app ids; KeePassXC, Bitwarden, 1Password and Seahorse by default). `"clipboardHistory": false` stops recording.
+- The history is in `~/.local/share/omacast/db/clipboard.json`, and images and long text are in `~/.local/share/omacast/clipboard/`, both readable only by you.
+
+## Switch Theme
+
+**Switch Theme** lists your Omarchy themes, your own and Omarchy's, with the current one checked and a preview of the highlighted theme beside the list. `↵` applies it with `omarchy-theme-set`, and omacast changes with it. It replaces Omarchy's own theme picker in omacast's results. To open it from Omarchy's theme keys as well:
+
+```lua
+hl.unbind("SUPER + CTRL + T")
+o.bind("SUPER + CTRL + T", "omacast switch theme", hl.dsp.global("omacast:theme"))
+```
+
+Pressing the key again closes it.
+
 ## CLI
 
 ```sh
@@ -147,7 +175,8 @@ omacast is early. Search, ranking and the Omarchy integration are done. Coming n
 
 - [ ] Settings window
 - [ ] Script Commands
-- [ ] Clipboard history, snippets, quicklinks, calculator
+- [x] Clipboard history, calculator
+- [ ] Snippets, quicklinks
 - [ ] Running Raycast extensions built from the open-source [`raycast/extensions`](https://github.com/raycast/extensions) repo
 - [ ] Window management
 - [ ] Importing your `.rayconfig` from macOS

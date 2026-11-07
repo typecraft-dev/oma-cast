@@ -48,7 +48,7 @@ function legacyMoves(paths) {
 }
 
 function directoriesToCreate(paths) {
-  return [paths.config, paths.db, paths.cache, paths.logs, paths.backups, paths.runtime]
+  return [paths.config, paths.db, paths.clipboard, paths.cache, paths.logs, paths.backups, paths.runtime]
 }
 
 // Histories and settings are private: other local users must not read them.

@@ -126,10 +126,22 @@ for (const kind of ["copy", "paste"]) {
     assert.equal(fs.readFileSync(log + ".clipboard", "utf8"), secret)
     const cmdlines = fs.readFileSync(log, "utf8")
     assert.ok(!cmdlines.includes("private"), cmdlines)
-    assert.ok(!script.includes("$"), "the script takes no arguments")
     if (kind === "paste") assert.match(cmdlines, /wtype -M shift -k Insert -m shift/)
   })
 }
+
+test("a Clipboard History file is copied from its path with its MIME type", (t) => {
+  const home = tempHome(t)
+  const log = home + "/cmdlines"
+  fs.writeFileSync(home + "/wl-copy", '#!/bin/bash\necho "$@" >>"$LOG"; cat >"$LOG.clipboard"\n', { mode: 0o755 })
+  fs.writeFileSync(home + "/blob.png", "PNGDATA")
+  const r = spawnSync("bash", ["-c", clipboardScripts().copy, "omacast-copy", "image/png", home + "/blob.png"], {
+    encoding: "utf8", env: { ...process.env, LOG: log, PATH: home + ":" + process.env.PATH }
+  })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(fs.readFileSync(log, "utf8").trim(), "--type image/png")
+  assert.equal(fs.readFileSync(log + ".clipboard", "utf8"), "PNGDATA")
+})
 
 test("no QML hands clipboard text or prompts to a process's argv", () => {
   const files = ["Backend.qml", "Launcher.qml", ...["ui", "services"].flatMap((d) =>

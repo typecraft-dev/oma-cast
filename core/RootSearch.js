@@ -32,6 +32,26 @@ var BUILTINS = [
     rootSearch: { when: "always" }
   },
   {
+    id: "builtin:clipboard-history",
+    title: "Clipboard History",
+    subtitle: "Clipboard History",
+    glyph: "\uf0ea",                     // nf-fa-clipboard
+    keywords: ["clipboard", "history", "paste", "copy", "pasteboard"],
+    run: { push: { kind: "clipboard", title: "Clipboard History" } },
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:switch-theme",
+    title: "Switch Theme",
+    subtitle: "Omarchy",
+    glyph: "\uf1fc",                     // nf-fa-paint_brush
+    keywords: ["theme", "themes", "appearance", "colors", "colours", "dark", "light", "omarchy"],
+    run: { push: { kind: "theme", title: "Switch Theme" } },
+    // Replaces Omarchy's theme picker in omacast's results. [D]
+    supersedes: ["omarchy:appearance.theme"],
+    rootSearch: { when: "always" }
+  },
+  {
     id: "builtin:calculator-history",
     title: "Calculator History",
     subtitle: "Calculator",

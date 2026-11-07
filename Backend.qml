@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import qs.Commons
 import "core/Rpc.js" as Rpc
 import "core/Paths.js" as Paths
@@ -12,6 +13,8 @@ import "core/Frecency.js" as Frecency
 import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
 import "core/Calculator.js" as Calculator
+import "core/ClipboardHistory.js" as ClipboardHistory
+import "core/Themes.js" as Themes
 import "services"
 
 Item {
@@ -35,7 +38,7 @@ Item {
   property var candidates: []
   property var candidatesById: ({})
   property int candidatesRevision: 0
-  readonly property bool loading: menuSource.loading || nativeSearch.pending !== null
+  readonly property bool loading: menuSource.loading || themeSource.loading || nativeSearch.pending !== null
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
@@ -95,6 +98,10 @@ Item {
     for (var i = 0; i < apps.length; i++) if (apps[i] && apps[i].id) next.push(RootSearch.appCandidate(apps[i]))
     next = next.concat(RootSearch.menuCandidates(menuSource.tree, menuSource.guards, menuSource.providerItems, backend.deps))
     for (var b = 0; b < RootSearch.BUILTINS.length; b++) next.push(RootSearch.builtinCandidate(RootSearch.BUILTINS[b]))
+    // A built-in that replaces an Omarchy command hides that command.
+    var superseded = ({})
+    RootSearch.BUILTINS.forEach(function(d) { (d.supersedes || []).forEach(function(id) { superseded[id] = true }) })
+    next = next.filter(function(c) { return !superseded[c.id] })
     var byId = ({})
     for (var j = 0; j < next.length; j++) byId[next[j].id] = next[j]
     var entries = FleaSearch.entries(next, Ranker.transliterate)
@@ -202,6 +209,129 @@ Item {
     return null
   }
 
+  // ----------------------------------------------------- clipboard history
+
+  // Our own write from the history comes back through the watcher; it moves
+  // the entry up without counting as a new copy.
+  property string clipboardSelfHash: ""
+  property double clipboardSelfAt: 0
+
+  // The focused app: the source of a copy, and where a paste lands.
+  function activeApp() {
+    var t = ToplevelManager.activeToplevel
+    var appId = t ? String(t.appId || "") : ""
+    if (!appId) return null
+    var entry = DesktopEntries.heuristicLookup(appId)
+    return { appId: appId, name: entry && entry.name ? String(entry.name) : appId }
+  }
+
+  function clipboardEntries() { return clipboardStore.loaded ? clipboardStore.doc.entries : [] }
+
+  function clipboardEntry(id) {
+    var key = String(id).replace(/^clipboard:/, "")
+    var list = backend.clipboardEntries()
+    for (var i = 0; i < list.length; i++) if (list[i].id === key) return list[i]
+    return null
+  }
+
+  // Only files inside our clipboard directory, whatever the store says.
+  function deleteClipboardFiles(paths) {
+    var dir = backend.paths.clipboard + "/"
+    var mine = paths.filter(function(p) { return p.indexOf(dir) === 0 && p.indexOf("/..") < 0 })
+    if (mine.length) Quickshell.execDetached(["rm", "-f", "--"].concat(mine))
+  }
+
+  // Applies mutate(entries) → entries, then retention, and deletes the files
+  // no entry uses any more.
+  function updateClipboard(mutate) {
+    if (!clipboardStore.loaded) throw new Error("Clipboard History is not loaded")
+    var orphans = []
+    clipboardStore.update(function(doc) {
+      var before = doc.entries
+      var pruned = ClipboardHistory.prune(mutate(before), Date.now(), backend.config.clipboardHistoryDuration)
+      var kept = ({})
+      pruned.entries.forEach(function(e) { kept[e.id] = true })
+      var gone = before.filter(function(e) { return !kept[e.id] }).concat(pruned.removed)
+      orphans = ClipboardHistory.orphanedPaths(gone, pruned.entries)
+      doc.entries = pruned.entries
+    })
+    backend.deleteClipboardFiles(orphans)
+    backend.emit("clipboard.stateChanged", null)
+  }
+
+  function pruneClipboard() {
+    if (!clipboardStore.loaded) return
+    if (ClipboardHistory.prune(clipboardStore.doc.entries, Date.now(), backend.config.clipboardHistoryDuration).removed.length)
+      backend.updateClipboard(function(entries) { return entries })
+  }
+
+  function recordClipboard(obs) {
+    if (!clipboardStore.loaded || !obs || !obs.hash) return
+    // The selection that was there when the watcher started is old news.
+    if (obs.initial && backend.clipboardEntries().some(function(e) { return e.hash === obs.hash })) return
+    delete obs.initial
+    var source = backend.activeApp()
+    if (ClipboardHistory.isDisabledSource(source, backend.config.clipboardDisabledApplications)) {
+      backend.deleteClipboardFiles(ClipboardHistory.orphanedPaths([obs], backend.clipboardEntries()))
+      return
+    }
+    obs.source = source
+    var now = Date.now()
+    var self = obs.hash === backend.clipboardSelfHash && now - backend.clipboardSelfAt < 5000
+    var id = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36)
+    backend.updateClipboard(function(entries) { return ClipboardHistory.add(entries, obs, now, id, self).entries })
+  }
+
+  // Puts an entry back on the clipboard, pasting it into the focused app if asked.
+  function writeClipboardEntry(e, paste) {
+    backend.clipboardSelfHash = e.hash
+    backend.clipboardSelfAt = Date.now()
+    var mime = e.mime === "text/uri-list" || e.type === "image" ? e.mime : ""
+    if (e.path) clipboard.copyFile(e.path, e.mime || "text/plain", paste)
+    else if (paste) clipboard.paste(e.text, mime)
+    else clipboard.copy(e.text, mime)
+  }
+
+  function clipboardAction(action, id, confirmed) {
+    if (action === "delete-all-entries") {
+      if (!confirmed) return { confirm: { title: "Delete All Entries", message: "This removes every unpinned entry from Clipboard History. Pinned entries are kept.", primary: "Delete All", destructive: true } }
+      backend.updateClipboard(function(entries) { return entries.filter(function(e) { return typeof e.pinned === "number" }) })
+      return { toast: { style: "success", title: "History cleared" } }
+    }
+    var e = backend.clipboardEntry(id)
+    if (!e) throw new Error("No such clipboard entry")
+    switch (action) {
+      case "open":
+      case "paste":
+        backend.writeClipboardEntry(e, true)
+        return { close: true }
+      case "copy":
+        backend.writeClipboardEntry(e, false)
+        return { close: true, hud: "Copied to Clipboard" }
+      case "open-link":
+        var files = ClipboardHistory.filePaths(e.text)
+        var target = files.length ? files[0] : String(e.text || "").trim()
+        if (/^https?:/i.test(target)) Util.execArgv(["omarchy-launch-browser", target])
+        else Util.execArgv(["xdg-open", target])
+        return { close: true }
+      case "pin":
+      case "unpin":
+        backend.updateClipboard(function(entries) { return ClipboardHistory.setPinned(entries, e.id, action === "pin") })
+        return { toast: { style: "success", title: action === "pin" ? "Pinned" : "Unpinned" } }
+      case "delete-entry":
+        backend.updateClipboard(function(entries) { return entries.filter(function(x) { return x.id !== e.id }) })
+        return { toast: { style: "success", title: "Entry deleted" } }
+    }
+    throw new Error("Unknown action " + action)
+  }
+
+  // ----------------------------------------------------------------- themes
+
+  function themeEntry(id) {
+    var slug = String(id).replace(/^theme:/, "")
+    return themeSource.themes.filter(function(t) { return t.slug === slug })[0] || null
+  }
+
   // ------------------------------------------------------------- execution
 
   function summonPlugin(id, payload) {
@@ -292,6 +422,7 @@ Item {
             return { close: true }
           }
           backend.recordVisit(id, query)
+          if (candidate.run.push && candidate.run.push.kind === "theme") themeSource.refresh()
           if (candidate.run.push) return { push: candidate.run.push }
           if (candidate.run.summon) backend.summonPlugin(candidate.run.summon, candidate.run.payload || "{}")
           return { close: true }
@@ -428,6 +559,9 @@ Item {
         if (data && data.fleaHits) ctx.fleaHits = data.fleaHits
         var sections
         if (view && view.kind === "menu") sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
+        else if (view && view.kind === "theme")
+          sections = Themes.sections(themeSource.themes, themeSource.current, query)
+        else if (view && view.kind === "clipboard") sections = ClipboardHistory.sections(backend.clipboardEntries(), query, String(data && data.filter || "all"), ctx.nowMs)
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else {
           ctx.filter = String(data && data.filter || "all")
@@ -442,6 +576,17 @@ Item {
         var rowId = String(data && data.id || "")
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
+        if (rowId.indexOf("theme:") === 0) {
+          var shown = backend.themeEntry(rowId)
+          if (!shown) throw new Error("No such theme")
+          return Themes.actionsFor(shown, themeSource.current)
+        }
+        if (rowId.indexOf("clipboard:") === 0) {
+          var clip = backend.clipboardEntry(rowId)
+          if (!clip) throw new Error("No such clipboard entry")
+          var app = backend.activeApp()
+          return ClipboardHistory.actionsFor(clip, app ? app.name : "")
+        }
         var candidate = backend.decorated(rowId)
         if (!candidate) {
           var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === data.id })[0]
@@ -461,6 +606,10 @@ Item {
           var entry = backend.historyEntry(rowId)
           return entry ? RootSearch.aboutFor(RootSearch.historyCandidate(entry, nowMs), nowMs) : []
         }
+        if (rowId.indexOf("clipboard:") === 0) {
+          var clip = backend.clipboardEntry(rowId)
+          return clip ? ClipboardHistory.detail(clip).info : []
+        }
         var candidate = backend.decorated(rowId)
         if (!candidate) {
           var f = RootSearch.FALLBACKS.filter(function(x) { return x.id === rowId })[0]
@@ -470,6 +619,14 @@ Item {
         return RootSearch.aboutFor(candidate, nowMs)
       },
       performAction: function(data) {
+        if (data && String(data.id).indexOf("theme:") === 0) {
+          var theme = backend.themeEntry(data.id)
+          if (!theme) throw new Error("No such theme")
+          themeSource.apply(theme.slug)
+          return { close: true }
+        }
+        if (data && String(data.id).indexOf("clipboard:") === 0)
+          return backend.clipboardAction(String(data.action || "open"), data.id, !!data.confirmed)
         // Destructive commands come back as a confirmation unless confirmed.
         if (!(data && data.confirmed)) {
           var confirm = RootSearch.confirmationFor(String(data && data.id || ""), String(data && data.action || "open"))
@@ -520,6 +677,30 @@ Item {
       }
     })
 
+    // Names from Raycast's clipboard namespace (ref 02 §2); getDetail feeds
+    // the detail pane [D].
+    Rpc.register(backend.registry, "clipboard", {
+      getAll: function() { return backend.clipboardEntries() },
+      getDetail: function(data) {
+        var e = backend.clipboardEntry(String(data && data.id || ""))
+        return e ? ClipboardHistory.detail(e) : null
+      },
+      copy: function(data) { return backend.clipboardAction("copy", String(data && data.id || ""), true) },
+      paste: function(data) { return backend.clipboardAction("paste", String(data && data.id || ""), true) },
+      pin: function(data) { return backend.clipboardAction("pin", String(data && data.id || ""), true) },
+      unpin: function(data) { return backend.clipboardAction("unpin", String(data && data.id || ""), true) },
+      "delete": function(data) { return backend.clipboardAction("delete-entry", String(data && data.id || ""), true) },
+      deleteAll: function() { return backend.clipboardAction("delete-all-entries", "", true) }
+    })
+
+    Rpc.register(backend.registry, "themes", {
+      getAll: function() { return { current: themeSource.current, themes: themeSource.themes } },
+      getDetail: function(data) {
+        var t = backend.themeEntry(String(data && data.id || ""))
+        return t ? Themes.detail(t, themeSource.current) : null
+      }
+    })
+
     Rpc.register(backend.registry, "frecency", {
       visit: function(data) { backend.recordVisit(String(data.id), String(data.query || "")); return null },
       get: function(data) {
@@ -548,11 +729,12 @@ Item {
     function onValuesChanged() { rebuildTimer.restart() }
   }
 
-  Component.onDestruction: { settingsStore.flush(); frecencyStore.flush(); calculatorStore.flush() }
+  Component.onDestruction: { settingsStore.flush(); frecencyStore.flush(); calculatorStore.flush(); clipboardStore.flush() }
   onNotification: function(method, data) {
     if (method === "window.visibilityChanged" && data && data.visible) {
       menuSource.refresh()
       calculatorData.refresh()
+      backend.pruneClipboard()
     }
   }
 
@@ -562,6 +744,18 @@ Item {
   ClipboardWriter {
     id: clipboard
     onFailed: function(message) { backend.log("error", "clipboard", message, null) }
+  }
+
+  ClipboardWatcher {
+    directory: backend.directoriesReady && clipboardStore.loaded ? backend.paths.clipboard : ""
+    enabled: backend.config.clipboardHistory
+    onCaptured: function(observation) { backend.recordClipboard(observation) }
+    onMessage: function(level, text) { backend.log(level, "clipboard", text, null) }
+  }
+
+  ThemeSource {
+    id: themeSource
+    onLoaded: backend.emit("themes.changed", null)
   }
 
   AppFocuser {
@@ -574,7 +768,7 @@ Item {
     id: mkdirs
     // Moves directories left under the old name, then creates everything
     // owner-only and repairs modes left readable by older builds.
-    command: Paths.setupArgv(backend.paths, [Schema.documents.settings.file, Schema.documents.frecency.file, Schema.documents.calculator.file]
+    command: Paths.setupArgv(backend.paths, [Schema.documents.settings.file, Schema.documents.frecency.file, Schema.documents.calculator.file, Schema.documents.clipboard.file]
       .map(function(file) { return backend.paths.db + "/" + file }))
     onExited: function(exitCode) {
       if (exitCode !== 0) backend.log("error", "paths", "could not create data directories", { exitCode: exitCode })
@@ -610,6 +804,15 @@ Item {
     path: backend.paths.db + "/" + Schema.documents.calculator.file
     migrations: Schema.documents.calculator.migrations
     onMessage: function(level, text, metadata) { backend.log(level, "store", text, metadata) }
+  }
+
+  JsonStore {
+    id: clipboardStore
+    ready: backend.directoriesReady
+    path: backend.paths.db + "/" + Schema.documents.clipboard.file
+    migrations: Schema.documents.clipboard.migrations
+    onMessage: function(level, text, metadata) { backend.log(level, "store", text, metadata) }
+    onLoadedChanged: if (loaded) backend.pruneClipboard()
   }
 
   CalculatorData {
