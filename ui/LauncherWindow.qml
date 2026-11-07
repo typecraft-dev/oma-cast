@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
@@ -130,7 +131,11 @@ PanelWindow {
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
+  // A reload or disable while shown would otherwise leave Hyprland in the submap.
+  Component.onDestruction: if (window.shown) Hyprland.dispatch('hl.dsp.submap("reset")')
   onShownChanged: {
+    // The "omacast" submap (omacast.lua) lets Super+J/K past Hyprland's binds.
+    Hyprland.dispatch('hl.dsp.submap("' + (window.shown ? "omacast" : "reset") + '")')
     if (window.shown) return
     window.searchSerial++
     window.backend.cancelSearch()
@@ -533,9 +538,15 @@ PanelWindow {
     var key = event.key
     if (!ctrl && !alt && key === Qt.Key_Down) return 1
     if (!ctrl && !alt && key === Qt.Key_Up) return -1
+    if (window.superOnly(event)) return key === Qt.Key_J ? 1 : (key === Qt.Key_K ? -1 : 0)
     if (!ctrl || alt || (event.modifiers & Qt.ShiftModifier)) return 0
     if (window.vim) return key === Qt.Key_J ? 1 : (key === Qt.Key_K ? -1 : 0)
     return key === Qt.Key_N ? 1 : (key === Qt.Key_P && inPopup ? -1 : 0)
+  }
+
+  // Super+J/K move down/up; see the submap dispatch in onShownChanged. [D]
+  function superOnly(event) {
+    return (event.modifiers & ~Qt.KeypadModifier) === Qt.MetaModifier
   }
 
   function isActionPanelKey(ctrl, alt, shift, key) {
@@ -572,7 +583,8 @@ PanelWindow {
     if (ctrl && key === Qt.Key_BracketLeft) { window.closePopups(); window.pop(); return true }
     // Ctrl+V, Ctrl+Shift+V (the terminal habit) and Shift+Insert paste.
     var meta = (event.modifiers & Qt.MetaModifier) !== 0
-    if ((key === Qt.Key_V && ctrl && !alt && !meta) || (key === Qt.Key_Insert && shift && !ctrl && !alt && !meta)) {
+    // Super+V too: the "omacast" submap keeps Omarchy's universal paste from turning it into Shift+Insert.
+    if ((key === Qt.Key_V && ((ctrl && !alt && !meta) || window.superOnly(event))) || (key === Qt.Key_Insert && shift && !ctrl && !alt && !meta)) {
       window.pasteClipboard()
       return true
     }
@@ -637,6 +649,8 @@ PanelWindow {
     }
 
     if (Util.editsFilter(event, window.query)) { window.setQuery(Util.editedFilter(event, window.query)); return true }
+    // Super+Backspace (Omarchy's delete to line start) arrives raw under the submap: clear the query.
+    if (key === Qt.Key_Backspace && window.superOnly(event)) { window.setQuery(""); return true }
     if (key === Qt.Key_Backspace && !window.query && !window.atRoot) { window.pop(); return true }
     if (window.isTyping(event)) { window.setQuery(window.query + event.text); return true }
     return false

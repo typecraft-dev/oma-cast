@@ -23,7 +23,7 @@ function harness(text) {
   const window = {
     query: "prefix ", actionPanelOpen: false, view: { kind: "root" }, historyIndex: 0, argFocus: -1, argDefs: [],
     rebuild: reset => changes.push(reset), isTyping: () => false,
-    isActionPanelKey: () => false, direction: () => 0
+    isActionPanelKey: () => false, direction: () => 0, superOnly: () => false
   }
   const actionPanel = { item: { filter: "" } }
   const clipboardInput = { text: "", clear() { this.text = "" }, paste() { this.text = text } }
