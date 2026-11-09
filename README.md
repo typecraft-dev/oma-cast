@@ -16,7 +16,8 @@ It learns what you use, searches your apps and every Omarchy action, and looks l
 Omarchy's built-in menu is great at what it does. omacast adds what Raycast users miss on Linux:
 
 * **Learns your habits.** Results are ranked with a port of Raycast's root-search algorithm, plus frecency and learned search terms. The things you actually use float to the top, and if you type `ff` and pick Firefox, `ff` keeps meaning Firefox.
-* **One search for everything.** Your apps, all ~400 Omarchy menu actions (with breadcrumbs and live ✓ state), and web-search fallbacks.
+* **One search for everything.** Your apps, all ~400 Omarchy menu actions (with breadcrumbs and live ✓ state), the files in your home folder, and web-search fallbacks.
+* **File search.** Matching files and folders show up under Files. Search Files opens a full list with a preview of images and text, and the files you open rise to the top.
 * **Your shortcuts.** Give anything an alias, pin favorites, and hide the commands you never touch.
 * **Keyboard-first.** A Ctrl+K action panel, Ctrl+1–9 quick picks, search history on ↑, section jumping, and emacs-style navigation.
 * **Native to Omarchy.** It runs inside `omarchy-shell` as a plugin, with no Electron, no Node and no extra daemons. It opens in about 40 ms and follows your theme live when you run `omarchy theme set`.
@@ -84,13 +85,17 @@ and `~/.local/state/omacast`.
 
 ### Dependencies and network access
 
-omacast needs only what Omarchy ships: `omarchy-shell` (Quickshell), Hyprland, bash, `jq` and `socat`.
+omacast needs only what Omarchy ships: `omarchy-shell` (Quickshell), Hyprland, bash, `jq`, `socat` and `fd`.
 It adds no packages and no background services.
 
 - **Currency rates.** When you open the launcher and its rates are over 12 hours old, the calculator downloads
   ECB exchange rates from `api.frankfurter.dev` (retrying 30 minutes after a failure) and caches them in
   `~/.cache/omacast/currencies.json`. This is the only network request omacast makes. Turn it off with
   `"currencyRates": false` in `~/.config/omacast/config.json`.
+- **File search.** When you open the launcher, and its list is over 30 seconds old, omacast lists your home folder
+  with `fd` and matches your query in memory. Nothing is indexed or written to disk, and your query never goes on a
+  command line. Hidden folders, git-ignored files, `node_modules`, Python environments, caches and build output
+  (`target`) are left out. Without `fd`, the Files section stays off and `omacast doctor` says so.
 - **Optional search helper.** With Rust (`cargo`) installed, `omacast install` (or `omacast build-search`)
   builds the small **flea-search** helper from `search/` on your machine. It matches titles, alternate names,
   subtitles and keywords outside the shell's UI thread and tolerates transposed or missing letters. Nothing is
@@ -127,7 +132,7 @@ the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` mo
 | `Ctrl+↑` / `Ctrl+↓` | Jump between sections |
 | `Ctrl+N` / `Ctrl+P` | Next / previous |
 | `Ctrl+Shift+F` | Add to favorites (`Ctrl+Alt+↑↓` to reorder) |
-| `Ctrl+Shift+C` | Copy |
+| `Ctrl+Shift+C` | Copy (desktop ID, command, file path or answer) |
 | `Alt+Shift+D` | Disable a command |
 | `Esc` / `Shift+Esc` | Back / back to root |
 | `Ctrl +` / `Ctrl −` / `Ctrl 0` | Zoom |
@@ -143,7 +148,7 @@ omacast doctor
 
 ## Roadmap
 
-omacast is early. Search, ranking and the Omarchy integration are done. Coming next:
+omacast is early. Search, ranking, file search and the Omarchy integration are done. Coming next:
 
 - [ ] Settings window
 - [ ] Script Commands

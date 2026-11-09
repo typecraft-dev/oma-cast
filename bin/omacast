@@ -293,6 +293,14 @@ cmd_doctor() {
   check "plugin is enabled" bash -c "omarchy plugin list --json 2>/dev/null | jq -e --arg id '$PLUGIN_ID' 'any(.[]; .id == \$id and .enabled)'"
   check "plugin answers IPC" bash -c "[[ \$(omarchy-shell $IPC_TARGET ping) == ok ]]"
   check "backend answers system.healthPing" bash -c "omarchy-shell $IPC_TARGET call system.healthPing '{}' | grep -q '\"ok\":true'"
+  # File search lists the home folder with fd; without it the Files section is off.
+  if command -v fd >/dev/null 2>&1; then
+    local files
+    files=$(omarchy-shell "$IPC_TARGET" call files.status '{}' 2>/dev/null | jq -r 'if .ok then (if .data.refreshedAt then "\(.data.entries) files listed" else "not listed yet; opens with the launcher" end) else empty end' 2>/dev/null)
+    printf '  ok    fd is installed (file search%s)\n' "${files:+: $files}"
+  else
+    printf '  info  fd is not installed, so file search is off (install it with: omarchy pkg add fd)\n'
+  fi
   if [[ -x $repo/bin/omacast-search ]]; then
     printf '  ok    flea-search helper is built\n'
   else

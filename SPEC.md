@@ -537,6 +537,7 @@ Grammar: `{keyword opt="v" opt2='v' | modifier | modifier}`. Quotes accepted: `"
 - Settings [O]: scopes, ignore patterns, include hidden, use ignore files, index removable drives, content search.
 - Content search (P2): extract text via `pdftotext`, docx/odt via zip+xml, plain text, OCR images. Run extraction in a **separate process**, as Raycast does for crash isolation [O].
 - Results: name match first, then path, sorted by recency. Detail pane: preview (image, PDF first page, text head) plus metadata. Quick Look = a large preview window, or GNOME Sushi if installed.
+- **Built [D], 2026-11-09:** no Rust indexer, SQLite or inotify. `fd` (in Omarchy's base packages) lists `$HOME` in ~55 ms for ~25k entries, so the plugin relists on open when the listing is over 30 s old and matches in-process. Previews cover images and text; PDF first pages, content search, scope settings and Quick Look are not built. See CLAUDE.md Status.
 
 ---
 
