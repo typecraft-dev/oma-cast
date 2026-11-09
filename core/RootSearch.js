@@ -39,6 +39,15 @@ var BUILTINS = [
     keywords: ["calculator", "calc", "math", "history", "conversions"],
     run: { push: { kind: "calculator-history", title: "Calculator History" } },
     rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:search-files",
+    title: "Search Files",
+    subtitle: "Files",
+    glyph: "\uf07c",                     // nf-fa-folder_open
+    keywords: ["files", "find", "documents", "folders", "file search"],
+    run: { push: { kind: "file-search", title: "Search Files" } },
+    rootSearch: { when: "always" }
   }
 ]
 
@@ -358,11 +367,14 @@ function actionsFor(candidate) {
   // File Search actions (ref 04 App. A file-search: Open, Show in Finder,
   // Copy Path) [O]; the file manager stands in for Finder.
   if (candidate.kind === "file" || candidate.kind === "folder") {
-    return [
+    var fileActions = [
       { id: "open", title: candidate.kind === "folder" ? "Open Folder" : "Open File", shortcut: "↵", section: "primary", icon: "" },
       { id: "show-in-files", title: "Show in Files", shortcut: "Ctrl ↵", section: "primary", icon: "" },
       { id: "copy-path", title: "Copy Path", shortcut: "Ctrl Shift C", section: "copy", icon: "" }
     ]
+    // Root search shows five files; this opens the full list with the query.
+    if (!candidate.inFileView) fileActions.push({ id: "search-files", title: "Search All Files", shortcut: "", section: "configure", icon: "" })
+    return fileActions
   }
   var primary
   var list = []

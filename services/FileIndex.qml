@@ -34,7 +34,7 @@ Item {
       var argv = ["bash", "-c", 'command -v fd >/dev/null || exit 127; exec "$@"', "omacast-files",
         "fd", "--type", "f", "--type", "d", "--absolute-path"]
       for (var i = 0; i < index.excludes.length; i++) argv.push("--exclude", index.excludes[i])
-      return argv.concat([".", index.home, "--exec-batch", "stat", "--printf", "%F|%Y|%n\\0"])
+      return argv.concat([".", index.home, "--exec-batch", "stat", "--printf", "%F|%Y|%s|%n\\0"])
     }
     stdout: StdioCollector {
       onStreamFinished: {

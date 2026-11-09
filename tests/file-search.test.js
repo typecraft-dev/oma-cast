@@ -9,9 +9,9 @@ const NOW = Date.UTC(2026, 10, 9, 12, 0)          // 9 Nov 2026
 const day = 86400
 const t = (daysAgo) => Math.round(NOW / 1000 - daysAgo * day)
 
-// Hand-written `stat --printf '%F|%Y|%n\0'` output.
+// Hand-written `stat --printf '%F|%Y|%s|%n\0'` output.
 function listing(rows) {
-  return rows.map(([type, daysAgo, path]) => `${type}|${t(daysAgo)}|${path}`).join("\0") + "\0"
+  return rows.map(([type, daysAgo, path, size]) => `${type}|${t(daysAgo)}|${size || 0}|${path}`).join("\0") + "\0"
 }
 
 const entries = FS.parseListing(listing([
@@ -41,7 +41,7 @@ test("parseListing keeps home paths and reads type, time and folders", () => {
 
 test("parseListing survives empty input, junk records and | in names", () => {
   assert.deepEqual(FS.parseListing("", HOME), [])
-  const odd = FS.parseListing("junk\0regular file|100|/home/ada/a|b.txt\0", HOME)
+  const odd = FS.parseListing("junk\0regular file|100|5|/home/ada/a|b.txt\0", HOME)
   assert.equal(odd.length, 1)
   assert.equal(odd[0].name, "a|b.txt")
 })
@@ -100,4 +100,51 @@ test("modified label: relative for a week, then day and month, then month and ye
   assert.equal(FS.modifiedLabel(NOW - 2 * day * 1000, NOW, rel), "rel 2d")
   assert.equal(FS.modifiedLabel(NOW - 40 * day * 1000, NOW, rel), "30 Sep")
   assert.equal(FS.modifiedLabel(NOW - 400 * day * 1000, NOW, rel), "Oct 2025")
+})
+
+test("visit bonus: none unopened, ~30 after one open, capped at 40", () => {
+  assert.equal(FS.visitBonus(1), 0)
+  assert.equal(FS.visitBonus(undefined), 0)
+  assert.equal(FS.visitBonus(100), 30)                // 15 * log10(100)
+  assert.equal(FS.visitBonus(1e6), 40)                // 15 * 6 = 90, capped
+})
+
+// Draft report v2.docx: word start 60 + recent 8 = 68, +30 for an open
+// = 98, still under report.js (108) and Report.pdf (100), above Reports (84).
+test("a bonus lifts an opened file above unopened prefix matches", () => {
+  const bonus = (e) => (e.name === "Draft report v2.docx" ? 30 : 0)
+  assert.deepEqual(FS.search(entries, "report", NOW, 3, bonus).map((e) => e.name),
+    ["report.js", "Report.pdf", "Draft report v2.docx"])
+})
+
+test("size labels use decimal units", () => {
+  assert.equal(FS.sizeLabel(0), "0 bytes")
+  assert.equal(FS.sizeLabel(1), "1 byte")
+  assert.equal(FS.sizeLabel(999), "999 bytes")
+  assert.equal(FS.sizeLabel(1500), "1.5 KB")
+  assert.equal(FS.sizeLabel(12000), "12 KB")
+  assert.equal(FS.sizeLabel(3400000), "3.4 MB")
+  assert.equal(FS.sizeLabel(2500000000), "2.5 GB")
+})
+
+test("recent lists files newest first, without folders", () => {
+  assert.deepEqual(FS.recent(entries, 3).map((e) => e.name), ["quarterly-reports.zip", "Draft report v2.docx", "summary.txt"])
+})
+
+test("details and preview kinds for the Search Files pane", () => {
+  const [img, txt, big, pdf] = FS.parseListing(listing([
+    ["regular file", 3, "/home/ada/Pictures/cat.PNG", 2048],
+    ["regular file", 3, "/home/ada/notes.md", 900],
+    ["regular file", 3, "/home/ada/huge.log", 5000000],
+    ["regular file", 40, "/home/ada/Personal/Uni/Report.pdf", 1234567]
+  ]), HOME)
+  assert.equal(FS.previewKind(img), "image")
+  assert.equal(FS.previewKind(txt), "text")
+  assert.equal(FS.previewKind(big), "glyph", "text over 1 MB is not read")
+  assert.equal(FS.previewKind(pdf), "glyph")
+  const d = FS.details(pdf, NOW, () => "relative")
+  assert.deepEqual(d, {
+    path: "/home/ada/Personal/Uni/Report.pdf", name: "Report.pdf", where: "~/Personal/Uni",
+    type: "PDF document", size: "1.2 MB", modified: "30 Sep", glyph: "\uf1c1", preview: "glyph"
+  })
 })

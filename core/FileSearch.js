@@ -10,7 +10,8 @@ var DEFAULT_LIMIT = 5
 var MIN_QUERY_LENGTH = 2
 var MAX_ENTRIES = 200000
 
-// stat --printf '%F|%Y|%n\0' output: type, mtime in seconds, absolute path.
+// stat --printf '%F|%Y|%s|%n\0' output: type, mtime in seconds, size in
+// bytes, absolute path. The path is last, so a "|" in it is harmless.
 function parseListing(text, home, maxEntries) {
   var out = []
   var limit = maxEntries || MAX_ENTRIES
@@ -20,8 +21,9 @@ function parseListing(text, home, maxEntries) {
     var rec = records[i]
     var a = rec.indexOf("|")
     var b = a < 0 ? -1 : rec.indexOf("|", a + 1)
-    if (b < 0) continue
-    var path = rec.slice(b + 1)
+    var c = b < 0 ? -1 : rec.indexOf("|", b + 1)
+    if (c < 0) continue
+    var path = rec.slice(c + 1)
     if (path.indexOf(prefix) !== 0 || path.length === prefix.length) continue
     var rel = path.slice(prefix.length).replace(/\/+$/, "")
     var slash = rel.lastIndexOf("/")
@@ -33,6 +35,7 @@ function parseListing(text, home, maxEntries) {
       dir: slash < 0 ? "" : rel.slice(0, slash),
       folder: rec.slice(0, a) === "directory",
       mtime: Number(rec.slice(a + 1, b)) || 0,
+      size: Number(rec.slice(b + 1, c)) || 0,
       lowerName: name.toLowerCase(),
       lowerRel: rel.toLowerCase()
     })
@@ -78,10 +81,21 @@ function recencyBonus(mtime, nowMs) {
   return 0
 }
 
+// Bonus for files the user opened from omacast, from their frecency score
+// (core/Frecency.js: ~100 after one open, halving every 10 days). One
+// recent open lifts a prefix match (80) above an unopened exact name (100).
+var MAX_VISIT_BONUS = 40
+
+function visitBonus(frecencyScore) {
+  if (!(frecencyScore > 1)) return 0
+  return Math.min(MAX_VISIT_BONUS, 15 * Math.log10(frecencyScore))
+}
+
 // Entries whose name or path holds every query token, best first. Each
 // token must match; at least one must match the name, so a query that
 // matches only folder names returns those folders, not their contents.
-function search(entries, query, nowMs, limit) {
+// bonus(entry), when given, adds a number to an entry's score.
+function search(entries, query, nowMs, limit, bonus) {
   var q = String(query || "").trim().toLowerCase()
   if (q.length < MIN_QUERY_LENGTH) return []
   var tokens = q.split(/\s+/)
@@ -98,7 +112,7 @@ function search(entries, query, nowMs, limit) {
       total += s
     }
     if (!ok || !inName) continue
-    hits.push({ entry: e, score: total + recencyBonus(e.mtime, nowMs) })
+    hits.push({ entry: e, score: total + recencyBonus(e.mtime, nowMs) + (bonus ? bonus(e) : 0) })
   }
   hits.sort(function(a, b) {
     return b.score - a.score || a.entry.rel.length - b.entry.rel.length || b.entry.mtime - a.entry.mtime
@@ -127,10 +141,63 @@ var KINDS = {
   ppt: "slides", pptx: "slides", odp: "slides", key: "slides"
 }
 
-function glyphFor(entry) {
-  if (entry.folder) return GLYPHS.folder
+function kindOf(entry) {
+  if (entry.folder) return "folder"
   var dot = entry.lowerName.lastIndexOf(".")
-  return GLYPHS[KINDS[dot > 0 ? entry.lowerName.slice(dot + 1) : ""] || "file"]
+  return KINDS[dot > 0 ? entry.lowerName.slice(dot + 1) : ""] || "file"
+}
+
+function glyphFor(entry) { return GLYPHS[kindOf(entry)] }
+
+var KIND_NAMES = {
+  folder: "Folder", pdf: "PDF document", image: "Image", code: "Source code", text: "Text",
+  archive: "Archive", audio: "Audio", video: "Video", word: "Document", sheet: "Spreadsheet",
+  slides: "Presentation", file: "File"
+}
+
+// "12 KB", "3.4 MB": decimal units, as file managers on Linux show them.
+function sizeLabel(bytes) {
+  if (!(bytes >= 0)) return ""
+  if (bytes < 1000) return bytes + (bytes === 1 ? " byte" : " bytes")
+  var units = ["KB", "MB", "GB", "TB"], v = bytes / 1000, i = 0
+  while (v >= 1000 && i < units.length - 1) { v /= 1000; i++ }
+  return (v < 10 ? Math.round(v * 10) / 10 : Math.round(v)) + " " + units[i]
+}
+
+// Files changed most recently, for Search Files before the user types.
+function recent(entries, limit) {
+  var files = []
+  for (var i = 0; i < entries.length; i++) if (!entries[i].folder) files.push(entries[i])
+  files.sort(function(a, b) { return b.mtime - a.mtime })
+  return files.slice(0, limit || 20)
+}
+
+// What the preview pane shows: an image, the head of a text file, or the
+// type glyph. Text over 1 MB is not read [D].
+var TEXT_PREVIEW_MAX_BYTES = 1000000
+var IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]
+
+function previewKind(entry) {
+  var kind = kindOf(entry)
+  var dot = entry.lowerName.lastIndexOf(".")
+  var ext = dot > 0 ? entry.lowerName.slice(dot + 1) : ""
+  if (kind === "image" && IMAGE_EXTENSIONS.indexOf(ext) >= 0) return "image"
+  if ((kind === "text" || kind === "code" || ext === "csv") && entry.size <= TEXT_PREVIEW_MAX_BYTES) return "text"
+  return "glyph"
+}
+
+// Everything the Search Files detail pane shows for one entry.
+function details(entry, nowMs, relativeTime) {
+  return {
+    path: entry.path,
+    name: entry.name,
+    where: entry.dir ? "~/" + entry.dir : "~",
+    type: KIND_NAMES[kindOf(entry)],
+    size: entry.folder ? "" : sizeLabel(entry.size),
+    modified: modifiedLabel(entry.mtime * 1000, nowMs, relativeTime),
+    glyph: glyphFor(entry),
+    preview: previewKind(entry)
+  }
 }
 
 // The parent folders that tell same-named files apart: the last two, or
@@ -174,8 +241,14 @@ if (typeof module !== "undefined") {
     parseListing: parseListing,
     search: search,
     glyphFor: glyphFor,
+    kindOf: kindOf,
+    sizeLabel: sizeLabel,
+    recent: recent,
+    previewKind: previewKind,
+    details: details,
     breadcrumb: breadcrumb,
     modifiedLabel: modifiedLabel,
+    visitBonus: visitBonus,
     candidate: candidate
   }
 }

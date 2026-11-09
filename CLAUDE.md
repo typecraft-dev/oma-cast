@@ -149,8 +149,14 @@ Works:
   config.json sets `remToPxRate` (16), `workHoursPerDay` (8) and `clockFormat` (`auto` follows the Qt locale, or `12h` / `24h`).
 
   ↵ copies the answer (HUD), Ctrl+↵ pastes it (wl-copy on stdin, then Shift+Insert), Ctrl+Shift+C copies "question = answer". Each one saves to **Calculator History** (`db/calculator.json`, 4096 rows / 90 days): a built-in command and pushed view, searchable, Ctrl+D deletes an entry, Ctrl+Shift+D deletes all. RPC: `calculator.calculate|historyGetAll|historyDelete|historyDeleteAll|refreshCurrencies|getCurrencies`. A bare number, word or quantity (`42`, `firefox`, `5 kg`) never produces a row, because the section takes ↵.
+- **File search** (SPEC §8.6, `core/FileSearch.js`, `services/FileIndex.qml`, `ui/FileDetail.qml`) [D]: no index or watcher. On open, if the listing is over 30 s old, `fd` + `stat` list `$HOME` with fixed arguments (~55 ms for ~25k entries; default excludes for `node_modules`, `.venv`, `venv`, `__pycache__`, `site-packages`, `target`, `.cache`, `.git`), and the query is matched in-process, so it never reaches an argv.
+  - Root search: a **Files** section after Results, 5 rows. Ranking: exact name 100, name prefix 80, word start 60, inside the name 40, path only 10; +12/+8/+4 for changes within a day/week/month; plus `15 × log10(frecency)` (max 40) for files opened from omacast. Every token must match and one must match the name.
+  - **Search Files** (built-in command, and Search All Files in a file row's action panel, which carries the query): a 40/60 list and detail pane. Before typing it lists the 30 most recently changed files. The pane previews images and the first 4000 characters of text and code under 1 MB (FileView with `watchChanges`), then Name, Where, Type, Size, Modified.
+  - Actions: Open File / Open Folder (`gio open`, which gives a `Terminal=true` default such as nvim a terminal; `xdg-open` does not), Show in Files (`nautilus --select`), Copy Path (Ctrl+Shift+C). Open and Show record a frecency visit under `file:<path>`.
+  - RPC `files.status` and `files.details`. `omacast doctor` reports fd and the listing size.
+  - A listing that lands after the first answer, and commands that load after it (right after a reload), now move the selection to the first row unless the user moved it.
 - **Latency:** show → mapped in 59–66 ms, hide in 24–42 ms on Omarchy 4.0.6 (`tests/smoke.sh`; it was 37–44 ms on the old `OverlayWindow`).
-- **Tests:** root search, calculator and privacy coverage (`node --test tests/*.test.js`).
+- **Tests:** root search, calculator, file search and privacy coverage (`node --test tests/*.test.js`).
 
 **Default-agent hand-off:** removed 2026-11-02 after the marketplace review; it exposed the question in process arguments (SPEC §2.0).
 

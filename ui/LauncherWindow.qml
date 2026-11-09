@@ -63,6 +63,9 @@ PanelWindow {
   property string query: ""
   property int selectedIndex: -1
   property var selectedRow: null
+  // The Search Files detail pane's data for the selected row, or null.
+  property var fileDetail: null
+  readonly property bool fileView: window.view.kind === "file-search"
   property int searchSerial: 0
   property bool searchPending: false
   property bool actionPanelOpen: false
@@ -98,6 +101,7 @@ PanelWindow {
   readonly property string placeholder: window.view.kind === "alias" ? "Type an alias, then press ↵"
     : window.view.kind === "menu" ? "Search " + window.view.title + "…"
     : window.view.kind === "calculator-history" ? "Search calculations…"
+    : window.view.kind === "file-search" ? "Search files…"
     : "Search for apps and commands…"
 
   readonly property int cardWidth: Math.min(px(750), width - Style.gapsOut * 2)
@@ -158,7 +162,8 @@ PanelWindow {
     var saved = window.stack.slice()
     saved[saved.length - 1] = Object.assign({}, window.view, { query: window.query, selectedIndex: window.selectedIndex })
     window.stack = saved.concat([next])
-    window.query = next.kind === "alias" ? (next.value || "") : ""
+    // A pushed view can start with a query (Search All Files carries it over).
+    window.query = next.kind === "alias" ? (next.value || "") : (next.query || "")
     window.rebuild(true)
   }
 
@@ -260,6 +265,8 @@ PanelWindow {
       window.argFocus = -1
     }
     window.argDefs = window.selectedRow && window.selectedRow.argsJson ? JSON.parse(window.selectedRow.argsJson) : []
+    var detail = window.fileView && id.indexOf("file:") === 0 ? window.backend.callSync("files.details", { id: id }) : null
+    window.fileDetail = detail && detail.ok ? detail.data : null
     if (index >= 0) list.positionViewAtIndex(index, ListView.Contain)
     if (index === window.nextSelectable(-1, 1)) list.positionViewAtBeginning()
   }
@@ -649,13 +656,19 @@ PanelWindow {
 
   Connections {
     target: window.backend
-    function onCandidatesRevisionChanged() { if (window.shown && !window.actionPanelOpen && !window.alert) window.rebuild(false) }
+    // Commands can land after the first answer (right after a reload), when
+    // only the web fallbacks matched. Follow them, as for files, unless the
+    // user has moved off the first row.
+    function onCandidatesRevisionChanged() {
+      if (!window.shown || window.actionPanelOpen || window.alert) return
+      window.rebuild(window.selectedIndex === window.nextSelectable(-1, 1))
+    }
     // Exchange rates or zone offsets arrived: re-evaluate a calculation on screen.
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
     // Files arrive after the first answer and take the top spot when nothing
     // else matched; follow them unless the user has moved off the first row.
     function onFilesRevisionChanged() {
-      if (!window.shown || window.actionPanelOpen || !window.query) return
+      if (!window.shown || window.actionPanelOpen || !(window.query || window.fileView)) return
       window.rebuild(window.selectedIndex === window.nextSelectable(-1, 1))
     }
   }
@@ -882,7 +895,12 @@ PanelWindow {
 
       ListView {
         id: list
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        // Search Files splits about 40/60 with the detail pane, as
+        // Raycast's File Search does (37/63).
+        width: window.fileView ? Math.round(parent.width * 0.4) : parent.width
         anchors.topMargin: window.px(4)
         anchors.bottomMargin: window.px(4)
         visible: window.view.kind !== "alias"
@@ -901,6 +919,29 @@ PanelWindow {
           onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i) }
           onClicked: function(i) { window.perform("open", i) }
         }
+      }
+
+      Rectangle {
+        id: detailDivider
+        visible: window.fileView && rows.count > 0
+        anchors.left: list.right
+        anchors.leftMargin: window.px(6)
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 1
+        color: Util.alpha(window.look.foreground, 0.12)
+      }
+
+      FileDetail {
+        visible: window.fileView && rows.count > 0 && window.fileDetail !== null
+        anchors.left: detailDivider.right
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: window.px(6)
+        detail: window.fileDetail
+        look: window.look
+        zoom: window.zoom
       }
 
       Column {

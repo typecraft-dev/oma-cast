@@ -131,19 +131,53 @@ Item {
 
   // Rows from the last search, by id, so actions can find their path.
   property var fileRows: ({})
+  property var fileEntries: ({})
   // Bumped when a new listing arrives, so an open search shows its files.
   readonly property double filesRevision: fileIndex.refreshedAt
 
   function fileCandidates(query, nowMs) {
-    var rows = FileSearch.search(fileIndex.entries, query, nowMs, FileSearch.DEFAULT_LIMIT)
-      .map(function(e) { return FileSearch.candidate(e, nowMs, RootSearch.relativeTime) })
-    var byId = ({})
-    for (var i = 0; i < rows.length; i++) byId[rows[i].id] = rows[i]
+    var visits = frecencyStore.loaded ? frecencyStore.doc.items : ({})
+    var bonus = function(e) {
+      var v = visits["file:" + e.path]
+      return v ? FileSearch.visitBonus(Frecency.score(v.anchor, nowMs / 1000)) : 0
+    }
+    return backend.keepFileRows(FileSearch.search(fileIndex.entries, query, nowMs, FileSearch.DEFAULT_LIMIT, bonus), nowMs, false)
+  }
+
+  function keepFileRows(entries, nowMs, inFileView) {
+    var rows = [], byId = ({}), entryById = ({})
+    for (var i = 0; i < entries.length; i++) {
+      var c = FileSearch.candidate(entries[i], nowMs, RootSearch.relativeTime)
+      // The Search Files list is narrow: the detail pane shows the rest.
+      if (inFileView) { c.subtitle = ""; c.typeLabel = ""; c.inFileView = true }
+      rows.push(c)
+      byId[c.id] = c
+      entryById[c.id] = entries[i]
+    }
     backend.fileRows = byId
+    backend.fileEntries = entryById
     return rows
   }
 
-  function fileAction(action, row) {
+  // Search Files: recently changed files before typing, then up to 50 matches.
+  function fileViewSections(query, nowMs) {
+    var q = String(query || "").trim()
+    if (q.length < FileSearch.MIN_QUERY_LENGTH) {
+      var recent = backend.keepFileRows(FileSearch.recent(fileIndex.entries, 30), nowMs, true)
+      return recent.length ? [{ id: "recent-files", title: "Recently Changed", rows: recent.map(function(c) { return { candidate: c } }) }] : []
+    }
+    var visits = frecencyStore.loaded ? frecencyStore.doc.items : ({})
+    var bonus = function(e) {
+      var v = visits["file:" + e.path]
+      return v ? FileSearch.visitBonus(Frecency.score(v.anchor, nowMs / 1000)) : 0
+    }
+    var rows = backend.keepFileRows(FileSearch.search(fileIndex.entries, q, nowMs, 50, bonus), nowMs, true)
+    return rows.length ? [{ id: "files", title: "Files", rows: rows.map(function(c) { return { candidate: c } }) }] : []
+  }
+
+  function fileAction(action, row, query) {
+    // Opening a file, or showing it, teaches the ranking (as for apps).
+    if (action === "open" || action === "show-in-files") backend.recordVisit(row.id, query)
     switch (action) {
       case "open":
         // gio, not xdg-open: xdg-open runs a Terminal=true default (nvim)
@@ -157,6 +191,8 @@ Item {
       case "copy-path":
         clipboard.copy(row.path)
         return { close: true, hud: "Copied to Clipboard" }
+      case "search-files":
+        return { push: { kind: "file-search", title: "Search Files", query: query } }
     }
     throw new Error("Unknown action " + action)
   }
@@ -469,6 +505,10 @@ Item {
         if (data && data.fleaHits) ctx.fleaHits = data.fleaHits
         var sections
         if (view && view.kind === "menu") sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
+        else if (view && view.kind === "file-search") {
+          fileIndex.refresh()
+          sections = backend.fileViewSections(query, ctx.nowMs)
+        }
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else {
           ctx.filter = String(data && data.filter || "all")
@@ -538,13 +578,19 @@ Item {
           return backend.calculatorAction(String(data.action || "open"), entry, entry.id)
         }
         var fileRow = data && backend.fileRows[String(data.id)]
-        if (fileRow) return backend.fileAction(String(data.action || "open"), fileRow)
+        if (fileRow) return backend.fileAction(String(data.action || "open"), fileRow, String(data.query || ""))
         return backend.performAction(data)
       },
       getSearchHistory: function() { return frecencyStore.loaded ? frecencyStore.doc.searchHistory : [] }
     })
 
     Rpc.register(backend.registry, "files", {
+      // The Search Files detail pane, for a row of the last search.
+      details: function(data) {
+        var entry = backend.fileEntries[String(data && data.id || "")]
+        if (!entry) throw new Error("Unknown file " + (data && data.id))
+        return FileSearch.details(entry, Date.now(), RootSearch.relativeTime)
+      },
       status: function() {
         return { available: fileIndex.available, entries: fileIndex.entries.length, refreshedAt: fileIndex.refreshedAt || null, home: fileIndex.home }
       }
