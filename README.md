@@ -114,6 +114,11 @@ cache and state directories to the `omacast` names. In a development checkout, `
 the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` moves `oma-cast.lua` to
 `omacast.lua`, keeping your key. `omacast doctor` reports anything left over.
 
+## Optional plugins
+
+- [Camera preview](addons/camera-preview/README.md): add **Open camera** to check
+  your webcam in a mirrored preview before a meeting.
+
 ## Keyboard
 
 | Key | Does |
