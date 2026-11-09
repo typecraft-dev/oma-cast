@@ -292,6 +292,10 @@ function rootSections(candidates, query, ctx, deps) {
     var sections = []
     if (ctx.calculation && !filtered) sections.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
     if (results.length > 0) sections.push({ id: "results", title: "Results", rows: results })
+    // Files (SPEC §7.2) come after Results, as in Raycast's root search [O];
+    // ctx.files holds FileSearch candidates, already ranked and limited.
+    if (ctx.files && ctx.files.length && !filtered)
+      sections.push({ id: "files", title: "Files", rows: ctx.files.map(function(c) { return { candidate: c, record: null } }) })
     if (!filtered) sections.push({ id: "fallback-commands", title: "Use “" + q + "” with…", rows: fallbackRows(q) })
     return sections
   }
@@ -350,6 +354,15 @@ function actionsFor(candidate) {
       calc.push({ id: "delete-all-entries", title: "Delete All Entries", shortcut: "Ctrl Shift D", section: "delete", icon: "" })
     }
     return calc
+  }
+  // File Search actions (ref 04 App. A file-search: Open, Show in Finder,
+  // Copy Path) [O]; the file manager stands in for Finder.
+  if (candidate.kind === "file" || candidate.kind === "folder") {
+    return [
+      { id: "open", title: candidate.kind === "folder" ? "Open Folder" : "Open File", shortcut: "↵", section: "primary", icon: "" },
+      { id: "show-in-files", title: "Show in Files", shortcut: "Ctrl ↵", section: "primary", icon: "" },
+      { id: "copy-path", title: "Copy Path", shortcut: "Ctrl Shift C", section: "copy", icon: "" }
+    ]
   }
   var primary
   var list = []
@@ -456,6 +469,12 @@ function aboutFor(c, nowMs) {
     add("Saved", c.typeLabel)
     return rows
   }
+  if (c.kind === "file" || c.kind === "folder") {
+    add("Name", c.title)
+    add("Where", c.path)
+    add("Modified", c.typeLabel)
+    return rows
+  }
   add("Title", c.title)
   add("Type", c.typeLabel)
   if (c.kind !== "fallback") add("Location", c.subtitle)
@@ -494,6 +513,7 @@ if (typeof module !== "undefined") {
     calculatorCandidate: calculatorCandidate,
     historyCandidate: historyCandidate,
     historySections: historySections,
+    relativeTime: relativeTime,
     decorate: decorate,
     rootSections: rootSections,
     submenuSections: submenuSections,

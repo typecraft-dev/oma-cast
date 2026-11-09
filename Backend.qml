@@ -12,6 +12,7 @@ import "core/Frecency.js" as Frecency
 import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
 import "core/Calculator.js" as Calculator
+import "core/FileSearch.js" as FileSearch
 import "services"
 
 Item {
@@ -124,6 +125,46 @@ Item {
   function decorated(id) {
     var c = backend.candidatesById[id]
     return c ? RootSearch.decorate(c, backend.searchContext(), backend.deps) : null
+  }
+
+  // ----------------------------------------------------------- file search
+
+  // Rows from the last search, by id, so actions can find their path.
+  property var fileRows: ({})
+  // Bumped when a new listing arrives, so an open search shows its files.
+  readonly property double filesRevision: fileIndex.refreshedAt
+
+  function fileCandidates(query, nowMs) {
+    var rows = FileSearch.search(fileIndex.entries, query, nowMs, FileSearch.DEFAULT_LIMIT)
+      .map(function(e) { return FileSearch.candidate(e, nowMs, RootSearch.relativeTime) })
+    var byId = ({})
+    for (var i = 0; i < rows.length; i++) byId[rows[i].id] = rows[i]
+    backend.fileRows = byId
+    return rows
+  }
+
+  function fileAction(action, row) {
+    switch (action) {
+      case "open":
+        // gio, not xdg-open: xdg-open runs a Terminal=true default (nvim)
+        // with no terminal, so it never shows. gio opens it in one, and it
+        // picks the same app as a double-click in Files.
+        Util.execArgv(["uwsm-app", "--", "gio", "open", row.path])
+        return { close: true }
+      case "show-in-files":
+        Util.execArgv(["uwsm-app", "--", "nautilus", "--select", row.path])
+        return { close: true }
+      case "copy-path":
+        clipboard.copy(row.path)
+        return { close: true, hud: "Copied to Clipboard" }
+    }
+    throw new Error("Unknown action " + action)
+  }
+
+  FileIndex {
+    id: fileIndex
+    home: Quickshell.env("HOME") || ""
+    onMessage: function(level, text, metadata) { backend.log(level, "files", text, metadata) }
   }
 
   // ------------------------------------------------------------ calculator
@@ -431,7 +472,10 @@ Item {
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else {
           ctx.filter = String(data && data.filter || "all")
-          if (query.trim() && ctx.filter === "all") ctx.calculation = backend.calculate(query)
+          if (query.trim() && ctx.filter === "all") {
+            ctx.calculation = backend.calculate(query)
+            ctx.files = backend.fileCandidates(query, ctx.nowMs)
+          }
           sections = RootSearch.rootSections(backend.candidates, query, ctx, backend.deps)
         }
         return sections.map(function(s) {
@@ -442,6 +486,7 @@ Item {
         var rowId = String(data && data.id || "")
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
+        if (backend.fileRows[rowId]) return RootSearch.actionsFor(backend.fileRows[rowId])
         var candidate = backend.decorated(rowId)
         if (!candidate) {
           var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === data.id })[0]
@@ -461,6 +506,7 @@ Item {
           var entry = backend.historyEntry(rowId)
           return entry ? RootSearch.aboutFor(RootSearch.historyCandidate(entry, nowMs), nowMs) : []
         }
+        if (backend.fileRows[rowId]) return RootSearch.aboutFor(backend.fileRows[rowId], nowMs)
         var candidate = backend.decorated(rowId)
         if (!candidate) {
           var f = RootSearch.FALLBACKS.filter(function(x) { return x.id === rowId })[0]
@@ -491,9 +537,17 @@ Item {
           if (!entry) throw new Error("No such history entry")
           return backend.calculatorAction(String(data.action || "open"), entry, entry.id)
         }
+        var fileRow = data && backend.fileRows[String(data.id)]
+        if (fileRow) return backend.fileAction(String(data.action || "open"), fileRow)
         return backend.performAction(data)
       },
       getSearchHistory: function() { return frecencyStore.loaded ? frecencyStore.doc.searchHistory : [] }
+    })
+
+    Rpc.register(backend.registry, "files", {
+      status: function() {
+        return { available: fileIndex.available, entries: fileIndex.entries.length, refreshedAt: fileIndex.refreshedAt || null, home: fileIndex.home }
+      }
     })
 
     // Names from Raycast's calculator namespace (ref 02 §2).
@@ -553,6 +607,7 @@ Item {
     if (method === "window.visibilityChanged" && data && data.visible) {
       menuSource.refresh()
       calculatorData.refresh()
+      fileIndex.refresh()
     }
   }
 

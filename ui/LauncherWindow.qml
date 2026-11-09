@@ -625,7 +625,7 @@ PanelWindow {
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer"]); return true }
+      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-path", "copy-question-answer"]); return true }
       if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries"]); return true }
       if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry"]); return true }
       if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }
@@ -652,6 +652,12 @@ PanelWindow {
     function onCandidatesRevisionChanged() { if (window.shown && !window.actionPanelOpen && !window.alert) window.rebuild(false) }
     // Exchange rates or zone offsets arrived: re-evaluate a calculation on screen.
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
+    // Files arrive after the first answer and take the top spot when nothing
+    // else matched; follow them unless the user has moved off the first row.
+    function onFilesRevisionChanged() {
+      if (!window.shown || window.actionPanelOpen || !window.query) return
+      window.rebuild(window.selectedIndex === window.nextSelectable(-1, 1))
+    }
   }
 
 
