@@ -19,9 +19,9 @@ Run these commands from the omacast checkout, which must remain in place:
 
 ```sh
 mkdir -p ~/.config/omarchy/plugins
-ln -s "$PWD/addons/camera-preview" ~/.config/omarchy/plugins/oma-cast.camera-preview
+ln -s "$PWD/addons/camera-preview" ~/.config/omarchy/plugins/omacast.camera-preview
 omarchy-shell shell rescanPlugins
-omarchy plugin enable oma-cast.camera-preview
+omarchy plugin enable omacast.camera-preview
 ```
 
 Merge the object in `menu-entry.json` into
@@ -32,7 +32,7 @@ up menu extensions automatically. Search for **Open camera** and press Enter.
 To test the plugin directly:
 
 ```sh
-omarchy-shell shell summon oma-cast.camera-preview '{}'
+omarchy-shell shell summon omacast.camera-preview '{}'
 ```
 
 ## Remove
@@ -40,8 +40,8 @@ omarchy-shell shell summon oma-cast.camera-preview '{}'
 Remove the `camera-preview` entry from your menu extension file, then run:
 
 ```sh
-omarchy plugin disable oma-cast.camera-preview
-rm ~/.config/omarchy/plugins/oma-cast.camera-preview
+omarchy plugin disable omacast.camera-preview
+rm ~/.config/omarchy/plugins/omacast.camera-preview
 omarchy-shell shell rescanPlugins
 ```
 
