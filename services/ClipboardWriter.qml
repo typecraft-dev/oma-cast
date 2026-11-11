@@ -23,9 +23,11 @@ Item {
   }
 
   // Constant scripts: no caller data ever reaches the command line.
-  readonly property string copyScript: 'exec wl-copy'
+  // The type is explicit because wl-copy otherwise sniffs stdin, and a value
+  // like "4" or "%PDF-1" is then offered only as a non-text type.
+  readonly property string copyScript: 'exec wl-copy --type text/plain'
   // Wait for the launcher to unmap, as omarchy-clipboard-paste-text does.
-  readonly property string pasteScript: 'wl-copy || exit; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true'
+  readonly property string pasteScript: 'wl-copy --type text/plain || exit; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true'
 
   Process {
     id: proc
