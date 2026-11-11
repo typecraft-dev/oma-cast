@@ -426,7 +426,8 @@ PanelWindow {
     }
     if (key === Qt.Key_Backspace && !value) { window.argFocus--; return true }
     if (Util.editsFilter(event, value)) { set(Util.editedFilter(event, value)); return true }
-    if (window.isTyping(event)) { set(value + event.text); return true }
+    var typed = window.typedText ? window.typedText(event) : (window.isTyping(event) ? event.text : "")
+    if (typed) { set(value + typed); return true }
     return false
   }
 
@@ -530,6 +531,7 @@ PanelWindow {
   // -1 up, 1 down or 0, per the navigation bindings. Ctrl+P only moves up
   // inside popups: in the list it opens the dropdown.
   function direction(event, ctrl, alt, inPopup) {
+    if (window.typedText && window.typedText(event)) return 0
     var key = event.key
     if (!ctrl && !alt && key === Qt.Key_Down) return 1
     if (!ctrl && !alt && key === Qt.Key_Up) return -1
@@ -549,7 +551,8 @@ PanelWindow {
     if (dir) { panel.move(dir); return true }
     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { panel.activateSelected(); return true }
     if (Util.editsFilter(event, panel.filter)) { panel.filter = Util.editedFilter(event, panel.filter); return true }
-    if (window.isTyping(event)) { panel.filter += event.text; return true }
+    var typed = window.typedText ? window.typedText(event) : (window.isTyping(event) ? event.text : "")
+    if (typed) { panel.filter += typed; return true }
     return true
   }
 
@@ -622,8 +625,9 @@ PanelWindow {
         if (window.historyIndex >= 0) { window.recallHistory(-1); return true }
         window.move(1); return true
       }
-      if (key === Qt.Key_PageUp) { window.move(-8); return true }
-      if (key === Qt.Key_PageDown) { window.move(8); return true }
+      var pageTyped = window.typedText ? window.typedText(event) : (window.isTyping(event) ? event.text : "")
+      if (!pageTyped && key === Qt.Key_PageUp) { window.move(-8); return true }
+      if (!pageTyped && key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
       if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer"]); return true }
       if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries"]); return true }
@@ -638,13 +642,70 @@ PanelWindow {
 
     if (Util.editsFilter(event, window.query)) { window.setQuery(Util.editedFilter(event, window.query)); return true }
     if (key === Qt.Key_Backspace && !window.query && !window.atRoot) { window.pop(); return true }
-    if (window.isTyping(event)) { window.setQuery(window.query + event.text); return true }
+    var typed = window.typedText ? window.typedText(event) : (window.isTyping(event) ? event.text : "")
+    if (typed) { window.setQuery(window.query + typed); return true }
     return false
   }
 
+  // Numpad keys on Qt/Wayland arrive with Qt.KeypadModifier, and when NumLock
+  // is off or not synced to the layer-shell surface Qt reports them as keypad
+  // navigation keysyms (Insert/End/Down/PageDown/Left/Clear/Right/Home/Up/PageUp/Delete)
+  // with empty event.text, or via XKB keypad nativeScanCode (evdev + 8).
+  function typedText(event) {
+    if (!event || event.key === Qt.Key_NumLock || event.key === Qt.Key_CapsLock || event.key === Qt.Key_ScrollLock)
+      return ""
+    var modifiers = event.modifiers & ~Qt.KeypadModifier
+    if (modifiers !== Qt.NoModifier && modifiers !== Qt.ShiftModifier) return ""
+    if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127)
+      return event.text
+    if ((event.modifiers & Qt.KeypadModifier) && !(event.modifiers & Qt.ShiftModifier)) {
+      if (event.key >= Qt.Key_0 && event.key <= Qt.Key_9) return String.fromCharCode(event.key)
+      switch (event.key) {
+        case Qt.Key_Insert: return "0"
+        case Qt.Key_End: return "1"
+        case Qt.Key_Down: return "2"
+        case Qt.Key_PageDown: return "3"
+        case Qt.Key_Left: return "4"
+        case Qt.Key_Clear: return "5"
+        case Qt.Key_Right: return "6"
+        case Qt.Key_Home: return "7"
+        case Qt.Key_Up: return "8"
+        case Qt.Key_PageUp: return "9"
+        case Qt.Key_Period:
+        case Qt.Key_Delete: return "."
+        case Qt.Key_Comma: return ","
+        case Qt.Key_Plus: return "+"
+        case Qt.Key_Minus: return "-"
+        case Qt.Key_Asterisk: return "*"
+        case Qt.Key_Slash: return "/"
+        case Qt.Key_Equal: return "="
+      }
+    }
+    if (!(event.modifiers & Qt.ShiftModifier)) {
+      switch (event.nativeScanCode) {
+        case 63: return "*"
+        case 79: return "7"
+        case 80: return "8"
+        case 81: return "9"
+        case 82: return "-"
+        case 83: return "4"
+        case 84: return "5"
+        case 85: return "6"
+        case 86: return "+"
+        case 87: return "1"
+        case 88: return "2"
+        case 89: return "3"
+        case 90: return "0"
+        case 91: return "."
+        case 106: return "/"
+        case 125: return "="
+      }
+    }
+    return ""
+  }
+
   function isTyping(event) {
-    return event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127
-      && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)
+    return window.typedText(event) !== ""
   }
 
   Connections {
