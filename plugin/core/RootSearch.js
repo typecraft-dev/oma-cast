@@ -163,6 +163,77 @@ function webSearchSections(engine, query) {
   return [{ id: "results", title: "", rows: [{ candidate: c, record: null }] }]
 }
 
+// Quick Capture's live row. The id namespace ("quick-capture:*") is
+// separate from the builtin that pushes the view
+// ("builtin:quick-capture", which earns the frecency visit), so the row
+// never shares selection or frecency with the command. The backend shapes
+// the human strings with QuickCapture (preview, file, mode label) and
+// passes them in — this module stays dependency-free. [D]
+var QUICK_SAVE_ID = "quick-capture:save"
+
+function quickCaptureCandidate(preview, subtitle, noteText, file, dir, mode) {
+  return {
+    id: QUICK_SAVE_ID,
+    type: "command",
+    kind: "quick-capture",
+    title: preview,
+    subtitle: subtitle,
+    typeLabel: "Note",
+    glyph: "\uf0e7",                     // nf-fa-bolt
+    noteText: noteText,
+    file: file,
+    dir: dir,
+    mode: mode,
+    rootSearch: { when: "always" }
+  }
+}
+
+// One live row for a pushed quick-capture view while the query is
+// non-empty; nothing while empty (the empty state invites typing).
+function quickCaptureSections(query, preview, subtitle, noteText, file, dir, mode) {
+  var q = String(query === undefined || query === null ? "" : query).trim()
+  if (!q) return []
+  return [{ id: "quick-capture", title: "", rows: [{ candidate: quickCaptureCandidate(preview, subtitle, noteText, file, dir, mode), record: null }] }]
+}
+
+// Todoist's live add row. Same id-namespace split as web search /
+// quick capture: the row ("todoist:add") never shares selection or
+// frecency with the builtin that pushes the view
+// ("builtin:todoist-add", which earns the frecency visit). [D]
+var TODO_ADD_ID = "todoist:add"
+
+function todoistAddCandidate(preview) {
+  return {
+    id: TODO_ADD_ID,
+    type: "command",
+    kind: "todoist-add",
+    title: preview,
+    subtitle: "Todoist",
+    typeLabel: "Task",
+    glyph: "",                     // nf-fa-tasks (U+F0AE)
+    rootSearch: { when: "always" }
+  }
+}
+
+// One live row for a pushed todoist-add view while the query is
+// non-empty; nothing while empty (the empty state invites typing).
+function todoistAddSections(query, preview) {
+  var q = String(query === undefined || query === null ? "" : query).trim()
+  if (!q) return []
+  return [{ id: "todoist-add", title: "", rows: [{ candidate: todoistAddCandidate(preview), record: null }] }]
+}
+
+// Task-list sections for a pushed todoist view. T is the Todoist core
+// module, passed in by the backend (core modules never import each
+// other — the filter/group helpers arrive like Calculator.filterHistory
+// does for historySections). [D]
+function todoistSections(tasks, query, nowMs, T) {
+  var groups = T.groupTasks(T.filterTasks(tasks, query), nowMs)
+  return groups.map(function(g) {
+    return { id: g.id, title: g.title, rows: g.tasks.map(function(c) { return { candidate: c, record: null } }) }
+  })
+}
+
 var BUILTINS = [
   webSearch(FALLBACKS[0], []),
   webSearch(FALLBACKS[1], ["ddg"]),
@@ -182,6 +253,40 @@ var BUILTINS = [
     glyph: "\uf1da",                     // nf-fa-history
     keywords: ["calculator", "calc", "math", "history", "conversions"],
     run: { push: { kind: "calculator-history", title: "Calculator History" } },
+    rootSearch: { when: "always" }
+  },
+  // Quick Capture: type a note in the pushed view's full-width query bar
+  // (like web search) and save it as markdown — appended to the same
+  // file or to a new file, per the mode setting. [D]
+  {
+    id: "builtin:quick-capture",
+    title: "Quick Capture",
+    subtitle: "Save a note as markdown",
+    glyph: "\uf0e7",                     // nf-fa-bolt
+    keywords: ["capture", "quick capture", "note", "notes", "jot", "inbox", "remember", "memo"],
+    run: { push: { kind: "quick-capture", title: "Quick Capture" } },
+    rootSearch: { when: "always" }
+  },
+  // Todoist tasks: a pushed task list plus a pushed add view with a
+  // full-width task bar (like web search / quick capture). The write path
+  // uses POST /tasks/quick so Todoist's own parser resolves p1, dates,
+  // #projects and @labels — no numeric priority is ever sent. [D]
+  {
+    id: "builtin:todoist",
+    title: "Todoist",
+    subtitle: "Your Todoist tasks",
+    glyph: "",                     // nf-fa-tasks (U+F0AE)
+    keywords: ["todoist", "task", "tasks", "todo"],
+    run: { push: { kind: "todoist", title: "Todoist" } },
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:todoist-add",
+    title: "Add Todoist Task",
+    subtitle: "Create a task in Todoist",
+    glyph: "",                     // nf-fa-tasks (U+F0AE)
+    keywords: ["todoist", "add task", "new task", "todo", "create task"],
+    run: { push: { kind: "todoist-add", title: "Add Todoist Task" } },
     rootSearch: { when: "always" }
   },
   {
@@ -529,6 +634,32 @@ function submenuSections(candidates, menuId, query, ctx, deps) {
 }
 
 function actionsFor(candidate) {
+  // Todoist add row: ↵ creates the task via POST /tasks/quick. [D]
+  if (candidate.kind === "todoist-add") {
+    return [
+      { id: "open", title: "Add Task", shortcut: "↵", section: "primary", icon: "" }
+    ]
+  }
+  // Todoist task: ↵ completes, Ctrl+↵ deletes (confirming), Ctrl+Shift+↵
+  // copies the title — the same ↵ / Ctrl+↵ / Ctrl+Shift+↵ slots both UIs
+  // already map to performNth(0|1|2), so no new key bindings. [D]
+  if (candidate.kind === "todoist-task") {
+    return [
+      { id: "complete", title: "Mark as Done", shortcut: "↵", section: "primary", icon: "" },
+      { id: "delete", title: "Delete Task", shortcut: "Ctrl ↵", section: "primary", icon: "" },
+      { id: "copy", title: "Copy Task Title", shortcut: "Ctrl Shift ↵", section: "copy", icon: "" }
+    ]
+  }
+  // Quick Capture: ↵ saves (respecting the mode), Ctrl+↵ forces a new
+  // file for this capture — the per-capture same-vs-new override. [D]
+  if (candidate.kind === "quick-capture") {
+    return [
+      { id: "open", title: "Save Capture", shortcut: "↵", section: "primary", icon: "" },
+      { id: "save-new", title: "Save as New File", shortcut: "Ctrl ↵", section: "primary", icon: "" },
+      { id: "reveal-folder", title: "Reveal Folder", shortcut: "", section: "primary", icon: "" },
+      { id: "copy-note", title: "Copy Note Text", shortcut: "Ctrl Shift C", section: "copy", icon: "" }
+    ]
+  }
   if (candidate.kind === "calculator" || candidate.kind === "calculator-history") {
     // ↵ copies, Ctrl ↵ pastes (SPEC §8 Calculator) [O]; delete keys are
     // the Windows `clear` shortcuts (ref 04 §2.8).
@@ -634,7 +765,20 @@ var CONFIRMATIONS = {
   "builtin:restart": { title: "Restart", message: "Are you sure you want to restart?", primary: "Restart" }
 }
 
-function confirmationFor(id, action) {
+// label names the row for prefix-rule confirms (the Todoist backends
+// pass the task content so the alert reads 'Delete "buy milk"?').
+function confirmationFor(id, action, label) {
+  // Todoist delete: destructive with no undo server-side, so it confirms
+  // like Kill Process does. Prefix rule, since task ids are dynamic. [D]
+  if (action === "delete" && String(id || "").indexOf("todoist:") === 0) {
+    var name = String(label || "").trim()
+    return {
+      title: "Delete Task",
+      message: name ? "Delete \"" + name + "\"? There is no undo." : "Delete this task? There is no undo.",
+      primary: "Delete",
+      destructive: true
+    }
+  }
   var c = action === "open" ? CONFIRMATIONS[id] : null
   if (action === "delete-all-entries") c = { title: "Delete All Entries", message: "This removes every calculation from Calculator History.", primary: "Delete All" }
   return c ? { title: c.title, message: c.message, primary: c.primary, destructive: true } : null
@@ -646,6 +790,22 @@ function aboutFor(c, nowMs) {
   var rows = []
   function add(label, value) {
     if (value !== undefined && value !== null && String(value) !== "") rows.push({ label: label, value: String(value) })
+  }
+  if (c.kind === "todoist-task" || c.kind === "todoist-add") {
+    add("Task", c.content || c.title)
+    if (c.dueLabel) add("Due", c.dueLabel)
+    if (c.priorityLabel && c.priorityLabel !== "p4") add("Priority", c.priorityLabel)
+    if (c.labels && c.labels.length) add("Labels", c.labels.join(", "))
+    add("ID", c.taskId || c.id)
+    return rows
+  }
+  if (c.kind === "quick-capture") {
+    add("Note", c.noteText || c.title)
+    add("File", c.file)
+    add("Folder", c.dir)
+    add("Mode", c.mode)
+    add("ID", c.id)
+    return rows
   }
   if (c.kind === "calculator") {
     add("Question", c.calcInput)
@@ -703,6 +863,13 @@ if (typeof module !== "undefined") {
     menuCandidates: menuCandidates,
     builtinCandidate: builtinCandidate,
     CALCULATOR_ID: CALCULATOR_ID,
+    QUICK_SAVE_ID: QUICK_SAVE_ID,
+    TODO_ADD_ID: TODO_ADD_ID,
+    todoistAddCandidate: todoistAddCandidate,
+    todoistAddSections: todoistAddSections,
+    todoistSections: todoistSections,
+    quickCaptureCandidate: quickCaptureCandidate,
+    quickCaptureSections: quickCaptureSections,
     URL_ID: URL_ID,
     typedUrl: typedUrl,
     urlCandidate: urlCandidate,

@@ -18,6 +18,11 @@ var DEFS = [
     type: "number", presets: [0, 15, 30, 60, 90, 300] },
   { scope: "general", key: "uiZoom", label: "Interface Zoom", hint: "Same as Ctrl + / − / 0",
     type: "number", presets: [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5] },
+  { scope: "general", key: "quickCaptureMode", label: "Quick Capture Mode", hint: "Where a capture lands — same inbox file, same daily file, or a new file each time",
+    type: "enum", choices: ["inbox", "daily", "new"],
+    titles: { inbox: "Same file (inbox)", daily: "Same file per day", "new": "New file each time" } },
+  { scope: "general", key: "quickCaptureDir", label: "Quick Capture Directory", hint: "Folder for captured notes — empty uses the default Notes folder",
+    type: "text" },
 
   // choices come from disk at render time (dyn.themes); "choices" is only
   // the fallback when the backend supplies none.
@@ -59,6 +64,8 @@ function choicesFor(def, dyn) {
 }
 
 function format(def, value) {
+  // Freeform text (the capture folder): empty reads as the default.
+  if (def.type === "text") return value && String(value).trim() ? String(value) : "Default"
   if (def.type === "bool") return value ? "On" : "Off"
   if (def.type === "number") {
     if (def.key === "popToRootTimeout") return value ? value + " s" : "Off"
@@ -72,8 +79,10 @@ function format(def, value) {
   return String(value).replace(/-/g, " ").replace(/^./, function(c) { return c.toUpperCase() })
 }
 
-// ↵ on a settings row cycles to the next value.
+// ↵ on a settings row cycles to the next value. Freeform text has no next
+// value — ↵ pushes the editor view instead (the backends branch on type).
 function cycle(def, value, dyn) {
+  if (def.type === "text") return value
   if (def.type === "bool") return !value
   if (def.type === "number") {
     var presets = def.presets

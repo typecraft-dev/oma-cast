@@ -273,6 +273,10 @@ function placeholderText() {
   if (v.kind === "processes") return "Search processes…"
   if (v.kind === "windows-settings") return "Search settings pages…"
   if (v.kind === "web-search") return v.title + "…"
+  if (v.kind === "quick-capture") return "Type a note, then press ↵ to capture…"
+  if (v.kind === "todoist") return "Search tasks…"
+  if (v.kind === "todoist-add") return "Type a task, then press ↵ to add…"
+  if (v.kind === "setting-edit") return "Type a folder path, then press ↵"
   return "Search for apps and commands…"
 }
 
@@ -343,7 +347,7 @@ function renderHeader() {
 function renderPills() {
   var L = look()
   el.pills.innerHTML = ""
-  if (!W.argDefs.length || view().kind === "alias") return
+  if (!W.argDefs.length || view().kind === "alias" || view().kind === "setting-edit") return
   W.argDefs.forEach(function(def, index) {
     var value = W.argValues[def.name] || ""
     var focused = W.argFocus === index

@@ -12,6 +12,8 @@ import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
 import "core/Agent.js" as Agent
 import "core/Calculator.js" as Calculator
+import "core/QuickCapture.js" as QuickCapture
+import "core/Todoist.js" as Todoist
 import "services"
 
 Item {
@@ -35,10 +37,14 @@ Item {
   property var candidates: []
   property var candidatesById: ({})
   property int candidatesRevision: 0
-  readonly property bool loading: menuSource.loading || agentLauncher.checking
+  readonly property bool loading: menuSource.loading || agentLauncher.checking || todoistSource.loading
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
+  // Todoist task cache revision — the UIs rebuild the list when it moves.
+  readonly property int todoistRevision: todoistSource.revision
+  // Env var wins over config.json; empty = Todoist is off. [D]
+  readonly property string todoistToken: (Quickshell.env("TODOIST_TOKEN") || "") || (backend.config.todoistToken || "")
 
   signal notification(string method, var data)
 
@@ -184,6 +190,117 @@ Item {
     return null
   }
 
+  // -------------------------------------------------------- quick capture
+
+  // Quick Capture target for the current settings: folder, file and mode
+  // behind the pushed view's live row. Mirrors electron/src/backend.js;
+  // the actual write is one bash call (mkdir + append/write) so note text
+  // never passes through a shell string — it arrives as $argv. [D]
+  function quickCaptureGeneral() {
+    var g = settingsStore.loaded ? settingsStore.doc.general : {}
+    return {
+      dir: (g && typeof g.quickCaptureDir === "string") ? g.quickCaptureDir : "",
+      mode: QuickCapture.validMode(g && g.quickCaptureMode)
+    }
+  }
+
+  function quickCaptureTarget(forceNew) {
+    var g = backend.quickCaptureGeneral()
+    var dirErr = QuickCapture.validateDir(g.dir)
+    if (dirErr) throw new Error(dirErr)
+    var dir = QuickCapture.resolveDir(g.dir, { home: backend.paths.home, data: backend.paths.data, sep: "/" })
+    var mode = forceNew ? "new" : g.mode
+    var target = QuickCapture.targetFor(mode, Date.now())
+    return { dir: dir, file: target.file, mode: mode, append: target.append }
+  }
+
+  function quickCaptureRow(query, forceNew) {
+    var q = String(query === undefined || query === null ? "" : query).trim()
+    if (!q) throw new Error("Type a note first")
+    var textErr = QuickCapture.validateText(q)
+    if (textErr) throw new Error(textErr)
+    var t = backend.quickCaptureTarget(forceNew)
+    var preview = QuickCapture.previewTitle(q)
+    var subtitle = t.file + " · " + QuickCapture.MODE_SHORT[t.mode]
+    return RootSearch.quickCaptureCandidate(preview, subtitle, q, t.file, t.dir, t.mode)
+  }
+
+  function quickCaptureSave(query, forceNew) {
+    var q = String(query === undefined || query === null ? "" : query).trim()
+    var textErr = QuickCapture.validateText(q)
+    if (textErr) throw new Error(textErr)
+    var t = backend.quickCaptureTarget(forceNew)
+    var nowMs = Date.now()
+    if (t.append) {
+      var entry = QuickCapture.formatEntry(q, nowMs)
+      var heading = QuickCapture.appendFileHeading(t.mode, nowMs)
+      Quickshell.execDetached(["bash", "-c",
+        'mkdir -p "$1" && f="$1/$2" && if [ ! -s "$f" ]; then printf \'%s\' "$3" > "$f"; fi && printf \'%s\' "$4" >> "$f"',
+        "oma-cast-capture", t.dir, t.file, heading, entry])
+    } else {
+      var content = QuickCapture.newFileContent(q, nowMs)
+      Quickshell.execDetached(["bash", "-c",
+        'mkdir -p "$1" && f="$1/$2" && base="${f%.md}" && i=1 && while [ -e "$f" ]; do f="$base-$i.md"; i=$((i+1)); done && printf \'%s\' "$3" > "$f"',
+        "oma-cast-capture", t.dir, t.file, content])
+    }
+    backend.recordVisit("builtin:quick-capture", q)
+    backend.log("info", "quick-capture", "saved", { file: t.file, mode: t.mode })
+    return { close: true, hud: "Captured to " + t.file }
+  }
+
+  function quickCaptureAction(id, action, query) {
+    if (action === "copy-note") {
+      var text = String(query || "").trim()
+      if (!text) throw new Error("Type a note first")
+      Util.execArgv(["wl-copy", "--", text])
+      return { close: true, hud: "Copied to Clipboard" }
+    }
+    if (action === "reveal-folder") {
+      var folder = backend.quickCaptureTarget(false)
+      Quickshell.execDetached(["xdg-open", folder.dir])
+      return { close: true }
+    }
+    if (action !== "open" && action !== "save-new") throw new Error("Unknown action " + action)
+    return backend.quickCaptureSave(query, action === "save-new")
+  }
+
+  // --------------------------------------------------------------- todoist
+
+  function todoistFind(id) {
+    var list = todoistSource.tasks || []
+    for (var i = 0; i < list.length; i++) if (String(list[i] && list[i].id) === String(id)) return list[i]
+    return null
+  }
+
+  function todoistRequireToken() {
+    if (!backend.todoistToken) throw new Error("Set TODOIST_TOKEN or add \"todoistToken\" to config.json — see README")
+  }
+
+  // The network is async but the RPC layer is sync: return {pending:true}
+  // (the AgentLauncher pattern) and toast when the request settles. [D]
+  function todoistAction(id, action, query) {
+    if (id === RootSearch.TODO_ADD_ID) {
+      if (action !== "open") throw new Error("Unknown action " + action)
+      var verr = Todoist.validateText(query)
+      if (verr) throw new Error(verr)
+      backend.todoistRequireToken()
+      todoistSource.createTask(String(query).trim())
+      return { pending: true }
+    }
+    var tid = String(id).slice("todoist:".length)
+    if (action === "copy") {
+      var t = backend.todoistFind(tid)
+      if (!t) throw new Error("Task not found — refresh the list")
+      Util.execArgv(["wl-copy", "--", String(t.content || "")])
+      return { close: true, hud: "Copied to Clipboard" }
+    }
+    if (action !== "open" && action !== "delete") throw new Error("Unknown action " + action)
+    backend.todoistRequireToken()
+    if (action === "delete") todoistSource.deleteTask(tid)
+    else todoistSource.completeTask(tid)
+    return { pending: true }
+  }
+
   // ------------------------------------------------------------- execution
 
   function summonPlugin(id, payload) {
@@ -262,7 +379,17 @@ Item {
             return { close: true }
           }
           backend.recordVisit(id, query)
-          if (candidate.run.push) return { push: candidate.run.push }
+          if (candidate.run.push) {
+            // Todoist needs a token; without one explain instead of
+            // pushing an empty view. The list re-syncs on every entry. [D]
+            if (candidate.run.push.kind === "todoist" || candidate.run.push.kind === "todoist-add") {
+              if (!backend.todoistToken) {
+                return { toast: { style: "failure", title: "Set TODOIST_TOKEN or add \"todoistToken\" to config.json — see README" } }
+              }
+              if (candidate.run.push.kind === "todoist") todoistSource.refresh()
+            }
+            return { push: candidate.run.push }
+          }
           if (candidate.run.summon) backend.summonPlugin(candidate.run.summon, candidate.run.payload || "{}")
           return { close: true }
         case "fallback":
@@ -395,6 +522,23 @@ Item {
         if (view && view.kind === "menu") sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else if (view && view.kind === "web-search") sections = RootSearch.webSearchSections(view.engine, query)
+        else if (view && view.kind === "quick-capture") {
+          if (!String(query || "").trim()) sections = []
+          else {
+            try { sections = [{ id: "quick-capture", title: "", rows: [{ candidate: backend.quickCaptureRow(query, false), record: null }] }] }
+            catch (e) { sections = [] }
+          }
+        }
+        else if (view && view.kind === "todoist") sections = RootSearch.todoistSections(todoistSource.tasks, query, Date.now(), Todoist)
+        else if (view && view.kind === "todoist-add") {
+          var tq = String(query || "").trim()
+          if (!tq || Todoist.validateText(tq)) sections = []
+          else {
+            try { sections = RootSearch.todoistAddSections(query, Todoist.previewTitle(tq)) }
+            catch (e) { sections = [] }
+          }
+        }
+        else if (view && view.kind === "setting-edit") sections = []
         else {
           ctx.filter = String(data && data.filter || "all")
           if (query.trim() && ctx.filter === "all") ctx.calculation = backend.calculate(query)
@@ -406,6 +550,9 @@ Item {
       },
       getActions: function(data) {
         var rowId = String(data && data.id || "")
+        if (rowId === RootSearch.TODO_ADD_ID) return RootSearch.actionsFor({ kind: "todoist-add" })
+        if (rowId.indexOf("todoist:") === 0) return RootSearch.actionsFor({ kind: "todoist-task" })
+        if (rowId === RootSearch.QUICK_SAVE_ID || rowId.indexOf("quick-capture:") === 0) return RootSearch.actionsFor({ kind: "quick-capture" })
         if (rowId === RootSearch.URL_ID) return RootSearch.actionsFor({ kind: "url" })
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
@@ -426,6 +573,19 @@ Item {
       getItemInfo: function(data) {
         var rowId = String(data && data.id || "")
         var nowMs = Date.now()
+        if (rowId === RootSearch.TODO_ADD_ID) {
+          try { return RootSearch.aboutFor(RootSearch.todoistAddCandidate(Todoist.previewTitle(String(data.query || ""))), nowMs) }
+          catch (e) { return [] }
+        }
+        if (rowId.indexOf("todoist:") === 0) {
+          var tt = backend.todoistFind(rowId.slice("todoist:".length))
+          if (!tt) return []
+          return RootSearch.aboutFor(Todoist.taskRow(tt, nowMs), nowMs)
+        }
+        if (rowId === RootSearch.QUICK_SAVE_ID || rowId.indexOf("quick-capture:") === 0) {
+          try { return RootSearch.aboutFor(backend.quickCaptureRow(data.query, false), nowMs) }
+          catch (e) { return [] }
+        }
         if (rowId === RootSearch.URL_ID) {
           var typedInfo = RootSearch.typedUrl(data.query)
           return typedInfo ? RootSearch.aboutFor(RootSearch.urlCandidate(typedInfo), nowMs) : []
@@ -455,7 +615,15 @@ Item {
       performAction: function(data) {
         // Destructive commands come back as a confirmation unless confirmed.
         if (!(data && data.confirmed)) {
-          var confirm = RootSearch.confirmationFor(String(data && data.id || ""), String(data && data.action || "open"))
+          // Todoist delete names the task: look it up in the cache. [D]
+          var confirmId = String(data && data.id || "")
+          var confirmAction = String(data && data.action || "open")
+          var confirmLabel = ""
+          if (confirmId.indexOf("todoist:") === 0 && confirmAction === "delete") {
+            var confirmTask = backend.todoistFind(confirmId.slice("todoist:".length))
+            confirmLabel = confirmTask ? String(confirmTask.content || "") : ""
+          }
+          var confirm = RootSearch.confirmationFor(confirmId, confirmAction, confirmLabel)
           if (confirm) return { confirm: confirm }
         }
         // A typed address opens in the default browser; the row is derived
@@ -489,6 +657,15 @@ Item {
           if (backend.candidatesById[builtinId]) backend.recordVisit(builtinId, data.query)
           Util.execArgv(["omarchy-launch-browser", RootSearch.fallbackUrl(fb3, data.query)])
           return { close: true }
+        }
+        // Todoist rows resolve against the service cache (async network,
+        // sync RPC — the AgentLauncher {pending:true} pattern). [D]
+        if (data && (data.id === RootSearch.TODO_ADD_ID || String(data.id || "").indexOf("todoist:") === 0)) {
+          return backend.todoistAction(data.id, String(data.action || "open"), String(data.query || ""))
+        }
+        // The quick-capture row is the query itself, saved again.
+        if (data && (data.id === RootSearch.QUICK_SAVE_ID || String(data.id || "").indexOf("quick-capture:") === 0)) {
+          return backend.quickCaptureAction(data.id, String(data.action || "open"), String(data.query || ""))
         }
         // The calculator row is the query itself, evaluated again.
         if (data && data.id === RootSearch.CALCULATOR_ID) {
@@ -571,6 +748,29 @@ Item {
     id: agentLauncher
     onPrepared: function(argv) { backend.emit("agent.launchReady", { argv: argv }) }
     onFailed: function(message) { backend.emit("agent.launchFailed", { message: message }) }
+  }
+
+  TodoistSource {
+    id: todoistSource
+    token: backend.todoistToken
+    onDone: function(kind, text) {
+      if (kind === "created") {
+        backend.recordVisit("builtin:todoist-add", text)
+        backend.emit("todoist.tasksChanged", null)
+        backend.emit("todoist.taskAdded", { message: "Task added" })
+      } else if (kind === "completed") {
+        backend.recordVisit("builtin:todoist", "")
+        backend.emit("todoist.tasksChanged", null)
+        backend.emit("todoist.taskCompleted", { message: "Task completed" })
+      } else if (kind === "deleted") {
+        backend.recordVisit("builtin:todoist", "")
+        backend.emit("todoist.tasksChanged", null)
+        backend.emit("todoist.taskDeleted", { message: "Task deleted" })
+      }
+      // refreshed: the revision bump rebuilds the list on its own.
+    }
+    onFailed: function(message) { backend.emit("todoist.error", { message: message }) }
+    onMessage: function(level, text, metadata) { backend.log(level, "todoist", text, metadata) }
   }
 
 

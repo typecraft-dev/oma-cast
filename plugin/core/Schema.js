@@ -13,9 +13,22 @@ var settingsMigrations = [
         navigationBindings: "emacs",
         rootSearchSensitivity: "medium",
         uiZoom: 1,
-        theme: "omarchy"
+        theme: "omarchy",
+        // Quick Capture (notes): "" = the default Notes folder.
+        quickCaptureDir: "",
+        quickCaptureMode: "daily"
       }
       doc.commands = {}
+      return doc
+    }
+  },
+  {
+    version: 2,
+    name: "quick-capture",
+    up: function(doc) {
+      if (!doc.general || typeof doc.general !== "object") doc.general = {}
+      if (typeof doc.general.quickCaptureDir !== "string") doc.general.quickCaptureDir = ""
+      if (["inbox", "daily", "new"].indexOf(doc.general.quickCaptureMode) < 0) doc.general.quickCaptureMode = "daily"
       return doc
     }
   }
@@ -99,7 +112,12 @@ var configDefaults = {
   // voidtools Everything via es.exe — system-wide and instant, needs
   // Everything installed and running. A dead Everything falls back to
   // the walk pool for that query. [D]
-  fileSearchProvider: "built-in"
+  fileSearchProvider: "built-in",
+  // Todoist personal API token (https://app.todoist.com/app/settings/integrations).
+  // Empty = Todoist is off; TODOIST_TOKEN env var wins over this key.
+  // No Settings row on purpose — the Windows list renders the value and
+  // would put the token on screen. [D]
+  todoistToken: ""
 }
 
 // Values a config key or general setting may take, beyond its type.
@@ -116,7 +134,9 @@ var generalChoices = {
   windowMode: ["expanded", "compact"],
   escapeKeyBehavior: ["pop-back-or-close", "close-and-pop-to-root"],
   navigationBindings: ["emacs", "vim-motions"],
-  rootSearchSensitivity: ["low", "medium", "high"]
+  rootSearchSensitivity: ["low", "medium", "high"],
+  // Quick Capture: same inbox file, same daily file, or a new file each time.
+  quickCaptureMode: ["inbox", "daily", "new"]
 }
 
 function validConfigValue(key, value) {

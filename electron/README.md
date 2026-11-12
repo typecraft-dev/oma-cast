@@ -18,6 +18,7 @@ src/calculator-data.js  ECB rates (frankfurter.dev) + Intl time zones
 src/apps.js        Start Menu/Desktop .lnk + Store apps: enumerate, icons, launch
 src/host.js        renderer-side adapters (clipboard, paste, external, agent)
 src/windows-settings.js  ms-settings: page table for the Windows Settings view
+src/todoist.js        Todoist v1 client (node https) behind the Electron backend
 src/themes.js        theme discovery (bundled + %APPDATA%\oma-cast\themes)
                    and shell.toml rendering for surface.createTheme
 ui/index.html      the launcher surface
@@ -115,6 +116,8 @@ override the bundled template. [D]
 | **Kill Process** | running processes by memory (PowerShell snapshot), confirm-first destructive alert, `taskkill /F`, Reveal + Copy PID. The snapshot service is created in `ui/app.js` and handed to the backend — the pushed view is empty without it — and the launcher's own processes (this pid + anything running from `process.execPath`) stay out of the list |
 | **Typed addresses** | a query that reads as a web address (`apple.com`, `www.org`, `https://example.com/x`, `localhost:3000`) gets an **Open in Default Browser** row above Results; ↵ opens it through `shell.openExternal`, Ctrl+Shift+C copies it. Bare tokens need a listed web TLD, so `main.rs`, `notes.md` and `deploy.sh` stay searches; an explicit `http(s)://` always opens [D] |
 | **Search Google / DuckDuckGo / unduck** | `https://…?q=%s` as root fallback rows and as builtins that push a dedicated search view with a full-width query bar (type there, ↵ searches) — no inline pill [D] |
+| **Quick Capture** | a **Quick Capture** builtin pushes a view with a full-width note bar (type there, ↵ saves as markdown). Settings rows **Quick Capture Mode** (same `inbox.md`, same daily `YYYY-MM-DD.md`, or a **new** timestamped file per capture) and **Quick Capture Directory** (empty = the default Notes folder under app data; `~`/relative resolve against home). ↵ saves respecting the mode, Ctrl+↵ forces a new file for that capture, Ctrl+Shift+C copies the note, plus Reveal Folder; empty notes never write [D] |
+| **Todoist** | **Todoist** and **Add Todoist Task** builtins (cross-platform — the first Todoist surface on either build). Tasks group by Overdue / Today / Upcoming / No due date; ↵ marks done, Ctrl+↵ deletes (confirming, names the task), Ctrl+Shift+↵ copies the title. Creates go through `POST /tasks/quick` so the server parses `p1`, dates, `#projects` and `@labels` — no numeric priority is ever sent. Token from `TODOIST_TOKEN` or `"todoistToken"` in config.json (deliberately no Settings row, to keep it off screen) [D] |
 | **Windows Settings** | a pushed, searchable list of the Settings app's own `ms-settings:` deep links grouped by category (Themes, Display, Windows Update, privacy, …); also the first row of the launcher's Settings view. ↵ opens the page through `shell.openExternal` [D] |
 | **Shut Down / Restart / Sleep** | the Omarchy system actions' Windows equivalents: the first two ask the destructive confirm, then fire immediately (`shutdown /s|/r /t 0`) and close the window; Sleep closes the window first and suspends via PowerShell `SetSuspendState('Suspend')` to ensure true sleep even when hibernation is enabled [D] |
 
@@ -128,7 +131,7 @@ empty view and the Files section never appeared until this was fixed.
 
 There is **no extension runtime** yet (SPEC Phase 5/§9): new capabilities
 land as built-ins in `plugin/core/RootSearch.js` + a service, which is how
-all five above were added.
+all of the above were added.
 
 ## Windows substitutions [D]
 
@@ -159,6 +162,7 @@ Everything the Linux build accepts (`logLevel`, `keepVisibleOnFocusLoss`,
 | `fileSearchScopes` | `[]` (home dir) | directories the file index walks |
 | `fileSearchIncludeHidden` | `false` | index dotfiles/hidden files |
 | `fileSearchProvider` | `"built-in"` | `"built-in"` walks your folders; `"everything"` queries voidtools Everything via `es.exe` (install Everything, keep it running) across all drives instantly — a dead Everything falls back to the walk for that query; the Settings view's **File Search Provider** row flips it live |
+| `todoistToken` | `""` | personal API token from https://app.todoist.com/app/settings/integrations; empty disables Todoist. `TODOIST_TOKEN` env var wins. No Settings row on purpose — the list would put the token on screen |
 
 Data lives in `%LOCALAPPDATA%\oma-cast` (`db\settings.json`,
 `db\frecency.json`, `db\calculator.json`), logs in

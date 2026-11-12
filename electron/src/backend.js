@@ -22,6 +22,9 @@ var _themes = null
 function themesMod() { if (!_themes) _themes = require("./themes"); return _themes }
 var Agent = require("../../plugin/core/Agent.js")
 var SettingsView = require("../../plugin/core/SettingsView.js")
+var QuickCapture = require("../../plugin/core/QuickCapture.js")
+var Todoist = require("../../plugin/core/Todoist.js")
+var todoistLib = require("./todoist")
 var winSettings = require("./windows-settings")
 var themes = require("./themes")
 var jsonStore = require("./json-store")
@@ -56,6 +59,12 @@ function createBackend(opts) {
   var frecencyStore = jsonStore.createStore({ path: paths.db + "/" + Schema.documents.frecency.file, migrations: Schema.documents.frecency.migrations, now: nowMs })
   var calculatorStore = jsonStore.createStore({ path: paths.db + "/" + Schema.documents.calculator.file, migrations: Schema.documents.calculator.migrations, now: nowMs })
   var calculatorData = calcData.createData({ cacheDir: paths.cache, ratesEnabled: config.currencyRates })
+  // Todoist v1 client. opts.todoist injects a stub in tests; otherwise the
+  // token reads live (env first, config.json second) so edits apply. [D]
+  var todoist = opts.todoist || todoistLib.createTodoist({
+    getToken: function() { return String(process.env.TODOIST_TOKEN || config.todoistToken || "").trim() },
+    log: function(level, text, meta) { log(level, "todoist", text, meta) }
+  })
 
   function log(level, category, message, metadata) {
     if (!Log.shouldLog(level, config.logLevel)) return
@@ -78,7 +87,10 @@ function createBackend(opts) {
     apps: apps || null,
     registry: registry,
     get loading() { return !!((apps && apps.loading) || agentChecking
-      || (fileIndex && fileIndex.loading) || (processes && processes.loading)) },
+      || (fileIndex && fileIndex.loading) || (processes && processes.loading) || (todoist && todoist.loading)) },
+    // Bumped whenever the cached Todoist task list changes — the UIs poll
+    // it like calculatorRevision and rebuild the list when it moves. [D]
+    get todoistRevision() { return todoist ? todoist.revision : 0 },
     get ready() { return directoriesReady && settingsStore.loaded && frecencyStore.loaded && calculatorStore.loaded },
     get storeRevision() { return storeRevision },
     get candidatesRevision() { return candidatesRevision },
@@ -385,11 +397,87 @@ function createBackend(opts) {
     // The renderer repaints (theme / font / geometry come from config).
     emit("settings.configChanged", { key: key, value: value })
   }
+  // Quick Capture target for the current settings: the folder, file and
+  // mode label behind the pushed view's live row. Pure shaping lives in
+  // QuickCapture; RootSearch only wraps the strings (it imports nothing).
+  function quickCaptureTarget(forceNew) {
+    var general = settingsStore.loaded ? settingsStore.doc.general : {}
+    var dirRaw = general && typeof general.quickCaptureDir === "string" ? general.quickCaptureDir : ""
+    var dirErr = QuickCapture.validateDir(dirRaw)
+    if (dirErr) throw new Error(dirErr)
+    var dir = QuickCapture.resolveDir(dirRaw, { home: paths.home, data: paths.data, sep: paths.data.indexOf("\\") >= 0 ? "\\" : "/" })
+    var mode = forceNew ? "new" : QuickCapture.validMode(general && general.quickCaptureMode)
+    var target = QuickCapture.targetFor(mode, nowMs())
+    return { dir: dir, file: target.file, mode: mode, append: target.append }
+  }
+  function quickCaptureRow(query, forceNew) {
+    var q = String(query === undefined || query === null ? "" : query).trim()
+    if (!q) throw new Error("Type a note first")
+    var textErr = QuickCapture.validateText(q)
+    if (textErr) throw new Error(textErr)
+    var t = quickCaptureTarget(forceNew)
+    var preview = QuickCapture.previewTitle(q)
+    var subtitle = t.file + " · " + QuickCapture.MODE_SHORT[t.mode]
+    return RootSearch.quickCaptureCandidate(preview, subtitle, q, t.file, t.dir, t.mode)
+  }
+  // Append one capture (or write one new file), creating the folder.
+  // Synchronous: a couple of ms on an explicit user action, and the sync
+  // RPC world gets its toast immediately. [D]
+  function quickCaptureSave(query, forceNew) {
+    var q = String(query === undefined || query === null ? "" : query).trim()
+    var textErr = QuickCapture.validateText(q)
+    if (textErr) throw new Error(textErr)
+    var t = quickCaptureTarget(forceNew)
+    var fs = require("fs")
+    var pathMod = require("path")
+    try {
+      fs.mkdirSync(t.dir, { recursive: true })
+    } catch (e) { throw new Error("Cannot create " + t.dir + ": " + (e && e.message || e)) }
+    var full = pathMod.join(t.dir, t.file)
+    try {
+      if (t.append) {
+        var entry = QuickCapture.formatEntry(q, nowMs())
+        if (!fs.existsSync(full) || fs.statSync(full).size === 0) {
+          entry = QuickCapture.appendFileHeading(t.mode, nowMs()) + entry
+        }
+        fs.appendFileSync(full, entry, "utf8")
+      } else {
+        // A second capture within the same second gets -1, -2, …
+        var base = full.slice(0, -3), n = 1
+        while (fs.existsSync(full)) { full = base + "-" + (n++) + ".md" }
+        fs.writeFileSync(full, QuickCapture.newFileContent(q, nowMs()), "utf8")
+      }
+    } catch (e) { throw new Error("Cannot write " + full + ": " + (e && e.message || e)) }
+    if (candidatesById["builtin:quick-capture"]) recordVisit("builtin:quick-capture", q)
+    var shown = full.length > 60 ? "…" + full.slice(-59) : full
+    log("info", "quick-capture", "saved", { file: full, mode: t.mode })
+    return { close: true, hud: "Captured to " + t.file, toast: null, path: full, shown: shown }
+  }
+  function quickCaptureAction(id, action, query) {
+    if (action === "copy-note") {
+      var text = String(query || "").trim()
+      if (!text) throw new Error("Type a note first")
+      if (host.copy) host.copy(text)
+      return { close: true, hud: "Copied to Clipboard" }
+    }
+    if (action === "reveal-folder") {
+      var folders = quickCaptureTarget(false)
+      if (host.openPath) host.openPath(folders.dir)
+      return { close: true }
+    }
+    if (action !== "open" && action !== "save-new") throw new Error("Unknown action " + action)
+    return quickCaptureSave(query, action === "save-new")
+  }
   function applySetting(id, action) {
     if (action !== "open") throw new Error("Unknown action " + action)
     var def = SettingsView.find(id)
     if (!def) throw new Error("Unknown setting " + id)
     var current = SettingsView.valueOf(def, settingsStore.loaded ? settingsStore.doc.general : {}, config)
+    // Freeform text (the capture folder) has no next value to cycle to —
+    // ↵ pushes the editor view, where the query is the value. [D]
+    if (def.type === "text") {
+      return { push: { kind: "setting-edit", settingId: id, title: def.label, value: current && String(current).trim() ? String(current) : "" } }
+    }
     var next = SettingsView.cycle(def, current, themeChoiceBag())
     if (def.scope === "general") {
       var patch = {}
@@ -491,6 +579,58 @@ function createBackend(opts) {
     if (apps) apps.launch(appId)
   }
 
+  // Todoist helpers. Tasks live in the todoist service cache, not the
+  // candidate list, so rows resolve here without a stored candidate. [D]
+  function todoistToken() {
+    return String(process.env.TODOIST_TOKEN || config.todoistToken || "").trim()
+  }
+  function todoistTask(id) {
+    var list = todoist ? todoist.tasks : []
+    for (var i = 0; i < list.length; i++) if (String(list[i] && list[i].id) === String(id)) return list[i]
+    return null
+  }
+  function todoistFail(err) {
+    emit("todoist.error", { message: String(err && err.message || err) })
+  }
+  // The network is async but the RPC layer is sync: return {pending:true}
+  // (the AgentLauncher pattern) and toast when the request settles. [D]
+  function todoistAction(id, action, query) {
+    if (!todoistToken()) throw new Error("Set TODOIST_TOKEN or add \"todoistToken\" to config.json — see README")
+    if (id === RootSearch.TODO_ADD_ID) {
+      if (action !== "open") throw new Error("Unknown action " + action)
+      var verr = Todoist.validateText(query)
+      if (verr) throw new Error(verr)
+      var text = String(query).trim()
+      todoist.createTask(text).then(function() {
+        if (candidatesById["builtin:todoist-add"]) recordVisit("builtin:todoist-add", text)
+        emit("todoist.tasksChanged", null)
+        emit("todoist.taskAdded", { message: "Task added" })
+      }, todoistFail)
+      return { pending: true }
+    }
+    var tid = String(id).slice("todoist:".length)
+    if (action === "copy") {
+      var t = todoistTask(tid)
+      if (!t) throw new Error("Task not found — refresh the list")
+      if (host.copy) host.copy(String(t.content || ""))
+      return { close: true, hud: "Copied to Clipboard" }
+    }
+    if (action !== "open" && action !== "delete") throw new Error("Unknown action " + action)
+    if (action === "delete") {
+      todoist.deleteTask(tid).then(function() {
+        if (candidatesById["builtin:todoist"]) recordVisit("builtin:todoist", "")
+        emit("todoist.tasksChanged", null)
+        emit("todoist.taskDeleted", { message: "Task deleted" })
+      }, todoistFail)
+    } else {
+      todoist.completeTask(tid).then(function() {
+        if (candidatesById["builtin:todoist"]) recordVisit("builtin:todoist", "")
+        emit("todoist.tasksChanged", null)
+        emit("todoist.taskCompleted", { message: "Task completed" })
+      }, todoistFail)
+    }
+    return { pending: true }
+  }
   // A pushed web-search row launches its engine with the view query. The
   // builtin that pushed it earns the frecency visit (the old pill flow did
   // recordVisit on the builtin too), so the engine rises with use. [D]
@@ -516,6 +656,7 @@ function createBackend(opts) {
     if (id.indexOf("process:") === 0) return processAction(id, action)
     if (id.indexOf("file:") === 0) return fileAction(id, action)
     if (id.indexOf("web-search:") === 0) return webSearchAction(id, action, query)
+    if (id === RootSearch.QUICK_SAVE_ID || id.indexOf("quick-capture:") === 0) return quickCaptureAction(id, action, query)
     var candidate = decorated(id)
     if (!candidate) throw new Error("Unknown command " + id)
 
@@ -547,6 +688,14 @@ function createBackend(opts) {
           if (candidate.run.push) {
             // The Kill Process view wants a fresh snapshot on entry.
             if (candidate.run.push.kind === "processes" && processes) processes.refresh()
+            // Todoist needs a token; without one explain instead of
+            // pushing an empty view. The list re-syncs on every entry. [D]
+            if (candidate.run.push.kind === "todoist" || candidate.run.push.kind === "todoist-add") {
+              if (!todoistToken()) {
+                return { toast: { style: "failure", title: "Set TODOIST_TOKEN or add \"todoistToken\" to config.json — see README" } }
+              }
+              if (candidate.run.push.kind === "todoist" && todoist) todoist.refresh().then(null, todoistFail)
+            }
             return { push: candidate.run.push }
           }
           return { close: true }
@@ -700,7 +849,24 @@ function createBackend(opts) {
           }).map(processCandidate)
           sections = prows.length ? [{ id: "processes", title: "", rows: prows.map(toRow) }] : []
         } else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, CalculatorMod().filterHistory)
+        else if (view && view.kind === "todoist") sections = RootSearch.todoistSections(todoist.tasks, query, nowMs(), Todoist)
+        else if (view && view.kind === "todoist-add") {
+          var tq = String(query || "").trim()
+          if (!tq || Todoist.validateText(tq)) sections = []
+          else {
+            try { sections = RootSearch.todoistAddSections(query, Todoist.previewTitle(tq)) }
+            catch (e) { sections = [] }
+          }
+        }
         else if (view && view.kind === "web-search") sections = RootSearch.webSearchSections(view.engine, query)
+        else if (view && view.kind === "quick-capture") {
+          var trimmed = String(query || "").trim()
+          if (!trimmed) sections = []
+          else {
+            try { sections = [{ id: "quick-capture", title: "", rows: [toRow(quickCaptureRow(query, false))] }]
+            } catch (e) { sections = [] }
+          }
+        } else if (view && view.kind === "setting-edit") sections = []
         else {
           ctx.filter = String(data && data.filter || "all")
           ctx.decorated = decoratedList(ctx)
@@ -780,6 +946,9 @@ function createBackend(opts) {
           if (!wfb) throw new Error("Unknown command " + rowId)
           return RootSearch.actionsFor({ kind: "web-search", title: wfb.title })
         }
+        if (rowId === RootSearch.QUICK_SAVE_ID || rowId.indexOf("quick-capture:") === 0) return RootSearch.actionsFor({ kind: "quick-capture" })
+        if (rowId === RootSearch.TODO_ADD_ID) return RootSearch.actionsFor({ kind: "todoist-add" })
+        if (rowId.indexOf("todoist:") === 0) return RootSearch.actionsFor({ kind: "todoist-task" })
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
         var candidate = decorated(rowId)
@@ -842,6 +1011,21 @@ function createBackend(opts) {
           if (!wcand) throw new Error("Unknown command " + rowId)
           return RootSearch.aboutFor(wcand, nowMs())
         }
+        if (rowId === RootSearch.QUICK_SAVE_ID || rowId.indexOf("quick-capture:") === 0) {
+          try {
+            var qcand = quickCaptureRow(data.query, false)
+            return RootSearch.aboutFor(qcand, nowMs())
+          } catch (e) { return [] }
+        }
+        if (rowId === RootSearch.TODO_ADD_ID) {
+          try { return RootSearch.aboutFor(RootSearch.todoistAddCandidate(Todoist.previewTitle(String(data.query || ""))), nowMs()) }
+          catch (e) { return [] }
+        }
+        if (rowId.indexOf("todoist:") === 0) {
+          var tt = todoistTask(rowId.slice("todoist:".length))
+          if (!tt) return []
+          return RootSearch.aboutFor(Todoist.taskRow(tt, nowMs()), nowMs())
+        }
         var now2 = nowMs()
         if (rowId === RootSearch.CALCULATOR_ID) {
           var calc = calculate(String(data.query || ""))
@@ -862,7 +1046,15 @@ function createBackend(opts) {
       performAction: function(data) {
         // Destructive commands come back as a confirmation unless confirmed.
         if (!(data && data.confirmed)) {
-          var confirm = RootSearch.confirmationFor(String(data && data.id || ""), String(data && data.action || "open"))
+          // Todoist delete names the task: look it up in the cache. [D]
+          var confirmId = String(data && data.id || "")
+          var confirmAction = String(data && data.action || "open")
+          var confirmLabel = ""
+          if (confirmId.indexOf("todoist:") === 0 && confirmAction === "delete") {
+            var confirmTask = todoistTask(confirmId.slice("todoist:".length))
+            confirmLabel = confirmTask ? String(confirmTask.content || "") : ""
+          }
+          var confirm = RootSearch.confirmationFor(confirmId, confirmAction, confirmLabel)
           if (confirm) return { confirm: confirm }
           // Kill Process rows confirm first (destructive, Alert.qml).
           if (String(data && data.id || "").indexOf("process:") === 0) {
@@ -898,6 +1090,11 @@ function createBackend(opts) {
         // A pushed web search runs the engine's URL template against the view query.
         if (data && String(data.id).indexOf("web-search:") === 0) {
           return webSearchAction(String(data.id), String(data.action || "open"), String(data.query || ""))
+        }
+        // Todoist rows resolve against the service cache (async network,
+        // sync RPC — the AgentLauncher {pending:true} pattern). [D]
+        if (data && (data.id === RootSearch.TODO_ADD_ID || String(data.id || "").indexOf("todoist:") === 0)) {
+          return todoistAction(String(data.id), String(data.action || "open"), String(data.query || ""))
         }
         // The calculator row is the query itself, evaluated again.
         if (data && data.id === RootSearch.CALCULATOR_ID) {
@@ -996,6 +1193,7 @@ function createBackend(opts) {
     frecencyStore.on("message", function(level, text, meta) { log(level, "store", text, meta) })
     calculatorStore.on("message", function(level, text, meta) { log(level, "store", text, meta) })
     calculatorData.on("message", function(level, text, meta) { log(level, "calculator", text, meta) })
+    todoist.on("message", function(level, text, meta) { log(level, "todoist", text, meta) })
 
     loadConfig()
     // Watch the config *directory* so the watcher survives a missing

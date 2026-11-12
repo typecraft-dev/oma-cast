@@ -25,7 +25,7 @@ function push(next) {
   var saved = W.stack.slice()
   saved[saved.length - 1] = Object.assign({}, view(), { query: W.query, selectedIndex: W.selectedIndex })
   W.stack = saved.concat([next])
-  W.query = next.kind === "alias" ? (next.value || "") : ""
+  W.query = (next.kind === "alias" || next.kind === "setting-edit") ? (next.value || "") : ""
   rebuild(true)
 }
 
@@ -43,7 +43,7 @@ function rebuild(resetSelection, opts) {
   gate.reset()
   var keepId = !resetSelection && W.selectedRow ? W.selectedRow.itemId : ""
   W.rows = []
-  if (view().kind === "alias") { select(-1); renderList(); return }
+  if (view().kind === "alias" || view().kind === "setting-edit") { select(-1); renderList(); return }
   var result = backend.callSync("rootSearch.search", {
     query: W.query, view: view(), filter: atRoot() ? W.rootFilter : "all",
     skipFiles: !!(opts && opts.skipFiles)
@@ -256,6 +256,23 @@ function saveAlias() {
   rebuild(false)
 }
 
+// The Quick Capture directory row (Settings → Quick Capture Directory)
+// pushes a setting-edit view where the query is the value; ↵ saves it
+// through the validated general-settings path. Empty resets to default.
+function saveSettingEdit() {
+  var parts = String(view().settingId || "").split(":")
+  var key = parts.length === 3 ? parts[2] : ""
+  if (!key) { showToast("failure", "Unknown setting"); return }
+  var value = W.query.trim()
+  var patch = {}
+  patch[key] = value
+  var r = backend.callSync("settings.updateGeneralSettings", patch)
+  if (!r.ok) { showToast("failure", r.error); return }
+  pop()
+  showToast("success", value ? "Saved" : "Reset to default")
+  rebuild(false)
+}
+
 function pasteClipboard() {
   var text = host.readText().replace(/[\r\n\u2028\u2029]+/g, " ")
   if (!text) return
@@ -267,6 +284,7 @@ function pasteClipboard() {
     renderHeader()
   } else {
     if (view().kind === "alias") text = text.replace(/\s/g, "")
+    if (view().kind === "setting-edit") text = text.replace(/[\r\n\u2028\u2029]+/g, " ")
     setQuery(W.query + text)
   }
 }
@@ -304,7 +322,7 @@ function handleEscape(shift) {
     popToRoot()
     return
   }
-  if (W.query && view().kind !== "alias") setQuery("")
+  if (W.query && view().kind !== "alias" && view().kind !== "setting-edit") setQuery("")
   else if (!atRoot()) pop()
   else host.dismiss()
 }
@@ -414,9 +432,9 @@ function handleKey(e) {
     return handlePopupKey(e, actionPanelState, ctrl, alt)
   }
 
-  if (view().kind === "alias") {
-    if (enter) { saveAlias(); return true }
-    if (k === " ") return true
+  if (view().kind === "alias" || view().kind === "setting-edit") {
+    if (enter) { if (view().kind === "alias") saveAlias(); else saveSettingEdit(); return true }
+    if (k === " " && view().kind === "alias") return true
   } else {
     if (atRoot() && enter && ctrl && alt && !shift) { askAgent(); return true }
     if (ctrl && shift && kl === "k") { toggleAbout(); return true }
@@ -424,6 +442,8 @@ function handleKey(e) {
     if (ctrl && !shift && kl === "p") { toggleDropdown(); return true }
     if (ctrl && !shift && kl === "t") { toggleToastPanel(); return true }
     if (view().kind === "web-search" && enter && !ctrl && !alt && !String(W.query || "").trim()) { showToast("failure", "Type a query first"); return true }
+    if (view().kind === "quick-capture" && enter && !ctrl && !alt && !String(W.query || "").trim()) { showToast("failure", "Type a note first"); return true }
+    if (view().kind === "todoist-add" && enter && !ctrl && !alt && !String(W.query || "").trim()) { showToast("failure", "Type a task first"); return true }
     if (enter && ctrl && shift) { performNth(2); return true }
     if (enter && ctrl) { performNth(1); return true }
     if (enter) { performNth(0); return true }
@@ -447,7 +467,7 @@ function handleKey(e) {
     if (k === "PageUp") { move(-8); return true }
     if (k === "PageDown") { move(8); return true }
     if (ctrl && shift && kl === "f") { performIfOffered(["favorite-add", "favorite-remove"]); return true }
-    if (ctrl && shift && kl === "c") { performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-path", "copy-pid", "copy-url"]); return true }
+    if (ctrl && shift && kl === "c") { performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-path", "copy-pid", "copy-url", "copy-note", "copy"]); return true }
     if (ctrl && shift && kl === "d") { performIfOffered(["delete-all-entries"]); return true }
     if (ctrl && kl === "d") { performIfOffered(["delete-entry"]); return true }
     if (alt && shift && kl === "d") { performIfOffered(["disable"]); return true }
@@ -545,6 +565,9 @@ backend.onNotification(function(method, data) {
   // the file edited on disk): repaint in place.
   if (method === "settings.configChanged") retheme()
   if (method === "agent.launchFailed" && W.shown) showToast("failure", data.message)
+  if (method === "todoist.tasksChanged" && W.shown && !W.actionPanelOpen && !W.alert) rebuild(false)
+  if ((method === "todoist.taskAdded" || method === "todoist.taskCompleted" || method === "todoist.taskDeleted") && W.shown) showToast("success", data.message)
+  if (method === "todoist.error" && W.shown) showToast("failure", data.message)
   if (method === "agent.launchReady") {
     host.dismiss()
     popToRoot()
@@ -558,20 +581,23 @@ function refreshGeneral() {
   var r = backend.callSync("settings.getGeneralSettings", null)
   general = r && r.ok ? r.data : Object.assign({}, DEFAULT_GENERAL)
 }
-var lastRev = { candidates: -1, calculator: -1, store: -1 }
+var lastRev = { candidates: -1, calculator: -1, store: -1, todoist: -1 }
 setInterval(function() {
   var candChanged = backend.candidatesRevision !== lastRev.candidates
   var calcChanged = backend.calculatorRevision !== lastRev.calculator
   var storeChanged = backend.storeRevision !== lastRev.store
+  var todoChanged = backend.todoistRevision !== lastRev.todoist
   lastRev.candidates = backend.candidatesRevision
   lastRev.calculator = backend.calculatorRevision
   lastRev.store = backend.storeRevision
+  lastRev.todoist = backend.todoistRevision
   if (storeChanged) refreshGeneral()
   if (!W.shown) return
   // A scheduled keystroke rebuild already covers these revisions; running
   // a second synchronous rebuild here doubled the per-keystroke cost. [D]
   if (rebuildTimer) return
   if (candChanged && !W.actionPanelOpen && !W.alert) rebuild(false)
+  else if (todoChanged && !W.actionPanelOpen && !W.alert) rebuild(false)
   else if (calcChanged && !W.actionPanelOpen && W.query) rebuild(false)
   el.loader.classList.toggle("visible", backend.loading)
 }, 120)

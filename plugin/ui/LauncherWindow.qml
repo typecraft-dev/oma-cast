@@ -82,6 +82,10 @@ PanelWindow {
     : window.view.kind === "menu" ? "Search " + window.view.title + "…"
     : window.view.kind === "calculator-history" ? "Search calculations…"
     : window.view.kind === "web-search" ? window.view.title + "…"
+    : window.view.kind === "quick-capture" ? "Type a note, then press ↵ to capture…"
+    : window.view.kind === "todoist" ? "Search tasks…"
+    : window.view.kind === "todoist-add" ? "Type a task, then press ↵ to add…"
+    : window.view.kind === "setting-edit" ? "Type a folder path, then press ↵"
     : "Search for apps and commands…"
 
   readonly property int cardWidth: Math.min(px(750), width - Style.gapsOut * 2)
@@ -139,7 +143,7 @@ PanelWindow {
     var saved = window.stack.slice()
     saved[saved.length - 1] = Object.assign({}, window.view, { query: window.query, selectedIndex: window.selectedIndex })
     window.stack = saved.concat([next])
-    window.query = next.kind === "alias" ? (next.value || "") : ""
+    window.query = (next.kind === "alias" || next.kind === "setting-edit") ? (next.value || "") : ""
     window.rebuild(true)
   }
 
@@ -158,7 +162,7 @@ PanelWindow {
     pointerGate.reset()
     var keepId = !resetSelection && window.selectedRow ? window.selectedRow.itemId : ""
     rows.clear()
-    if (window.view.kind === "alias") { window.select(-1); return }
+    if (window.view.kind === "alias" || window.view.kind === "setting-edit") { window.select(-1); return }
     var result = window.backend.callSync("rootSearch.search", { query: window.query, view: window.view, filter: window.atRoot ? window.rootFilter : "all" })
     if (!result.ok) {
       window.showToast("failure", result.error)
@@ -405,6 +409,20 @@ PanelWindow {
     window.rebuild(false)
   }
 
+  function saveSettingEdit() {
+    var parts = String(window.view.settingId || "").split(":")
+    var key = parts.length === 3 ? parts[2] : ""
+    if (!key) { window.showToast("failure", "Unknown setting"); return }
+    var value = window.query.trim()
+    var patch = {}
+    patch[key] = value
+    var r = window.backend.callSync("settings.updateGeneralSettings", patch)
+    if (!r.ok) { window.showToast("failure", r.error); return }
+    window.pop()
+    window.showToast("success", value ? "Saved" : "Reset to default")
+    window.rebuild(false)
+  }
+
 
   // A failure toast always offers its message to copy (Ctrl+T).
   function showToast(style, title, actions) {
@@ -448,6 +466,7 @@ PanelWindow {
       window.argValues = values
     } else {
       if (window.view.kind === "alias") text = text.replace(/\s/g, "")
+      if (window.view.kind === "setting-edit") text = text.replace(/[\r\n\u2028\u2029]+/g, " ")
       window.setQuery(window.query + text)
     }
   }
@@ -488,7 +507,7 @@ PanelWindow {
       window.popToRoot()
       return
     }
-    if (window.query && window.view.kind !== "alias") window.setQuery("")
+    if (window.query && window.view.kind !== "alias" && window.view.kind !== "setting-edit") window.setQuery("")
     else if (!window.atRoot) window.pop()
     else window.dismissRequested()
   }
@@ -560,9 +579,9 @@ PanelWindow {
       return window.handlePopupKey(event, actionPanel, ctrl, alt)
     }
 
-    if (window.view.kind === "alias") {
-      if (enter) { window.saveAlias(); return true }
-      if (key === Qt.Key_Space) return true
+    if (window.view.kind === "alias" || window.view.kind === "setting-edit") {
+      if (enter) { if (window.view.kind === "alias") window.saveAlias(); else window.saveSettingEdit(); return true }
+      if (key === Qt.Key_Space && window.view.kind === "alias") return true
     } else {
       if (window.atRoot && enter && ctrl && alt && !shift) { window.askAgent(); return true }
       if (ctrl && shift && key === Qt.Key_K) { window.toggleAbout(); return true }
@@ -570,6 +589,8 @@ PanelWindow {
       if (ctrl && !shift && key === Qt.Key_P) { window.toggleDropdown(); return true }
       if (ctrl && !shift && key === Qt.Key_T) { window.toggleToastPanel(); return true }
       if (window.view.kind === "web-search" && enter && !ctrl && !alt && !window.query.trim()) { window.showToast("failure", "Type a query first"); return true }
+      if (window.view.kind === "quick-capture" && enter && !ctrl && !alt && !window.query.trim()) { window.showToast("failure", "Type a note first"); return true }
+      if (window.view.kind === "todoist-add" && enter && !ctrl && !alt && !window.query.trim()) { window.showToast("failure", "Type a task first"); return true }
       if (enter && ctrl && shift) { window.performNth(2); return true }
       if (enter && ctrl) { window.performNth(1); return true }
       if (enter) { window.performNth(0); return true }
@@ -591,7 +612,7 @@ PanelWindow {
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-url"]); return true }
+      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-url", "copy-note", "copy"]); return true }
       if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries"]); return true }
       if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry"]); return true }
       if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }
@@ -618,9 +639,14 @@ PanelWindow {
     function onCandidatesRevisionChanged() { if (window.shown && !window.actionPanelOpen && !window.alert) window.rebuild(false) }
     function onNotification(method, data) {
       if (method === "agent.launchFailed" && window.shown) window.showToast("failure", data.message)
+      if (method === "todoist.tasksChanged" && window.shown && !window.actionPanelOpen && !window.alert) window.rebuild(false)
+      if ((method === "todoist.taskAdded" || method === "todoist.taskCompleted" || method === "todoist.taskDeleted") && window.shown) window.showToast("success", data.message)
+      if (method === "todoist.error" && window.shown) window.showToast("failure", data.message)
     }
     // Exchange rates or zone offsets arrived: re-evaluate a calculation on screen.
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
+    // The cached task list changed: rebuild an open Todoist view in place.
+    function onTodoistRevisionChanged() { if (window.shown && !window.actionPanelOpen && !window.alert) window.rebuild(false) }
   }
 
 
@@ -724,7 +750,7 @@ PanelWindow {
 
       Row {
         id: pills
-        visible: window.argDefs.length > 0 && window.view.kind !== "alias"
+        visible: window.argDefs.length > 0 && window.view.kind !== "alias" && window.view.kind !== "setting-edit"
         x: queryText.x + (window.query ? queryText.width : 0) + window.px(10)
         anchors.verticalCenter: parent.verticalCenter
         spacing: window.px(6)
@@ -864,7 +890,7 @@ PanelWindow {
         anchors.fill: parent
         anchors.topMargin: window.px(4)
         anchors.bottomMargin: window.px(4)
-        visible: window.view.kind !== "alias"
+        visible: window.view.kind !== "alias" && window.view.kind !== "setting-edit"
         clip: true
         model: rows
         boundsBehavior: Flickable.StopAtBounds
@@ -882,7 +908,7 @@ PanelWindow {
       Column {
         anchors.centerIn: parent
         spacing: window.px(8)
-        visible: window.view.kind === "alias" || rows.count === 0
+        visible: window.view.kind === "alias" || window.view.kind === "setting-edit" || rows.count === 0
 
         Text {
           anchors.horizontalCenter: parent.horizontalCenter
@@ -896,6 +922,10 @@ PanelWindow {
           anchors.horizontalCenter: parent.horizontalCenter
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? window.view.title
+            : window.view.kind === "setting-edit" ? window.view.title
+            : window.view.kind === "quick-capture" && !window.query ? window.view.title
+            : window.view.kind === "todoist" && !window.query ? window.view.title
+            : window.view.kind === "todoist-add" && !window.query ? window.view.title
             : window.view.kind === "web-search" && !window.query ? window.view.title
             : window.view.kind === "calculator-history" && !window.query ? "No Calculations Yet"
             : (window.backend.ready ? "No results" : "Loading…")
@@ -907,6 +937,10 @@ PanelWindow {
           anchors.horizontalCenter: parent.horizontalCenter
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? "Typing the alias exactly in the root search puts this command on top. Leave it empty to remove it."
+            : window.view.kind === "setting-edit" ? "Empty uses the default Notes folder."
+            : window.view.kind === "quick-capture" && !window.query ? "Type a note, then press ↵ to save it."
+            : window.view.kind === "todoist" && !window.query ? "Type to filter tasks."
+            : window.view.kind === "todoist-add" && !window.query ? "Dates, #projects, @labels and p1–p4 are parsed."
             : window.view.kind === "web-search" && !window.query ? "Type a query, then press ↵ to search."
             : window.view.kind === "calculator-history" && !window.query ? "Type a calculation in the root search, then copy or paste the answer." : ""
           visible: text.length > 0
@@ -983,6 +1017,7 @@ PanelWindow {
           window.selectedRow
           window.backend.storeRevision
           if (window.view.kind === "alias") return { title: "Save Alias", shortcut: "↵" }
+          if (window.view.kind === "setting-edit") return { title: "Save", shortcut: "↵" }
           var list = window.actionsForSelected()
           return list.length ? list[0] : null
         }
@@ -1004,14 +1039,14 @@ PanelWindow {
           zoom: window.zoom
         }
         Rectangle {
-          visible: window.view.kind !== "alias"
+          visible: window.view.kind !== "alias" && window.view.kind !== "setting-edit"
           anchors.verticalCenter: parent.verticalCenter
           width: 1
           height: window.px(14)
           color: Util.alpha(window.look.foreground, 0.2)
         }
         Text {
-          visible: window.view.kind !== "alias"
+          visible: window.view.kind !== "alias" && window.view.kind !== "setting-edit"
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
           text: "Actions"
@@ -1021,7 +1056,7 @@ PanelWindow {
           font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
         }
         KeyHint {
-          visible: window.view.kind !== "alias"
+          visible: window.view.kind !== "alias" && window.view.kind !== "setting-edit"
           anchors.verticalCenter: parent.verticalCenter
           keys: window.actionPanelKeys
           color: window.look.foreground

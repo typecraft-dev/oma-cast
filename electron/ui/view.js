@@ -205,24 +205,34 @@ function renderList() {
   })
 
   var v = view()
-  var emptyVisible = v.kind === "alias" || W.rows.length === 0
+  var isEditor = v.kind === "alias" || v.kind === "setting-edit"
+  var emptyVisible = isEditor || W.rows.length === 0
   el.empty.classList.toggle("visible", emptyVisible && !compact())
   if (emptyVisible) {
     var isAlias = v.kind === "alias"
+    var isSettingEdit = v.kind === "setting-edit"
     el.emptyGlyph.textContent = isAlias ? GLYPH_TAG : GLYPH_LOGO
     el.emptyGlyph.classList.toggle("omarchy-glyph", !isAlias)
     el.emptyGlyph.style.fontSize = px(28) + "px"
     el.emptyTitle.textContent = isAlias ? v.title
-      : (v.kind === "web-search" && !W.query ? v.title
-        : (v.kind === "calculator-history" && !W.query ? "No Calculations Yet"
-          : (backend.ready && !backend.loading ? "No results" : "Loading…")))
+      : (isSettingEdit ? v.title
+        : (v.kind === "quick-capture" && !W.query ? v.title
+          : (v.kind === "todoist" && !W.query ? v.title
+            : (v.kind === "todoist-add" && !W.query ? v.title
+              : (v.kind === "web-search" && !W.query ? v.title
+                : (v.kind === "calculator-history" && !W.query ? "No Calculations Yet"
+                  : (backend.ready && !backend.loading ? "No results" : "Loading…")))))))
     el.emptyHint.textContent = isAlias
       ? "Typing the alias exactly in the root search puts this command on top. Leave it empty to remove it."
-      : (v.kind === "web-search" && !W.query ? "Type a query, then press \u21b5 to search."
-        : (v.kind === "calculator-history" && !W.query ? "Type a calculation in the root search, then copy or paste the answer." : ""))
+      : (isSettingEdit ? "Empty uses the default Notes folder."
+        : (v.kind === "quick-capture" && !W.query ? "Type a note, then press \u21b5 to save it."
+          : (v.kind === "todoist" && !W.query ? "Type to filter tasks."
+            : (v.kind === "todoist-add" && !W.query ? "Dates, #projects, @labels and p1–p4 are parsed."
+              : (v.kind === "web-search" && !W.query ? "Type a query, then press \u21b5 to search."
+            : (v.kind === "calculator-history" && !W.query ? "Type a calculation in the root search, then copy or paste the answer." : ""))))))
     el.emptyHint.style.display = el.emptyHint.textContent ? "block" : "none"
   }
-  el.list.style.display = v.kind === "alias" ? "none" : "block"
+  el.list.style.display = isEditor ? "none" : "block"
   paintSelection()
 }
 
@@ -325,6 +335,7 @@ function renderFooter() {
 
   var primary
   if (v.kind === "alias") primary = { title: "Save Alias" }
+  else if (v.kind === "setting-edit") primary = { title: "Save" }
   else {
     var list = actionsForSelected()
     primary = list.length ? list[0] : null
@@ -333,7 +344,7 @@ function renderFooter() {
   el.primaryTitle.style.display = primary ? "inline" : "none"
   keyHint(primary ? "↵" : "", el.primaryHint)
 
-  var aliasView = v.kind === "alias"
+  var aliasView = v.kind === "alias" || v.kind === "setting-edit"
   el.footerDivider.style.display = aliasView ? "none" : "block"
   el.actionsTitle.style.display = aliasView ? "none" : "inline"
   keyHint(aliasView ? "" : actionPanelKeys(), el.actionsHint)

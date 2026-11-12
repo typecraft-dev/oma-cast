@@ -72,6 +72,7 @@ jobs:
           - Pixel-faithful port of the Omarchy launcher UI (same tokens, geometry, key bindings and Nerd Font glyphs)
           - Root search with the exact Raycast ranker + frecency, inline Calculator with history, quicklinks (Google, DuckDuckGo, unduck), Search Files with Open/Reveal/Copy Path, Settings view, Kill Process, default-agent hand-off
           - Alt+Space hotkey, `oma-cast` CLI over a named pipe (toggle/run/call/doctor), installer with Start Menu + desktop shortcut
+          - Todoist: add, complete and delete tasks (`TODOIST_TOKEN` or `"todoistToken"` in config.json), plus Quick Capture notes to markdown
 
           ## Install
           Per-user install, no admin needed. Config: `%APPDATA%\oma-cast\config.json`, data: `%LOCALAPPDATA%\oma-cast`, logs: `%LOCALAPPDATA%\State\oma-cast\logs\main.log`.

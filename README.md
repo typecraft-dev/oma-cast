@@ -82,7 +82,23 @@ read credentials, or make model API calls. Successful preflight checks establish
 launch prerequisites, not successful sign-in or a running terminal; those still
 need live desktop validation.
 
-## Keyboard
+## Todoist
+
+**Todoist** shows your Todoist tasks grouped by Overdue, Today, Upcoming
+and No due date; **Add Todoist Task** creates one with Todoist's own
+natural-language parsing (`buy milk tomorrow #Shopping p1` — dates,
+priorities, projects and labels are resolved server-side).
+
+Set it up with a personal API token from
+https://app.todoist.com/app/settings/integrations, either as the
+`TODOIST_TOKEN` environment variable or as `"todoistToken"` in
+`~/.config/oma-cast/config.json` (the env var wins; empty means Todoist
+is off). There is deliberately no Settings row for it — the Settings
+list would put the token on screen.
+
+Keys on a task: ↵ marks it done, Ctrl+↵ deletes it (asking first —
+deletes have no undo), Ctrl+Shift+↵ copies its title. The list re-syncs
+every time you open it and after every change.
 
 | Key | Does |
 |---|---|
