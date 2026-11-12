@@ -127,6 +127,7 @@ for (const kind of ["copy", "paste"]) {
     const cmdlines = fs.readFileSync(log, "utf8")
     assert.ok(!cmdlines.includes("private"), cmdlines)
     assert.ok(!script.includes("$"), "the script takes no arguments")
+    assert.match(cmdlines, /wl-copy --type text\/plain/, "offer the text as text, not a sniffed type")
     if (kind === "paste") assert.match(cmdlines, /wtype -M shift -k Insert -m shift/)
   })
 }
