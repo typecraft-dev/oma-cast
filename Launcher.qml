@@ -55,21 +55,9 @@ Item {
     else root.show()
   }
 
-  function run(commandId) {
-    // `omacast run` is explicit, so it skips the confirmation alert.
-    var r = backend.callSync("rootSearch.performAction", { id: commandId, action: "open", query: "", confirmed: true })
-    if (!r.ok) return r
-    var outcome = r.data || {}
-    if (outcome.push) {
-      root.show()
-      launcher.popToRoot()
-      launcher.push(outcome.push)
-    } else if (outcome.close) {
-      root.hide()
-      if (outcome.hud) launcher.hud(outcome.hud)
-    }
-    return r
-  }
+  // `omacast run` is explicit, so it skips the confirmation alert
+  // (core/LauncherState.js run()).
+  function run(commandId) { return launcher.run(commandId) }
 
   Backend {
     id: backend
@@ -83,6 +71,7 @@ Item {
     backend: backend
     appLibrary: backend.appLibrary
     onDismissRequested: root.hide()
+    onShowRequested: root.show()
   }
 
   GlobalShortcut {

@@ -4,6 +4,8 @@ import qs.Commons
 Rectangle {
   id: panel
 
+  // Draws core/LauncherState.js's popup: `actions` are already filtered,
+  // and the filter text and selection come from there too.
   property var actions: []
   property string filter: ""
   property string placeholder: "Search for actions…"
@@ -11,29 +13,14 @@ Rectangle {
   property var look: null
   property real zoom: 1
 
-  signal activated(string actionId)
+  signal picked(int index)
+  signal hovered(int index)
 
   function px(v) { return Math.round(Style.space(v) * panel.zoom) }
 
-  readonly property var visibleActions: {
-    var f = panel.filter.trim().toLowerCase()
-    return panel.actions.filter(function(a) { return !f || a.title.toLowerCase().indexOf(f) >= 0 })
-  }
+  readonly property var visibleActions: panel.actions
 
-  function move(delta) {
-    var n = panel.visibleActions.length
-    if (n === 0) return
-    panel.selectedIndex = (panel.selectedIndex + delta + n) % n
-    list.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
-  }
-
-  function activateSelected() {
-    var a = panel.visibleActions[panel.selectedIndex]
-    if (a) panel.activated(a.id)
-  }
-
-  onFilterChanged: selectedIndex = 0
-  onActionsChanged: selectedIndex = 0
+  onSelectedIndexChanged: list.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
 
   width: px(340)
   height: Math.min(px(360), list.contentHeight + searchRow.height + px(16))
@@ -123,8 +110,8 @@ Rectangle {
         MouseArea {
           anchors.fill: parent
           hoverEnabled: true
-          onPositionChanged: panel.selectedIndex = index
-          onClicked: { panel.selectedIndex = index; panel.activateSelected() }
+          onPositionChanged: panel.hovered(index)
+          onClicked: panel.picked(index)
         }
       }
     }
