@@ -32,9 +32,28 @@ jobs:
 
       - name: Shell syntax
         run: |
-          for script in bin/omacast bin/build-search tests/smoke.sh tests/native-transport.sh; do
+          for script in bin/omacast bin/build-search tests/smoke.sh tests/native-transport.sh macos/bin/omacast macos/bin/build-app; do
             bash -n "$script"
           done
 
       - name: Plugin manifest is valid JSON
         run: node -e 'JSON.parse(require("fs").readFileSync("manifest.json", "utf8"))'
+
+  # The native macOS app (macos/): JavaScriptCore must answer like node.
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Shared JavaScript
+        run: node --test tests/backend.test.js tests/macos-app.test.js
+
+      - name: Swift tests
+        run: swift test --package-path macos
+
+      - name: App bundle
+        run: macos/bin/build-app
