@@ -13,6 +13,7 @@ This repo is a clean-room rebuild of **Raycast for Linux**. The first target is 
 | `reference/04-frontend-features.md` | **Built-in command catalog (§1, App. A)**, launcher UI anatomy (§2), default shortcuts (§2.8), settings pages (§3, App. B/C), themes and design tokens (§4). | Phase 1 onward, every UI task |
 | `reference/05-data-config.md` | On-disk layout, DB encryption, reconstructed schema, `.rayconfig` format (§5), XDG mapping (§8). | Phase 0 (paths, DB), Phase 8 (import) |
 | `reference/schema-nonai.sql` | Raycast's non-AI DDL, reconstructed. **Reference only.** The clone uses the simpler schema in `SPEC.md §6.4`. | When you need a field Raycast stores |
+| `MACOS.md` | The native macOS app: layout, decisions and status. `macos/README.md` covers install and use. | Any work under `macos/` or on `core/Backend.js` |
 | `reference/backend-methods-nonai.txt` | Every non-AI backend RPC method name. **Do not implement all of them.** Reuse the names for what each phase needs. | When naming an IPC method |
 
 Spec legend: **[O]** observed in Raycast, **[I]** inferred, **[D]** design decision for this clone. [O] is ground truth for behaviour. [D] may be changed if you have a reason; note the change in `SPEC.md`.
@@ -51,11 +52,13 @@ To learn the host, read the shell's own code in `$OMARCHY_PATH/shell/` (`/usr/sh
 # The repo root is the plugin: `omarchy plugin add` clones it into ~/.config/omarchy/plugins/typecraft.omacast/
 manifest.json            # id typecraft.omacast, kind "menu" (so the shell passes shell.appLibrary), keepLoaded
 Launcher.qml             # entry point: open()/close() from the shell, IpcHandler "omacast", GlobalShortcut omacast:toggle
-Backend.qml              # in-process backend: paths, config.json, stores, method registry, notifications
+Backend.qml              # thin adapter: builds the host object (stores, clipboard, launching) for core/Backend.js
 ui/                      # launcher surface and (later) views
 services/                # QML services that do I/O (JsonStore, OmarchyMenuSource; later clipboard, …)
 core/*.js                # pure logic, no Qt imports: shared by QML and node tests (module.exports guard)
                          #   Ranker, Frecency (ref 02 §4, port exactly), OmarchyMenu, RootSearch, Schema, Migrate, Rpc, Paths, Log
+                         #   Backend (RPC surface), LauncherState (window logic), Store, CalculatorData: shared with the macOS app
+macos/                   # native macOS app (MACOS.md): Swift package, js/ (App, MacCommands, Themes), bin/
 bin/omacast              # bash CLI (works from a dev checkout or a marketplace install)
 bin/omacast-search       # built flea-search helper (gitignored; bin/build-search builds it from search/)
 search/                  # Rust source of the optional helper; builds into ~/.cache/omacast/search-target
@@ -151,6 +154,8 @@ Works:
   ↵ copies the answer (HUD), Ctrl+↵ pastes it (wl-copy on stdin, then Shift+Insert), Ctrl+Shift+C copies "question = answer". Each one saves to **Calculator History** (`db/calculator.json`, 4096 rows / 90 days): a built-in command and pushed view, searchable, Ctrl+D deletes an entry, Ctrl+Shift+D deletes all. RPC: `calculator.calculate|historyGetAll|historyDelete|historyDeleteAll|refreshCurrencies|getCurrencies`. A bare number, word or quantity (`42`, `firefox`, `5 kg`) never produces a row, because the section takes ↵.
 - **Latency:** show → mapped in 59–66 ms, hide in 24–42 ms on Omarchy 4.0.6 (`tests/smoke.sh`; it was 37–44 ms on the old `OverlayWindow`).
 - **Tests:** root search, calculator and privacy coverage (`node --test tests/*.test.js`).
+
+**macOS app (2026-11-12):** `macos/` runs `core/*.js` in JavaScriptCore; see `MACOS.md`. Launcher behaviour lives in `core/LauncherState.js`; `ui/LauncherWindow.qml` and the SwiftUI views only draw it, so change behaviour there once. `Backend.qml` now delegates to `core/Backend.js`; that refactor passes the node suite on Linux but still needs a live check on Omarchy (`omacast reload`, `qs log`, `tests/smoke.sh`).
 
 **Default-agent hand-off:** removed 2026-11-02 after the marketplace review; it exposed the question in process arguments (SPEC §2.0).
 

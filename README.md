@@ -21,6 +21,8 @@ Omarchy's built-in menu is great at what it does. omacast adds what Raycast user
 * **Keyboard-first.** A Ctrl+K action panel, Ctrl+1–9 quick picks, search history on ↑, section jumping, and emacs-style navigation.
 * **Native to Omarchy.** It runs inside `omarchy-shell` as a plugin, with no Electron, no Node and no extra daemons. It opens in about 40 ms and follows your theme live when you run `omarchy theme set`.
 
+On a Mac? The same launcher runs as a native macOS app: see [`macos/README.md`](macos/README.md).
+
 ## Screenshots
 
 <table>
