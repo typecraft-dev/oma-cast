@@ -1,7 +1,10 @@
 import QtQuick
 import Quickshell.Io
 import "../core/Migrate.js" as Migrate
+import "../core/Store.js" as Store
 
+// File I/O for core/Store.js, which parses, migrates and decides what to
+// write; the macOS app uses the same module.
 Item {
   id: store
 
@@ -18,13 +21,22 @@ Item {
   signal changed()
   signal message(string level, string text, var metadata)
 
-  property string _lastWritten: ""
+  readonly property var core: Store.create({
+    path: store.path, migrations: store.migrations, Migrate: Migrate,
+    now: function() { return store.now() },
+    log: function(level, text, metadata) { store.message(level, text, metadata || null) }
+  })
+
+  function sync() {
+    store.doc = store.core.doc
+    store.loaded = store.core.loaded
+    store.readOnly = store.core.readOnly
+    store.lastError = store.core.lastError
+  }
 
   function update(mutator) {
-    if (!store.loaded || store.readOnly) return false
-    var next = JSON.parse(JSON.stringify(store.doc))
-    var result = mutator(next)
-    store.doc = result === undefined ? next : result
+    if (!store.core.update(mutator)) return false
+    store.doc = store.core.doc
     saveTimer.restart()
     store.changed()
     return true
@@ -37,52 +49,15 @@ Item {
   }
 
   function write() {
-    if (!store.loaded || store.readOnly) return
-    var text = Migrate.serialize(store.doc)
-    if (text === store._lastWritten) return
-    store._lastWritten = text
-    file.setText(text)
+    var text = store.core.pendingWrite()
+    if (text !== null) file.setText(text)
   }
 
   function ingest(text) {
-    if (store.loaded && !store.readOnly && text === store._lastWritten) return
-
-    var parsed = Migrate.parse(text)
-    if (parsed.error) {
-      store.readOnly = true
-      store.lastError = "unreadable " + store.path + ": " + parsed.error
-      store.message("error", store.lastError + " (left untouched; fix or remove it)", null)
-      return
-    }
-
-    var result
-    try {
-      result = Migrate.migrate(parsed.doc, store.migrations, store.now())
-    } catch (e) {
-      store.readOnly = true
-      store.lastError = "migration failed for " + store.path + ": " + e
-      store.message("error", store.lastError, null)
-      return
-    }
-    if (result.error) {
-      store.readOnly = true
-      store.lastError = result.error
-      store.message("error", store.path + ": " + result.error, null)
-      return
-    }
-
-    store.readOnly = result.readOnly
-    store.lastError = ""
-    if (result.readOnly)
-      store.message("warning", store.path + " has schemaVersion " + result.from + ", newer than this build; not writing it", null)
-    if (result.applied.length > 0)
-      store.message("info", "migrated " + store.path, { from: result.from, to: result.to, applied: result.applied })
-
-    store._lastWritten = String(text || "")
-    store.doc = result.doc
-    store.loaded = true
-    if (result.changed) store.write()
-    store.changed()
+    var result = store.core.ingest(text)
+    store.sync()
+    if (result.write !== null) file.setText(result.write)
+    if (result.replaced) store.changed()
   }
 
   Component.onDestruction: store.flush()
@@ -104,8 +79,8 @@ Item {
     onLoadFailed: function(error) {
       if (error === FileViewError.FileNotFound) store.ingest("")
       else {
-        store.readOnly = true
-        store.lastError = "cannot read " + store.path + ": " + FileViewError.toString(error)
+        store.core.refuse("cannot read " + store.path + ": " + FileViewError.toString(error))
+        store.sync()
         store.message("error", store.lastError, null)
       }
     }
