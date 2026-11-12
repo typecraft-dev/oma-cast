@@ -589,8 +589,9 @@ PanelWindow {
       if (ctrl && !shift && key === Qt.Key_P) { window.toggleDropdown(); return true }
       if (ctrl && !shift && key === Qt.Key_T) { window.toggleToastPanel(); return true }
       if (window.view.kind === "web-search" && enter && !ctrl && !alt && !window.query.trim()) { window.showToast("failure", "Type a query first"); return true }
-      if (window.view.kind === "quick-capture" && enter && !ctrl && !alt && !window.query.trim()) { window.showToast("failure", "Type a note first"); return true }
+      if (window.view.kind === "quick-capture" && enter && !shift && !alt && !window.query.trim()) { window.showToast("failure", "Type a note first"); return true }
       if (window.view.kind === "todoist-add" && enter && !ctrl && !alt && !window.query.trim()) { window.showToast("failure", "Type a task first"); return true }
+      if (window.view.kind === "quick-capture" && enter && ctrl && !shift && !alt) { window.perform("open"); return true }
       if (enter && ctrl && shift) { window.performNth(2); return true }
       if (enter && ctrl) { window.performNth(1); return true }
       if (enter) { window.performNth(0); return true }
@@ -938,7 +939,7 @@ PanelWindow {
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? "Typing the alias exactly in the root search puts this command on top. Leave it empty to remove it."
             : window.view.kind === "setting-edit" ? "Empty uses the default Notes folder."
-            : window.view.kind === "quick-capture" && !window.query ? "Type a note, then press ↵ to save it."
+            : window.view.kind === "quick-capture" && !window.query ? "Type a note, then press ↵ or Ctrl+↵ to save it."
             : window.view.kind === "todoist" && !window.query ? "Type to filter tasks."
             : window.view.kind === "todoist-add" && !window.query ? "Dates, #projects, @labels and p1–p4 are parsed."
             : window.view.kind === "web-search" && !window.query ? "Type a query, then press ↵ to search."

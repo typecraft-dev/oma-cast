@@ -84,6 +84,8 @@ test("the builtin pushes the capture view and the row shapes", () => {
   assert.equal(cand.id, RS.QUICK_SAVE_ID)
   assert.equal(cand.kind, "quick-capture")
   assert.deepEqual(RS.actionsFor(cand).map(function(a) { return a.id }), ["open", "save-new", "reveal-folder", "copy-note"])
+  assert.deepEqual(RS.actionsFor(cand).map(function(a) { return a.shortcut }), ["↵", "", "", "Ctrl Shift C"],
+    "Ctrl+↵ submits (Save Capture); Save as New File lives in the action panel" )
   assert.deepEqual(RS.quickCaptureSections("", "p", "s", "q", "f", "d", "m"), [], "empty query shows the empty state, not a row")
   assert.equal(RS.quickCaptureSections("hi", "hi", "inbox.md · Same file", "hi", "inbox.md", "/d", "inbox")[0].rows[0].candidate.id, RS.QUICK_SAVE_ID)
   const about = Object.fromEntries(RS.aboutFor(cand, NOW).map(function(r) { return [r.label, r.value] }))

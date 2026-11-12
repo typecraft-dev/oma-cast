@@ -442,8 +442,9 @@ function handleKey(e) {
     if (ctrl && !shift && kl === "p") { toggleDropdown(); return true }
     if (ctrl && !shift && kl === "t") { toggleToastPanel(); return true }
     if (view().kind === "web-search" && enter && !ctrl && !alt && !String(W.query || "").trim()) { showToast("failure", "Type a query first"); return true }
-    if (view().kind === "quick-capture" && enter && !ctrl && !alt && !String(W.query || "").trim()) { showToast("failure", "Type a note first"); return true }
+    if (view().kind === "quick-capture" && enter && !shift && !alt && !String(W.query || "").trim()) { showToast("failure", "Type a note first"); return true }
     if (view().kind === "todoist-add" && enter && !ctrl && !alt && !String(W.query || "").trim()) { showToast("failure", "Type a task first"); return true }
+    if (view().kind === "quick-capture" && enter && ctrl && !shift && !alt) { perform("open"); return true }
     if (enter && ctrl && shift) { performNth(2); return true }
     if (enter && ctrl) { performNth(1); return true }
     if (enter) { performNth(0); return true }

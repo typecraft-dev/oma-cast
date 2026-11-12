@@ -225,7 +225,7 @@ function renderList() {
     el.emptyHint.textContent = isAlias
       ? "Typing the alias exactly in the root search puts this command on top. Leave it empty to remove it."
       : (isSettingEdit ? "Empty uses the default Notes folder."
-        : (v.kind === "quick-capture" && !W.query ? "Type a note, then press \u21b5 to save it."
+        : (v.kind === "quick-capture" && !W.query ? "Type a note, then press \u21b5 or Ctrl+\u21b5 to save it."
           : (v.kind === "todoist" && !W.query ? "Type to filter tasks."
             : (v.kind === "todoist-add" && !W.query ? "Dates, #projects, @labels and p1–p4 are parsed."
               : (v.kind === "web-search" && !W.query ? "Type a query, then press \u21b5 to search."
