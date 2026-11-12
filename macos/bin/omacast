@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# omacast for macOS: the CLI. Talks to the running app over its socket
+# (~/Library/Application Support/omacast/run/omacast.sock).
+#
+#   omacast toggle | show | hide          the launcher window
+#   omacast run <commandId>               run a root-search command
+#   omacast call <method> [json]          any backend method, e.g. system.info
+#   omacast doctor [--latency]            what works and how to fix the rest
+#   omacast settings                      open the settings window
+#   omacast start | quit | restart        the app itself
+#   omacast log                           follow the log
+#   omacast install | uninstall           from a checkout: build, copy to ~/Applications, link this CLI
+#   omacast dev                           rebuild and restart from a checkout
+set -euo pipefail
+
+self=$(realpath "${BASH_SOURCE[0]}")
+support="$HOME/Library/Application Support/omacast"
+logfile="$HOME/Library/Logs/omacast/omacast.log"
+apps_dir=${OMACAST_APPS_DIR:-$HOME/Applications}
+bin_dir=${OMACAST_BIN_DIR:-$HOME/.local/bin}
+installed="$apps_dir/omacast.app"
+
+# In a checkout this script is macos/bin/omacast; inside the app bundle it
+# is Contents/Resources/omacast-cli.
+checkout=""
+[[ -f $(dirname "$self")/build-app ]] && checkout=$(cd "$(dirname "$self")/.." && pwd)
+
+app_path() {
+  if [[ $self == */Contents/Resources/omacast-cli ]]; then echo "${self%/Contents/Resources/omacast-cli}"; return; fi
+  for candidate in "$installed" /Applications/omacast.app ${checkout:+"$checkout/build/omacast.app"}; do
+    [[ -d $candidate ]] && { echo "$candidate"; return; }
+  done
+  echo "omacast.app not found; run 'omacast install' from a checkout" >&2
+  return 1
+}
+
+client() {
+  local app
+  app=$(app_path)
+  "$app/Contents/MacOS/omacast" --cli "$@"
+}
+
+running() { client ping >/dev/null 2>&1; }
+
+start() {
+  running && return 0
+  open -g "$(app_path)"
+  for _ in $(seq 50); do running && return 0; sleep 0.1; done
+  echo "omacast did not start; see omacast log" >&2
+  return 1
+}
+
+quit() {
+  running || return 0
+  client quit >/dev/null || true
+  for _ in $(seq 30); do running || return 0; sleep 0.1; done
+}
+
+need_checkout() {
+  [[ -n $checkout ]] || { echo "$1 runs from a checkout's macos/bin/omacast" >&2; exit 1; }
+}
+
+cmd=${1:-toggle}
+(($#)) && shift
+case $cmd in
+  toggle | show | hide | settings) start && client "$cmd" ;;
+  run) start && client run "${1:?usage: omacast run <commandId>}" ;;
+  call) start && client call "${1:?usage: omacast call <method> [json]}" "${2:-}" ;;
+  key | state) start && client "$cmd" "$@" ;;
+  doctor) start && client doctor ${1:+${1#--}} ;;
+  start) start ;;
+  quit) quit ;;
+  restart) quit; start ;;
+  log) touch "$logfile"; tail -n 50 -f "$logfile" ;;
+  install)
+    need_checkout install
+    built=$("$checkout/bin/build-app")
+    quit
+    mkdir -p "$apps_dir" "$bin_dir"
+    rm -rf "$installed"
+    ditto "$built" "$installed"
+    ln -sfn "$installed/Contents/Resources/omacast-cli" "$bin_dir/omacast"
+    [[ ${OMACAST_NO_START:-} ]] || open -g "$installed"
+    echo "installed $installed; CLI at $bin_dir/omacast. Press your hotkey (Option+Space unless you changed it)."
+    ;;
+  uninstall)
+    quit
+    rm -rf "$installed"
+    [[ -L $bin_dir/omacast ]] && rm "$bin_dir/omacast"
+    echo "removed the app and CLI. Your data stays in $support; delete it to forget everything."
+    ;;
+  dev)
+    need_checkout dev
+    "$checkout/bin/build-app" --debug >/dev/null
+    quit
+    open -g "$checkout/build/omacast.app"
+    ;;
+  -h | --help | help) sed -n '2,15p' "$self" | sed 's/^# \{0,1\}//' ;;
+  *) echo "unknown command $cmd (omacast help)" >&2; exit 2 ;;
+esac
