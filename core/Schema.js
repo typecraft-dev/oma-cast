@@ -73,7 +73,10 @@ var configDefaults = {
   remToPxRate: 16,
   workHoursPerDay: 8,
   // "auto" follows the Qt locale; "12h" or "24h" forces a clock. [D]
-  clockFormat: "auto"
+  clockFormat: "auto",
+  // macOS only: the global shortcut (macos/, Hotkey.swift). Omarchy binds
+  // its hotkey in Hyprland instead. [D]
+  hotkey: "alt+space"
 }
 
 // Values a config key or general setting may take, beyond its type.

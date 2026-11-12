@@ -3,7 +3,6 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
-const vm = require("node:vm")
 const { execFileSync } = require("node:child_process")
 const OmarchyMenu = require("../core/OmarchyMenu.js")
 const RootSearch = require("../core/RootSearch.js")
@@ -11,29 +10,43 @@ const Ranker = require("../core/Ranker.js")
 const Frecency = require("../core/Frecency.js")
 
 const deps = { OmarchyMenu, Ranker, Frecency }
-const backendSource = fs.readFileSync(path.join(__dirname, "../Backend.qml"), "utf8")
+const Rpc = require("../core/Rpc.js")
+const Schema = require("../core/Schema.js")
+const Migrate = require("../core/Migrate.js")
+const Calculator = require("../core/Calculator.js")
+const Backend = require("../core/Backend.js")
 
-function backendFunction(name, params, context) {
-  const signature = "function " + name + "(" + params + ")"
-  const start = backendSource.indexOf(signature)
-  assert.ok(start >= 0, signature)
-  const end = backendSource.indexOf("\n  }", start) + 4
-  return vm.runInContext("(" + backendSource.slice(start, end) + ")", context)
+function store(migrations) {
+  const s = { loaded: true, readOnly: false, lastError: "", doc: Migrate.migrate(null, migrations, 0).doc }
+  s.update = (mutator) => { const next = JSON.parse(JSON.stringify(s.doc)); const r = mutator(next); s.doc = r === undefined ? next : r }
+  return s
 }
 
+// core/Backend.js with a host that records summons; visits land in the
+// frecency store.
 function harness(tree) {
   const summons = []
-  const visits = []
-  const candidates = RootSearch.menuCandidates(tree, {}, {}, deps)
-  const backend = {
-    decorated: id => candidates.find(c => c.id === id),
-    recordVisit: (id, query) => visits.push({ id, query }),
-    summonPlugin: (id, payload) => summons.push({ id, payload: JSON.parse(payload) })
+  const host = {
+    stores: { settings: store(Schema.settingsMigrations), frecency: store(Schema.frecencyMigrations), calculator: store(Schema.calculatorMigrations) },
+    calculatorData: { rates: null, zones: {} },
+    config: () => Schema.withConfigDefaults(null),
+    hour12: () => false,
+    summonPlugin: (id, payload) => summons.push({ id, payload: JSON.parse(payload) }),
+    menuTree: () => tree
   }
-  const context = vm.createContext({ backend, menuSource: { tree }, OmarchyMenu })
-  backend.openMenu = backendFunction("openMenu", "item", context)
-  const perform = backendFunction("performAction", "data", context)
-  return { summons, visits, open: id => JSON.parse(JSON.stringify(perform({ id }))) }
+  const backend = Backend.create(host, { Rpc, Schema, Ranker, Frecency, RootSearch, Calculator, OmarchyMenu })
+  backend.setCandidates(RootSearch.menuCandidates(tree, {}, {}, deps))
+  const visits = []
+  return {
+    summons,
+    visits,
+    open: id => {
+      const r = backend.callSync("rootSearch.performAction", { id, action: "open" })
+      assert.equal(r.ok, true, r.error)
+      for (const key of Object.keys(host.stores.frecency.doc.items)) if (!visits.some(v => v.id === key)) visits.push({ id: key })
+      return JSON.parse(JSON.stringify(r.data))
+    }
+  }
 }
 
 for (const [version, appearance] of [["4.0.0", "style"], ["4.5.0-rc2", "appearance"]]) {

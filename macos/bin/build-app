@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Builds omacast.app from this checkout: the Swift binary, Info.plist and the
+# JavaScript it runs (core/*.js and macos/js/App.js, copied, never linked).
+#
+#   macos/bin/build-app [--debug] [--out DIR]
+#
+# Signing: OMACAST_SIGN_IDENTITY names a codesigning identity (see
+# `security find-identity -v -p codesigning`). Without one the app is
+# ad-hoc signed, and macOS forgets its Accessibility permission on every
+# rebuild.
+set -euo pipefail
+
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+repo=$(cd "$here/.." && pwd)
+config=release
+out="$here/build"
+while (($#)); do
+  case $1 in
+    --debug) config=debug ;;
+    --out) out=$2; shift ;;
+    *) echo "usage: build-app [--debug] [--out DIR]" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+swift build --package-path "$here" -c "$config" >&2
+bin=$(swift build --package-path "$here" -c "$config" --show-bin-path)/omacast
+
+app="$out/omacast.app"
+version=$(sed -n 's/^var VERSION = "\(.*\)"$/\1/p' "$here/js/App.js")
+rm -rf "$app"
+# Resources mirror the checkout: core/*.js and macos/js/*.js (JSEngine.swift).
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/core" "$app/Contents/Resources/macos/js"
+cp "$bin" "$app/Contents/MacOS/omacast"
+cp "$repo"/core/*.js "$app/Contents/Resources/core/"
+cp "$here"/js/*.js "$app/Contents/Resources/macos/js/"
+cp "$here/bin/omacast" "$app/Contents/Resources/omacast-cli"
+
+cat >"$app/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>dev.typecraft.omacast</string>
+  <key>CFBundleName</key><string>omacast</string>
+  <key>CFBundleDisplayName</key><string>omacast</string>
+  <key>CFBundleExecutable</key><string>omacast</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>$version</string>
+  <key>CFBundleVersion</key><string>$version</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>LSUIElement</key><true/>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSAppleEventsUsageDescription</key><string>omacast runs System commands you pick, such as Empty Trash, Restart and Toggle System Appearance.</string>
+</dict>
+</plist>
+PLIST
+
+identity=${OMACAST_SIGN_IDENTITY:--}
+codesign --force --sign "$identity" --identifier dev.typecraft.omacast "$app" >&2
+[[ $identity == - ]] && echo "note: ad-hoc signed; set OMACAST_SIGN_IDENTITY to keep the Accessibility permission across rebuilds" >&2
+echo "$app"

@@ -157,6 +157,7 @@ function builtinCandidate(def) {
     glyphFont: def.glyph ? "" : "omarchy",
     run: def.run,
     arguments: def.arguments || [],
+    confirm: def.confirm || null,
     rootSearch: def.rootSearch || { when: "always" }
   }
 }

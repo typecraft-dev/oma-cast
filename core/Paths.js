@@ -9,9 +9,10 @@ function xdg(env, name, homeFallback) {
   return homeFallback
 }
 
-function resolve(env) {
+function resolve(env, platform) {
   var home = String(env("HOME") || "").replace(/\/+$/, "")
   if (!home) throw new Error("HOME is not set")
+  if (platform === "darwin") return resolveDarwin(home)
   var uid = String(env("UID") || "")
   var runtimeBase = xdg(env, "XDG_RUNTIME_DIR", uid ? "/run/user/" + uid : "/tmp")
 
@@ -36,6 +37,31 @@ function resolve(env) {
     logs: state + "/logs",
     backups: state + "/backups",
     runtime: runtimeBase + "/" + APP
+  }
+}
+
+// macOS keeps everything under ~/Library (MACOS.md "Storage") [D]. The
+// layout below the base dirs matches Linux, so db/*.json files can be copied
+// between machines.
+function resolveDarwin(home) {
+  var support = home + "/Library/Application Support/" + APP
+  var state = support + "/state"
+  return {
+    home: home,
+    config: support,
+    configFile: support + "/config.json",
+    scriptCommands: support + "/script-commands",
+    data: support,
+    db: support + "/db",
+    extensions: support + "/extensions",
+    extensionSupport: support + "/extension-support",
+    clipboard: support + "/clipboard",
+    notesAttachments: support + "/notes/attachments",
+    cache: home + "/Library/Caches/" + APP,
+    state: state,
+    logs: home + "/Library/Logs/" + APP,
+    backups: state + "/backups",
+    runtime: support + "/run"
   }
 }
 

@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell.Io
 import "../core/Calculator.js" as Calculator
+import "../core/CalculatorData.js" as Policy
 
 // Live inputs for core/Calculator.js: ECB exchange rates (SPEC §8: cached
 // daily, frankfurter.dev) and the current UTC offset of every time zone the
@@ -22,27 +23,15 @@ Item {
   property bool cacheRead: false
   property var request: null
 
-  readonly property string ratesUrl: "https://api.frankfurter.dev/v1/latest"
-  readonly property double ratesMaxAgeMs: 12 * 3600 * 1000     // ECB publishes once a working day
-  readonly property double retryAfterMs: 30 * 60 * 1000
-  readonly property double zonesMaxAgeMs: 10 * 60 * 1000       // catches DST switches
-
   signal message(string level, string text, var metadata)
 
   // Cheap; called on every launcher open.
   function refresh() {
     var now = Date.now()
-    if (now - data.zonesAt > data.zonesMaxAgeMs && !zoneProcess.running) zoneProcess.running = true
-    if (data.ratesEnabled && data.cacheRead && !data.request
-        && now - data.ratesFetchedAt > data.ratesMaxAgeMs && now - data.ratesTriedAt > data.retryAfterMs)
+    if (Policy.zonesStale(data.zonesAt, now) && !zoneProcess.running) zoneProcess.running = true
+    if (Policy.shouldFetchRates({ enabled: data.ratesEnabled, cacheRead: data.cacheRead, pending: !!data.request,
+                                  fetchedAt: data.ratesFetchedAt, triedAt: data.ratesTriedAt }, now))
       data.fetchRates()
-  }
-
-  function validRates(doc) {
-    if (!doc || typeof doc.base !== "string" || !doc.rates || typeof doc.rates !== "object") return null
-    var out = {}
-    for (var code in doc.rates) if (/^[A-Z]{3}$/.test(code) && typeof doc.rates[code] === "number" && doc.rates[code] > 0) out[code] = doc.rates[code]
-    return { base: doc.base, date: String(doc.date || ""), rates: out }
   }
 
   function fetchRates() {
@@ -55,17 +44,17 @@ Item {
       data.request = null
       requestTimeout.stop()
       var parsed = null
-      try { parsed = xhr.status === 200 ? data.validRates(JSON.parse(xhr.responseText)) : null } catch (e) { parsed = null }
+      try { parsed = xhr.status === 200 ? Policy.validRates(JSON.parse(xhr.responseText)) : null } catch (e) { parsed = null }
       if (!parsed) {
         data.message("warning", "could not fetch exchange rates", { status: xhr.status })
         return
       }
       data.rates = parsed
       data.ratesFetchedAt = Date.now()
-      cache.setText(JSON.stringify({ fetchedAt: data.ratesFetchedAt, base: parsed.base, date: parsed.date, rates: parsed.rates }))
+      cache.setText(Policy.cacheText(parsed, data.ratesFetchedAt))
       data.message("info", "exchange rates updated", { date: parsed.date, currencies: Object.keys(parsed.rates).length })
     }
-    xhr.open("GET", data.ratesUrl)
+    xhr.open("GET", Policy.RATES_URL)
     xhr.send()
     requestTimeout.restart()
   }
@@ -88,16 +77,11 @@ Item {
     atomicWrites: true
     printErrors: false
     onLoaded: {
-      try {
-        var doc = JSON.parse(text())
-        var parsed = data.validRates(doc)
-        if (parsed) {
-          data.rates = parsed
-          data.ratesFetchedAt = Number(doc.fetchedAt) || 0
-        }
-      } catch (e) {
-        data.message("warning", "ignoring unreadable exchange-rate cache", null)
-      }
+      var cached = Policy.readCache(text())
+      if (cached) {
+        data.rates = cached.rates
+        data.ratesFetchedAt = cached.fetchedAt
+      } else data.message("warning", "ignoring unreadable exchange-rate cache", null)
       data.cacheRead = true
       data.refresh()
     }
