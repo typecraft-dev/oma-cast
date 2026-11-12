@@ -38,13 +38,15 @@ test("createStore migrates a missing file to a fresh document and writes it", as
   store.start()
   assert.equal(store.loaded, true)
   assert.equal(store.readOnly, false)
-  assert.equal(store.doc.schemaVersion, 1)
+  assert.equal(store.doc.schemaVersion, 2)
   assert.equal(store.doc.general.windowMode, "expanded")
+  assert.equal(store.doc.general.quickCaptureMode, "daily")
+  assert.equal(store.doc.general.quickCaptureDir, "")
   assert.deepEqual(store.doc.commands, {})
   // Migration changed the document → written immediately.
   await new Promise(function(r) { setTimeout(r, 50) })
   assert.ok(fs.existsSync(file))
-  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).schemaVersion, 1)
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).schemaVersion, 2)
 
   // update() persists after the 250 ms debounce.
   let changed = 0
