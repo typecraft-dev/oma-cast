@@ -73,6 +73,20 @@ var clipboardMigrations = [
   }
 ]
 
+// GIF Library (core/Gifs.js): the GIFs, frecency per GIF id and pins.
+var gifMigrations = [
+  {
+    version: 1,
+    name: "gifs",
+    up: function(doc) {
+      doc.gifs = []             // newest first: {id, title, tags, file, thumb, width, height, frames, bytes, phash, source, addedAt}
+      doc.items = {}            // id -> frecency entry
+      doc.pinned = []           // ids, in pin order
+      return doc
+    }
+  }
+]
+
 var SEARCH_HISTORY_LIMIT = 20
 
 function pushSearchHistory(history, query) {
@@ -89,7 +103,8 @@ var documents = {
   frecency: { file: "frecency.json", migrations: frecencyMigrations },
   calculator: { file: "calculator.json", migrations: calculatorMigrations },
   emoji: { file: "emoji.json", migrations: emojiMigrations },
-  clipboard: { file: "clipboard.json", migrations: clipboardMigrations }
+  clipboard: { file: "clipboard.json", migrations: clipboardMigrations },
+  gifs: { file: "gifs.json", migrations: gifMigrations }
 }
 
 var configDefaults = {
@@ -153,6 +168,7 @@ if (typeof module !== "undefined") {
     calculatorMigrations: calculatorMigrations,
     emojiMigrations: emojiMigrations,
     clipboardMigrations: clipboardMigrations,
+    gifMigrations: gifMigrations,
     pushSearchHistory: pushSearchHistory,
     SEARCH_HISTORY_LIMIT: SEARCH_HISTORY_LIMIT,
     documents: documents,
