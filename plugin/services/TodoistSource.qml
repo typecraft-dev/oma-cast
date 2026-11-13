@@ -50,6 +50,17 @@ Item {
     service._enqueue({ method: "DELETE", path: "/tasks/" + encodeURIComponent(String(id)), kind: "deleted", text: "" })
   }
 
+  // Structured add-form submit: the body is already shaped + validated
+  // by Todoist.createTaskBody in the backend. Kind "created" so the
+  // toast + frecency + resync match the quick-add path. [D]
+  function createStructured(bodyText) {
+    var body = null
+    try { body = JSON.parse(String(bodyText)) } catch (e) { body = null }
+    if (!body || !String(body.content || "").trim()) { service.failed("Type a description first"); return }
+    if (!service.token) { service.failed("Set TODOIST_TOKEN or add \"todoistToken\" to config.json — see README"); return }
+    service._enqueue({ method: "POST", path: "/tasks", body: body, kind: "created", text: String(body.content).trim() })
+  }
+
   function _enqueue(op) {
     service._queue = service._queue.concat([op])
     service._pump()
@@ -111,6 +122,8 @@ Item {
       // follows from done(), the list from the refresh's changed(). [D]
       service.loading = service._queue.length > 0
       service.changed()
+      if (op.kind !== "refreshed")
+        service.message("info", "todoist " + op.method + " " + op.path + " ok", null)
       service.done(op.kind, op.text)
       service.refresh()
       return
@@ -120,6 +133,9 @@ Item {
       // A 404 self-heals: the task is already gone server-side, so drop
       // the error into a refresh and report that. [D]
       if (message === Todoist.apiError(404, null)) service.refresh()
+      // Method + path + status land in the shell log so a failed delete
+      // answers "did it send to the api" without printing the token. [D]
+      service.message("warning", "todoist " + op.method + " " + op.path + " failed", { error: message, status: json && json.status })
       service.failed(message)
     }
     service._pump()

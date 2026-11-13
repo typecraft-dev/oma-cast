@@ -134,6 +134,88 @@ function previewTitle(text, width) {
   return s.length > w ? s.slice(0, w - 1).trim() + "…" : s
 }
 
+// Structured add form (the editor card): Description, Priority, Due
+// Date, Scheduled Date, Recurrence, Tags. Todoist's API only carries two
+// dates (due + deadline), so Scheduled Date maps to deadline_date and
+// there is no Start Date row; Recurrence fills due_string and wins over
+// Due Date when both are set, because only due_string carries server-side
+// recurrence. [D]
+var ADD_PRIORITIES = [
+  { value: "1", title: "No Priority" },
+  { value: "4", title: "P1" },
+  { value: "3", title: "P2" },
+  { value: "2", title: "P3" }
+]
+
+// Raw render-tree Form payload for the ExtensionForm renderers.
+function addFormDefinition() {
+  return {
+    kind: "Form", navigationTitle: "Add Task", isLoading: false, enableDrafts: false,
+    items: [
+      { kind: "TextField", id: "description", title: "Description", placeholder: "Buy bread", required: true },
+      { kind: "Dropdown", id: "priority", title: "Priority",
+        menu: { sections: [{ id: "p", items: ADD_PRIORITIES }] }, defaultValue: "1" },
+      { kind: "DatePicker", id: "dueDate", title: "Due Date", type: "date" },
+      { kind: "DatePicker", id: "scheduledDate", title: "Scheduled Date", type: "date" },
+      { kind: "TextField", id: "recurrence", title: "Recurrence", placeholder: "e.g., every day, every week on Monday" },
+      { kind: "TagPicker", id: "tags", title: "Tags", placeholder: "Comma-separated labels" }
+    ]
+  }
+}
+
+// Editable values for a fresh form (no Controlled wrappers: the
+// renderers take these as the starting point). [D]
+function addFormInitial() {
+  return { description: "", priority: "1", dueDate: null, scheduledDate: null, recurrence: "", tags: [] }
+}
+
+// "YYYY-MM-DD" or null. False for anything else (bad month/day,
+// non-strings, impossible calendar dates like Feb 30).
+function normalizeDate(value) {
+  if (value === null || value === undefined || value === "") return null
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value).trim())
+  if (!m) return false
+  var y = Number(m[1]), mo = Number(m[2]), d = Number(m[3])
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return false
+  var dt = new Date(y, mo - 1, d)
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return false
+  return m[1] + "-" + m[2] + "-" + m[3]
+}
+
+// Tags arrive as an array (TagPicker) or a comma string; both trim down
+// to non-empty labels.
+function parseTags(value) {
+  var parts = Array.isArray(value) ? value : String(value === undefined || value === null ? "" : value).split(",")
+  var out = []
+  for (var i = 0; i < parts.length; i++) {
+    var t = String(parts[i]).trim()
+    if (t && out.indexOf(t) < 0) out.push(t)
+  }
+  return out
+}
+
+// Form values → POST /tasks body, or {error} when invalid. Description
+// is required; priority falls back to none; dates must be YYYY-MM-DD.
+function createTaskBody(values) {
+  var v = values || {}
+  var content = String(v.description === undefined || v.description === null ? "" : v.description).replace(/\s+/g, " ").trim()
+  var verr = validateText(content)
+  if (verr) return { error: verr === "Type a task first" ? "Type a description first" : verr }
+  var pr = Number(v.priority)
+  var body = { content: content, priority: (pr === 4 || pr === 3 || pr === 2) ? pr : 1 }
+  var labels = parseTags(v.tags)
+  if (labels.length) body.labels = labels
+  var rec = String(v.recurrence === undefined || v.recurrence === null ? "" : v.recurrence).replace(/\s+/g, " ").trim()
+  var due = normalizeDate(v.dueDate)
+  if (due === false) return { error: "Due Date must be YYYY-MM-DD" }
+  var sched = normalizeDate(v.scheduledDate)
+  if (sched === false) return { error: "Scheduled Date must be YYYY-MM-DD" }
+  if (rec) body.due_string = rec
+  else if (due) body.due_date = due
+  if (sched) body.deadline_date = sched
+  return { body: body }
+}
+
 // The task text, or an error string when it cannot be created.
 function validateText(text) {
   var s = String(text === undefined || text === null ? "" : text)
@@ -170,6 +252,12 @@ if (typeof module !== "undefined") {
     filterTasks: filterTasks,
     previewTitle: previewTitle,
     validateText: validateText,
-    apiError: apiError
+    apiError: apiError,
+    ADD_PRIORITIES: ADD_PRIORITIES,
+    addFormDefinition: addFormDefinition,
+    addFormInitial: addFormInitial,
+    normalizeDate: normalizeDate,
+    parseTags: parseTags,
+    createTaskBody: createTaskBody
   }
 }

@@ -516,3 +516,28 @@ html, body {
   visibility: hidden;
   white-space: pre;
 }
+
+/* Extension Form (ref 03 §2.4): every field kind. */
+.form-field { display: flex; flex-direction: column; gap: 4px; margin: 5px 0; }
+.form-label { font-weight: 600; }
+.form-field input[type="text"], .form-field input[type="password"],
+.form-field input[type="date"], .form-field input[type="datetime-local"],
+.form-field textarea, .form-field select {
+  background: var(--color-input-bg, rgba(255,255,255,0.06));
+  color: inherit; border: 1px solid rgba(128,128,128,0.35);
+  border-radius: 6px; padding: 6px 8px; font: inherit; width: 100%; box-sizing: border-box;
+}
+.form-field textarea { min-height: 64px; resize: vertical; }
+.form-check { display: flex; gap: 8px; align-items: center; }
+.form-sep { border: none; border-top: 1px solid rgba(128,128,128,0.35); width: 100%; }
+.form-desc { opacity: 0.85; }
+.form-info { opacity: 0.6; font-size: 0.9em; }
+
+/* Todoist add form (the editor card): ExtensionForm rows + submit. */
+#todoform { overflow-y: auto; padding: 6px 12px 10px; }
+.form-submit {
+  display: block; margin: 10px 0 2px auto; padding: 6px 16px;
+  background: var(--accent, #7aa2f7); color: #fff; border: none;
+  border-radius: 6px; font: inherit; cursor: pointer;
+}
+.form-submit:active { opacity: 0.8; }

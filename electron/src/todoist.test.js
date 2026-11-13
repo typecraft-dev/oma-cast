@@ -96,6 +96,20 @@ test("complete and delete hit the task endpoints, then re-sync", async () => {
   ])
 })
 
+test("delete tolerates the real 204-empty response and logs the send", async () => {
+  const routes = {
+    "DELETE /api/v1/tasks/def": { status: 204, json: undefined },
+    "GET /api/v1/tasks?limit=200": { status: 200, json: LIST }
+  }
+  const t = stubTransport(routes)
+  const lines = []
+  const api = createTodoist({ requestFn: t.requestFn, token: "sekret", log: function(level, text, meta) { lines.push([level, text, meta]) } })
+  await api.deleteTask("def")
+  assert.equal(t.calls[0].key, "DELETE /api/v1/tasks/def", "the delete reaches the api")
+  assert.ok(lines.some(function(l) { return l[1] === "todoist request" && l[2].method === "DELETE" }), "the send is in the log")
+  assert.ok(!lines.some(function(l) { return JSON.stringify(l).indexOf("sekret") >= 0 }), "the token never lands in the log")
+})
+
 test("a 401 names the token; other codes stay actionable", async () => {
   const api = createTodoist({
     requestFn: stubTransport({ "*": { status: 401, json: { error: "Unauthorized", http_code: 401 } } }).requestFn,

@@ -42,6 +42,12 @@ function stubTodoist(seed) {
       changed()
       return Promise.resolve(null)
     },
+    createStructured: function(body) {
+      if (!body || !String(body.content || "").trim()) return Promise.reject(new Error("Type a description first"))
+      tasks.push(task({ id: "new-" + tasks.length, content: String(body.content).trim() }))
+      changed()
+      return Promise.resolve(tasks[tasks.length - 1])
+    },
     deleteTask: function(id) {
       const at = tasks.findIndex(function(t) { return t.id === id })
       if (at < 0) return Promise.reject(new Error("Task not found — it may already be gone"))
@@ -132,13 +138,29 @@ test("the task view groups and filters the cached list", () => {
   backend.dispose()
 })
 
-test("the add view shows one live row and refuses empty notes", () => {
+test("the add view renders no rows — the form owns it", () => {
   const { backend } = setup()
   const blank = backend.callSync("rootSearch.search", { query: "", view: { kind: "todoist-add", title: "Add Todoist Task" }, filter: "all" })
   assert.deepEqual(blank.data, [])
-  const r = backend.callSync("rootSearch.search", { query: "buy milk tomorrow p1", view: { kind: "todoist-add", title: "Add Todoist Task" }, filter: "all" })
-  assert.equal(r.data.length, 1)
-  assert.equal(r.data[0].rows[0].id, RootSearch.TODO_ADD_ID)
+  const typed = backend.callSync("rootSearch.search", { query: "buy milk", view: { kind: "todoist-add", title: "Add Todoist Task" }, filter: "all" })
+  assert.deepEqual(typed.data, [], "no live quick-add row anymore")
+  backend.dispose()
+})
+
+test("submitting the form creates the structured task", async () => {
+  const { backend, notes } = setup()
+  const bad = backend.callSync("rootSearch.performAction",
+    { id: RootSearch.TODO_ADD_ID, action: "submit", query: "", arguments: { description: "   " }, confirmed: true })
+  assert.equal(bad.ok, false, "empty description is rejected")
+  const r = backend.callSync("rootSearch.performAction", {
+    id: RootSearch.TODO_ADD_ID, action: "submit", query: "", confirmed: true,
+    arguments: { description: "Buy bread", priority: "4", dueDate: "2026-11-20", scheduledDate: "", recurrence: "", tags: ["shopping"] }
+  })
+  assert.deepEqual(r.data, { pending: true })
+  await tick()
+  assert.ok(notes.some(function(n) { return n[0] === "todoist.taskAdded" }), "success toast notification fired")
+  assert.ok(backend.callSync("rootSearch.search", { query: "bread", view: { kind: "todoist", title: "Todoist" }, filter: "all" })
+    .data.some(function(s) { return s.rows.some(function(row) { return row.title === "Buy bread" }) }), "new task cached")
   backend.dispose()
 })
 
@@ -159,7 +181,7 @@ test("adding returns pending, then notifies and records frecency", async () => {
 
 test("complete removes the row and toasts", async () => {
   const { backend, notes } = setup()
-  const r = backend.callSync("rootSearch.performAction", { id: "todoist:1", action: "open", query: "", confirmed: true })
+  const r = backend.callSync("rootSearch.performAction", { id: "todoist:1", action: "complete", query: "", confirmed: true })
   assert.deepEqual(r.data, { pending: true })
   await tick()
   assert.ok(notes.some(function(n) { return n[0] === "todoist.taskCompleted" }))

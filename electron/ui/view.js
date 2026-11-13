@@ -197,6 +197,26 @@ function bindRowPointer(node, index) {
 
 function renderList() {
   gate.reset()
+  // The add view is a structured ExtensionForm (the editor card), not
+  // rows: it renders once per push and keeps its own input state. [D]
+  var isAddForm = view().kind === "todoist-add"
+  el.todoform.style.display = isAddForm ? "block" : "none"
+  if (isAddForm) {
+    var formKey = W.stack.length + ":todoist-add"
+    if (W.formKey !== formKey || !W.formHandler) {
+      W.formKey = formKey
+      W.addSubmitting = false
+      el.todoform.innerHTML = ""
+      W.formHandler = renderExtensionForm(el.todoform, Todoist.addFormDefinition(), {})
+      var btn = document.createElement("button")
+      btn.className = "form-submit"
+      btn.textContent = "Add Task \u21b5"
+      btn.addEventListener("mousedown", function(e) { e.stopPropagation() })
+      btn.addEventListener("click", function() { submitAddForm() })
+      el.todoform.appendChild(btn)
+      W.formHandler.focusFirst()
+    }
+  } else if (W.formKey) { W.formKey = null; W.formHandler = null }
   el.list.innerHTML = ""
   W.rows.forEach(function(row, index) {
     if (row.rowKind === "section") el.list.appendChild(sectionRowEl(row))
@@ -206,7 +226,7 @@ function renderList() {
 
   var v = view()
   var isEditor = v.kind === "alias" || v.kind === "setting-edit"
-  var emptyVisible = isEditor || W.rows.length === 0
+  var emptyVisible = (isEditor || W.rows.length === 0) && v.kind !== "todoist-add"
   el.empty.classList.toggle("visible", emptyVisible && !compact())
   if (emptyVisible) {
     var isAlias = v.kind === "alias"
@@ -232,7 +252,7 @@ function renderList() {
             : (v.kind === "calculator-history" && !W.query ? "Type a calculation in the root search, then copy or paste the answer." : ""))))))
     el.emptyHint.style.display = el.emptyHint.textContent ? "block" : "none"
   }
-  el.list.style.display = isEditor ? "none" : "block"
+  el.list.style.display = (isEditor || v.kind === "todoist-add") ? "none" : "block"
   paintSelection()
 }
 

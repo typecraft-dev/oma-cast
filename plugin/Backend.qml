@@ -278,8 +278,17 @@ Item {
 
   // The network is async but the RPC layer is sync: return {pending:true}
   // (the AgentLauncher pattern) and toast when the request settles. [D]
-  function todoistAction(id, action, query) {
+  // Structured add-form submit (values) and the legacy quick-add
+  // (query text through /tasks/quick). Both toast + resync the same way. [D]
+  function todoistAction(id, action, query, values) {
     if (id === RootSearch.TODO_ADD_ID) {
+      if (action === "submit") {
+        var shaped = Todoist.createTaskBody(values || {})
+        if (shaped.error) throw new Error(shaped.error)
+        backend.todoistRequireToken()
+        todoistSource.createStructured(JSON.stringify(shaped.body))
+        return { pending: true }
+      }
       if (action !== "open") throw new Error("Unknown action " + action)
       var verr = Todoist.validateText(query)
       if (verr) throw new Error(verr)
@@ -294,7 +303,7 @@ Item {
       Util.execArgv(["wl-copy", "--", String(t.content || "")])
       return { close: true, hud: "Copied to Clipboard" }
     }
-    if (action !== "open" && action !== "delete") throw new Error("Unknown action " + action)
+    if (action !== "open" && action !== "complete" && action !== "delete") throw new Error("Unknown action " + action)
     backend.todoistRequireToken()
     if (action === "delete") todoistSource.deleteTask(tid)
     else todoistSource.completeTask(tid)
@@ -530,14 +539,9 @@ Item {
           }
         }
         else if (view && view.kind === "todoist") sections = RootSearch.todoistSections(todoistSource.tasks, query, Date.now(), Todoist)
-        else if (view && view.kind === "todoist-add") {
-          var tq = String(query || "").trim()
-          if (!tq || Todoist.validateText(tq)) sections = []
-          else {
-            try { sections = RootSearch.todoistAddSections(query, Todoist.previewTitle(tq)) }
-            catch (e) { sections = [] }
-          }
-        }
+        // The add view is a structured ExtensionForm (the editor card),
+        // not a live row: no sections, the form submits via submitAddForm. [D]
+        else if (view && view.kind === "todoist-add") sections = []
         else if (view && view.kind === "setting-edit") sections = []
         else {
           ctx.filter = String(data && data.filter || "all")
@@ -661,7 +665,7 @@ Item {
         // Todoist rows resolve against the service cache (async network,
         // sync RPC — the AgentLauncher {pending:true} pattern). [D]
         if (data && (data.id === RootSearch.TODO_ADD_ID || String(data.id || "").indexOf("todoist:") === 0)) {
-          return backend.todoistAction(data.id, String(data.action || "open"), String(data.query || ""))
+          return backend.todoistAction(data.id, String(data.action || "open"), String(data.query || ""), data.arguments || {})
         }
         // The quick-capture row is the query itself, saved again.
         if (data && (data.id === RootSearch.QUICK_SAVE_ID || String(data.id || "").indexOf("quick-capture:") === 0)) {

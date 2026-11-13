@@ -35,6 +35,9 @@ function createTodoist(opts) {
     return new Promise(function(resolve, reject) {
       var token = String(getToken() || "")
       if (!token) { reject(new Error("Set TODOIST_TOKEN or add \"todoistToken\" to config.json — see README")); return }
+      // Method + path only: answers "did it send to the api" from
+      // main.log without ever printing the token. [D]
+      log("info", "todoist request", { method: method, path: path })
       var body = payload ? JSON.stringify(payload) : null
       var req
       try {
@@ -55,12 +58,23 @@ function createTodoist(opts) {
             if (res.statusCode >= 200 && res.statusCode < 300) {
               if (!chunks) { resolve(null); return }
               try { resolve(JSON.parse(chunks)) } catch (e) { reject(new Error("Todoist answered unreadable JSON")) }
-            } else reject(failure(res.statusCode, chunks))
+            } else {
+              var err = failure(res.statusCode, chunks)
+              log("warning", "todoist request failed", { method: method, path: path, status: res.statusCode })
+              reject(err)
+            }
           })
         })
       } catch (e) { reject(new Error("Todoist request failed: " + (e && e.message || e))); return }
-      req.on("error", function(e) { reject(new Error("Todoist request failed: " + (e && e.message || e))) })
-      req.on("timeout", function() { try { req.destroy() } catch (e) {} reject(new Error("Todoist timed out — try again.")) })
+      req.on("error", function(e) {
+        log("warning", "todoist request failed", { method: method, path: path, error: String((e && e.message) || e) })
+        reject(new Error("Todoist request failed: " + ((e && e.message) || e)))
+      })
+      req.on("timeout", function() {
+        try { req.destroy() } catch (e) {}
+        log("warning", "todoist request failed", { method: method, path: path, error: "timeout" })
+        reject(new Error("Todoist timed out — try again."))
+      })
       if (body) req.write(body)
       req.end()
     })
@@ -121,6 +135,12 @@ function createTodoist(opts) {
     deleteTask: function(id) {
       if (!String(id || "").trim()) return Promise.reject(new Error("No such task"))
       return afterMutation(call("DELETE", "/tasks/" + encodeURIComponent(String(id))))
+    },
+    // Structured add-form submit: the body is already shaped +
+    // validated by Todoist.createTaskBody in the backend. [D]
+    createStructured: function(body) {
+      if (!body || !String(body.content || "").trim()) return Promise.reject(new Error("Type a description first"))
+      return afterMutation(call("POST", "/tasks", body))
     }
   }
   return api

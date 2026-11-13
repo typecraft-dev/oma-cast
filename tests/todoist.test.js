@@ -143,6 +143,7 @@ test("delete confirms with the task named; other rows are untouched", () => {
   const anon = RS.confirmationFor("todoist:x", "delete", "")
   assert.match(anon.message, /There is no undo/)
   assert.equal(RS.confirmationFor("todoist:x", "open"), null, "complete needs no confirm")
+  assert.equal(RS.confirmationFor("todoist:x", "complete"), null, "advertised complete id needs no confirm either")
   assert.equal(RS.confirmationFor("todoist:x", "copy"), null)
   assert.equal(RS.confirmationFor("builtin:shutdown", "open").primary, "Shut Down", "exact-id rules still work")
 })
@@ -155,4 +156,38 @@ test("the about panel describes a task", () => {
   assert.equal(about.Priority, "p1")
   assert.equal(about.Labels, "work")
   assert.equal(about.ID, "abc")
+})
+
+test("the add form carries every editor field", () => {
+  const form = TD.addFormDefinition()
+  assert.equal(form.kind, "Form")
+  assert.deepEqual(form.items.map(function(i) { return i.id }),
+    ["description", "priority", "dueDate", "scheduledDate", "recurrence", "tags"])
+  assert.deepEqual(form.items.map(function(i) { return i.kind }),
+    ["TextField", "Dropdown", "DatePicker", "DatePicker", "TextField", "TagPicker"])
+  assert.deepEqual(TD.addFormInitial(),
+    { description: "", priority: "1", dueDate: null, scheduledDate: null, recurrence: "", tags: [] })
+})
+
+test("structured creates map to the POST /tasks body", () => {
+  const full = TD.createTaskBody({
+    description: "  Buy bread ", priority: "4",
+    dueDate: "2026-11-20", scheduledDate: "2026-11-21",
+    recurrence: "", tags: ["shopping", " shopping "]
+  })
+  assert.deepEqual(full.body, {
+    content: "Buy bread", priority: 4, labels: ["shopping"],
+    due_date: "2026-11-20", deadline_date: "2026-11-21"
+  })
+  const rec = TD.createTaskBody({ description: "Standup", recurrence: "every day", dueDate: "2026-11-20" })
+  assert.equal(rec.body.due_string, "every day", "recurrence wins over Due Date")
+  assert.ok(!("due_date" in rec.body))
+  const bare = TD.createTaskBody({ description: "x" })
+  assert.deepEqual(bare.body, { content: "x", priority: 1 })
+  assert.equal(TD.createTaskBody({ description: "   " }).error, "Type a description first")
+  assert.equal(TD.createTaskBody({ description: "x", dueDate: "Nov 20" }).error, "Due Date must be YYYY-MM-DD")
+  assert.equal(TD.createTaskBody({ description: "x", scheduledDate: "2026-02-30" }).error, "Scheduled Date must be YYYY-MM-DD")
+  assert.equal(TD.normalizeDate("2026-02-29"), false, "2026 is not a leap year")
+  assert.equal(TD.normalizeDate("2024-02-29"), "2024-02-29")
+  assert.deepEqual(TD.parseTags("a, b,,a"), ["a", "b"])
 })

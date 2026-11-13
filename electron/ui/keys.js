@@ -128,6 +128,41 @@ function actionsForSelected() {
   return r.ok ? r.data : []
 }
 
+// The add view is a real form: its inputs handle their own keys
+// natively (the capture listener must not steal them), Enter submits
+// unless a select/checkbox has focus, Escape backs out. [D]
+function handleAddFormKey(e, enter, ctrl, alt, shift) {
+  var t = document.activeElement
+  var inForm = !!(t && el.todoform.contains(t))
+  var tag = t && t.tagName
+  // Escape pops through handleEscape (runs before this branch).
+  if (enter && !ctrl && !alt && !shift) {
+    if (inForm && (tag === "SELECT" || (tag === "INPUT" && t.type === "checkbox"))) return false
+    submitAddForm()
+    return true
+  }
+  if ((e.key === "ArrowUp" || e.key === "ArrowDown") && W.formHandler
+      && !(inForm && (tag === "SELECT" || (tag === "INPUT" && t.type === "date")))) {
+    W.formHandler.focusNext(e.key === "ArrowDown" ? 1 : -1)
+    return true
+  }
+  return false
+}
+
+function submitAddForm() {
+  if (!W.formHandler || W.addSubmitting) return
+  var r = W.formHandler.submit()
+  if (!r.ok) {
+    var first = Object.keys(r.errors)[0]
+    showToast("failure", r.errors[first])
+    return
+  }
+  W.addSubmitting = true
+  var res = backend.callSync("rootSearch.performAction",
+    { id: RootSearch.TODO_ADD_ID, action: "submit", query: "", arguments: r.values })
+  if (!res.ok) { W.addSubmitting = false; showToast("failure", res.error); return }
+}
+
 function perform(actionId, index) {
   flushRebuild()
   if (index !== undefined && index >= 0) select(index)
@@ -443,7 +478,7 @@ function handleKey(e) {
     if (ctrl && !shift && kl === "t") { toggleToastPanel(); return true }
     if (view().kind === "web-search" && enter && !ctrl && !alt && !String(W.query || "").trim()) { showToast("failure", "Type a query first"); return true }
     if (view().kind === "quick-capture" && enter && !shift && !alt && !String(W.query || "").trim()) { showToast("failure", "Type a note first"); return true }
-    if (view().kind === "todoist-add" && enter && !ctrl && !alt && !String(W.query || "").trim()) { showToast("failure", "Type a task first"); return true }
+    if (view().kind === "todoist-add") return handleAddFormKey(e, enter, ctrl, alt, shift)
     if (view().kind === "quick-capture" && enter && ctrl && !shift && !alt) { perform("open"); return true }
     if (enter && ctrl && shift) { performNth(2); return true }
     if (enter && ctrl) { performNth(1); return true }
@@ -569,6 +604,10 @@ backend.onNotification(function(method, data) {
   if (method === "todoist.tasksChanged" && W.shown && !W.actionPanelOpen && !W.alert) rebuild(false)
   if ((method === "todoist.taskAdded" || method === "todoist.taskCompleted" || method === "todoist.taskDeleted") && W.shown) showToast("success", data.message)
   if (method === "todoist.error" && W.shown) showToast("failure", data.message)
+  // A submitted add form pops back to the root like Update Task dismisses
+  // the editor; errors stay in the form for a retry. [D]
+  if (method === "todoist.taskAdded" && view().kind === "todoist-add") { W.addSubmitting = false; pop(); renderAll() }
+  if (method === "todoist.error" && view().kind === "todoist-add") W.addSubmitting = false
   if (method === "agent.launchReady") {
     host.dismiss()
     popToRoot()

@@ -594,9 +594,22 @@ function createBackend(opts) {
   }
   // The network is async but the RPC layer is sync: return {pending:true}
   // (the AgentLauncher pattern) and toast when the request settles. [D]
-  function todoistAction(id, action, query) {
+  // Structured add-form submit (values) and the legacy quick-add
+  // (query text through /tasks/quick). Both toast + resync the same way. [D]
+  function todoistAction(id, action, query, values) {
     if (!todoistToken()) throw new Error("Set TODOIST_TOKEN or add \"todoistToken\" to config.json — see README")
     if (id === RootSearch.TODO_ADD_ID) {
+      if (action === "submit") {
+        var shaped = Todoist.createTaskBody(values || {})
+        if (shaped.error) throw new Error(shaped.error)
+        var sb = shaped.body
+        todoist.createStructured(sb).then(function() {
+          if (candidatesById["builtin:todoist-add"]) recordVisit("builtin:todoist-add", sb.content)
+          emit("todoist.tasksChanged", null)
+          emit("todoist.taskAdded", { message: "Task added" })
+        }, todoistFail)
+        return { pending: true }
+      }
       if (action !== "open") throw new Error("Unknown action " + action)
       var verr = Todoist.validateText(query)
       if (verr) throw new Error(verr)
@@ -615,7 +628,7 @@ function createBackend(opts) {
       if (host.copy) host.copy(String(t.content || ""))
       return { close: true, hud: "Copied to Clipboard" }
     }
-    if (action !== "open" && action !== "delete") throw new Error("Unknown action " + action)
+    if (action !== "open" && action !== "complete" && action !== "delete") throw new Error("Unknown action " + action)
     if (action === "delete") {
       todoist.deleteTask(tid).then(function() {
         if (candidatesById["builtin:todoist"]) recordVisit("builtin:todoist", "")
@@ -850,14 +863,9 @@ function createBackend(opts) {
           sections = prows.length ? [{ id: "processes", title: "", rows: prows.map(toRow) }] : []
         } else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, CalculatorMod().filterHistory)
         else if (view && view.kind === "todoist") sections = RootSearch.todoistSections(todoist.tasks, query, nowMs(), Todoist)
-        else if (view && view.kind === "todoist-add") {
-          var tq = String(query || "").trim()
-          if (!tq || Todoist.validateText(tq)) sections = []
-          else {
-            try { sections = RootSearch.todoistAddSections(query, Todoist.previewTitle(tq)) }
-            catch (e) { sections = [] }
-          }
-        }
+        // The add view is a structured ExtensionForm (the editor card),
+        // not a live row: no sections, the form submits via submitAddForm. [D]
+        else if (view && view.kind === "todoist-add") sections = []
         else if (view && view.kind === "web-search") sections = RootSearch.webSearchSections(view.engine, query)
         else if (view && view.kind === "quick-capture") {
           var trimmed = String(query || "").trim()
@@ -1094,7 +1102,7 @@ function createBackend(opts) {
         // Todoist rows resolve against the service cache (async network,
         // sync RPC — the AgentLauncher {pending:true} pattern). [D]
         if (data && (data.id === RootSearch.TODO_ADD_ID || String(data.id || "").indexOf("todoist:") === 0)) {
-          return todoistAction(String(data.id), String(data.action || "open"), String(data.query || ""))
+          return todoistAction(String(data.id), String(data.action || "open"), String(data.query || ""), data.arguments || {})
         }
         // The calculator row is the query itself, evaluated again.
         if (data && data.id === RootSearch.CALCULATOR_ID) {
