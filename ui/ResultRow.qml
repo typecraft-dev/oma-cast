@@ -16,12 +16,24 @@ Item {
   required property string typeLabel
   required property string alias
   required property bool checked
+  required property bool iconless
   required property bool disabled
   required property bool favorite
   required property string calcInput
   required property string calcResult
   required property string calcInputCaption
   required property string calcResultCaption
+  required property string cellsJson
+
+  // Emoji grid line (rowKind "emoji-row"): up to `columns` cells; the
+  // selected one is selectedColumn.
+  property int selectedColumn: 0
+  property int columns: 8
+  readonly property var cells: row.isGrid && row.cellsJson ? JSON.parse(row.cellsJson) : []
+  readonly property real cellWidth: row.width / row.columns
+  // GIF cells carry a thumbnail; their tiles are landscape.
+  readonly property bool imageGrid: row.cells.length > 0 && !!row.cells[0].thumb
+  function columnAt(x) { return Math.max(0, Math.min(row.cells.length - 1, Math.floor(x / row.cellWidth))) }
 
   property bool selected: false
   property var look: null
@@ -29,14 +41,66 @@ Item {
   property real zoom: 1
 
   signal hovered(int index, var item, var mouse)
-  signal clicked(int index)
+  signal clicked(int index, int column)
 
   readonly property bool isSection: row.rowKind === "section"
   readonly property bool isCalculator: row.rowKind === "calculator"
+  readonly property bool isGrid: row.rowKind === "emoji-row"
   function px(v) { return Math.round(Style.space(v) * row.zoom) }
 
   width: ListView.view ? ListView.view.width : 0
-  height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(118) : px(42))
+  height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(118) : row.isGrid ? Math.round(row.cellWidth * (row.imageGrid ? 0.66 : 0.86)) : px(42))
+
+  // Raycast's emoji grid (ref 04 §2 grid views): a tile per emoji, the
+  // selected one filled and outlined.
+  Repeater {
+    model: row.isGrid ? row.cells : []
+    delegate: Rectangle {
+      required property var modelData
+      required property int index
+      readonly property bool current: row.selected && index === row.selectedColumn
+      x: index * row.cellWidth + row.px(3)
+      y: row.px(3)
+      width: row.cellWidth - row.px(6)
+      height: row.height - row.px(6)
+      radius: Style.cornerRadius
+      color: current ? row.look.selectedBackground : Util.alpha(row.look.foreground, 0.04)
+      border.width: current ? Math.max(1, Style.space(2)) : 0
+      border.color: row.look.accent
+      Text {
+        visible: !modelData.thumb
+        anchors.centerIn: parent
+        textFormat: Text.PlainText
+        text: modelData.symbol
+        font.pixelSize: Math.round(parent.height * 0.5)
+      }
+      // A GIF: its still thumbnail, and only the selected one plays.
+      Item {
+        visible: !!modelData.thumb
+        anchors.fill: parent
+        anchors.margins: current ? Math.max(2, Style.space(3)) : 0
+        clip: true
+        Image {
+          anchors.fill: parent
+          visible: !current || still.status !== Image.Ready || moving.status !== Image.Ready
+          source: modelData.thumb ? "file://" + modelData.thumb : ""
+          sourceSize.width: Math.round(row.cellWidth * 1.5)
+          fillMode: Image.PreserveAspectCrop
+          asynchronous: true
+          id: still
+        }
+        AnimatedImage {
+          id: moving
+          anchors.fill: parent
+          source: current && modelData.file ? "file://" + modelData.file : ""
+          fillMode: Image.PreserveAspectCrop
+          asynchronous: true
+          playing: current
+        }
+      }
+    }
+  }
+
 
   // The inline calculator (ref 04 §1 Calculator): question on the left,
   // answer on the right, each with a caption, an arrow between them.
@@ -45,7 +109,7 @@ Item {
     anchors.fill: parent
     sourceComponent: Rectangle {
       anchors.fill: parent
-      radius: Math.max(Style.cornerRadius, row.px(6))
+      radius: Style.cornerRadius
       color: row.selected ? row.look.selectedBackground : Util.alpha(row.look.foreground, 0.04)
       border.width: 1
       border.color: Util.alpha(row.look.foreground, row.selected ? 0 : 0.08)
@@ -142,28 +206,34 @@ Item {
   }
 
   Rectangle {
-    visible: !row.isSection && !row.isCalculator
+    visible: !row.isSection && !row.isCalculator && !row.isGrid
     anchors.fill: parent
-    radius: Math.max(Style.cornerRadius, row.px(6))
+    radius: Style.cornerRadius
     color: row.selected ? row.look.selectedBackground : "transparent"
     opacity: row.disabled ? 0.45 : 1
 
     Item {
       id: iconBox
-      width: row.px(22)
+      width: row.iconless ? 0 : row.px(22)
       height: row.px(22)
       anchors.left: parent.left
       anchors.leftMargin: row.px(12)
       anchors.verticalCenter: parent.verticalCenter
 
       Image {
+        // Not `visible`: that turns false whenever the launcher hides, which
+        // dropped every icon and reloaded it blank on the next open.
+        readonly property bool wanted: row.iconName.length > 0 && row.glyph.length === 0
         anchors.fill: parent
-        visible: row.iconName.length > 0 && row.glyph.length === 0
+        visible: wanted
         fillMode: Image.PreserveAspectFit
         asynchronous: true
+        // Keep the old icon while a new source or size decodes, instead of a
+        // blank frame (Qt 6.8+).
+        retainWhileLoading: true
         sourceSize.width: width * Screen.devicePixelRatio
         sourceSize.height: height * Screen.devicePixelRatio
-        source: !visible ? "" : (row.appLibrary ? row.appLibrary.iconSource(row.iconName) : Quickshell.iconPath(row.iconName, "application-x-executable"))
+        source: !wanted ? "" : (row.appLibrary ? row.appLibrary.iconSource(row.iconName) : Quickshell.iconPath(row.iconName, "application-x-executable"))
       }
 
       Text {
@@ -239,7 +309,7 @@ Item {
 
     Row {
       anchors.left: iconBox.right
-      anchors.leftMargin: row.px(10)
+      anchors.leftMargin: row.iconless ? 0 : row.px(10)
       anchors.right: accessories.left
       anchors.rightMargin: row.px(10)
       anchors.verticalCenter: parent.verticalCenter
@@ -278,6 +348,6 @@ Item {
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
     onPositionChanged: function(mouse) { row.hovered(row.index, row, mouse) }
-    onClicked: row.clicked(row.index)
+    onClicked: function(mouse) { row.clicked(row.index, row.isGrid ? row.columnAt(mouse.x) : 0) }
   }
 }

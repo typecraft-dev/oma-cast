@@ -633,6 +633,7 @@ Each running menu-bar command owns one SNI item (ksni):
   - `silent`: close the window, then a HUD with the last line
   - `inline`: the first line becomes the root-item subtitle, refreshed every `refreshTime` (≥ 10 s)
 - Success = exit 0. A compatibility test corpus is the `raycast/script-commands` GitHub repo.
+- **Privacy [D, 2026-11-03]:** arguments are the one place user text reaches an argv: `$1..$3` are the Script Commands interface, and the script is the user's own. Everything else still follows the stdin rule.
 
 ---
 
@@ -794,7 +795,7 @@ Repo layout [D]:
   - **HUD.** The HUD is Omarchy's OSD (`omarchy-shell osd show`).
   - **Settings.** There is no settings window yet (Phase 2); aliases are set from the action panel.
   - **Leftovers finished [D, 2026-10-22]:**
-    - **Navigation bindings.** `general.navigationBindings` = `emacs` (Ctrl+N down) or `vim-motions` (Ctrl+J/K). On Linux Ctrl replaces both ⌃ and ⌘, so vim's Ctrl+K would clash with the action panel: in vim mode the action panel moves to **Alt+K**. The search field has no text cursor, so Ctrl+B/F and Ctrl+H/L do nothing.
+    - **Navigation bindings.** `general.navigationBindings` = `emacs` (Ctrl+N down) or `vim-motions` (Ctrl+J/K). On Linux Ctrl replaces both ⌃ and ⌘, so vim's Ctrl+K would clash with the action panel: in vim mode the action panel moves to **Alt+K**. The search field has no text cursor, so Ctrl+B/F and Ctrl+H/L do nothing. Super+H/J/K/L are arrow keys in both modes, through a Hyprland submap held while the launcher is shown [D].
     - **Ctrl+P dropdown.** Ctrl+P is always `toggleFilter`, so emacs Ctrl+P = up is dropped in the list (it still moves up inside popups). Raycast's root has no dropdown; ours filters root search by type (All / Applications / Commands, `RootSearch.FILTERS`), hides the Calculator and fallback sections while filtered, and resets on pop-to-root.
     - **Ctrl+T** opens the toast's actions. Failure toasts offer "Copy Error Message"; "Disable Command" offers "Undo".
     - **Ctrl+Shift+K** About panel: `rootSearch.getItemInfo` → `RootSearch.aboutFor`.

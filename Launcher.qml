@@ -55,6 +55,13 @@ Item {
     else root.show()
   }
 
+  // A command's own hotkey toggles it: a second press while its view is on
+  // screen closes the launcher, as the launcher hotkey does.
+  function toggleView(commandId, kind) {
+    if (root.opened && launcher.view.kind === kind) root.hide()
+    else root.run(commandId)
+  }
+
   function run(commandId) {
     // `omacast run` is explicit, so it skips the confirmation alert.
     var r = backend.callSync("rootSearch.performAction", { id: commandId, action: "open", query: "", confirmed: true })
@@ -63,7 +70,8 @@ Item {
     if (outcome.push) {
       root.show()
       launcher.popToRoot()
-      launcher.push(outcome.push)
+      // direct: opened by its own shortcut (or `omacast run`), so Esc closes it. [D]
+      launcher.push(Object.assign({}, outcome.push, { direct: true }))
     } else if (outcome.close) {
       root.hide()
       if (outcome.hud) launcher.hud(outcome.hud)
@@ -75,6 +83,22 @@ Item {
     id: backend
     appLibrary: root.shell ? root.shell.appLibrary : null
     summon: function(id, payload) { return root.shell ? root.shell.summon(id, payload) : false }
+  }
+
+  // A script command's last line of output: a toast if the launcher is still
+  // open, else a HUD (SPEC §10.2 Toast → HUD).
+  Connections {
+    target: backend
+    function onNotification(method, data) {
+      if (method === "superwhisper.finished" || method === "gifs.imported") {
+        if (root.opened) launcher.showToast(data.style, data.title)
+        else launcher.hud(data.title)
+        return
+      }
+      if (method !== "scriptCommands.finished") return
+      if (root.opened && data.mode !== "silent") launcher.showToast(data.style, data.title)
+      else launcher.hud(data.title)
+    }
   }
 
   LauncherWindow {
@@ -90,6 +114,38 @@ Item {
     name: "toggle"
     description: "Toggle omacast"
     onPressed: root.toggle()
+  }
+
+  // Toggles Emoji & Symbols directly: hl.dsp.global("omacast:emoji").
+  GlobalShortcut {
+    appid: "omacast"
+    name: "emoji"
+    description: "Toggle omacast Emoji & Symbols"
+    onPressed: root.toggleView("builtin:emoji-picker", "emoji")
+  }
+
+  // Toggles Switch Theme directly: hl.dsp.global("omacast:theme").
+  GlobalShortcut {
+    appid: "omacast"
+    name: "theme"
+    description: "Toggle omacast Switch Theme"
+    onPressed: root.toggleView("builtin:switch-theme", "theme")
+  }
+
+  // Toggles the GIF Library directly: hl.dsp.global("omacast:gifs").
+  GlobalShortcut {
+    appid: "omacast"
+    name: "gifs"
+    description: "Toggle omacast GIF Library"
+    onPressed: root.toggleView("builtin:gif-library", "gif")
+  }
+
+  // Toggles Clipboard History directly: hl.dsp.global("omacast:clipboard").
+  GlobalShortcut {
+    appid: "omacast"
+    name: "clipboard"
+    description: "Toggle omacast Clipboard History"
+    onPressed: root.toggleView("builtin:clipboard-history", "clipboard")
   }
 
   IpcHandler {

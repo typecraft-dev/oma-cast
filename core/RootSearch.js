@@ -32,6 +32,125 @@ var BUILTINS = [
     rootSearch: { when: "always" }
   },
   {
+    id: "builtin:emoji-picker",
+    title: "Search Emoji & Symbols",
+    subtitle: "Emoji & Symbols",
+    glyph: "\uf118",                     // nf-fa-smile_o
+    keywords: ["emoji", "emoticon", "smiley", "symbols", "picker"],
+    run: { push: { kind: "emoji", title: "Search Emoji & Symbols" } },
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:gif-library",
+    title: "Search GIFs",
+    subtitle: "GIF Library",
+    glyph: "\uf1c5",                     // nf-fa-file_image_o
+    keywords: ["gif", "gifs", "reaction", "meme", "animated", "library"],
+    run: { push: { kind: "gif", title: "Search GIFs" } },
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:clipboard-history",
+    title: "Clipboard History",
+    subtitle: "Clipboard History",
+    glyph: "\uf0ea",                     // nf-fa-clipboard
+    keywords: ["clipboard", "history", "paste", "copy", "pasteboard"],
+    run: { push: { kind: "clipboard", title: "Clipboard History" } },
+    rootSearch: { when: "always" }
+  },
+  // Superwhisper dictation; shown only when the superwhisper CLI is installed.
+  {
+    id: "builtin:superwhisper-start",
+    title: "Start Recording",
+    subtitle: "Superwhisper",
+    glyph: "\uf130",                     // nf-fa-microphone
+    keywords: ["superwhisper", "dictation", "dictate", "record", "voice", "speech", "transcribe"],
+    run: { superwhisper: "start" },
+    requires: "superwhisper",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-stop",
+    title: "Stop Recording",
+    subtitle: "Superwhisper",
+    glyph: "\uf04d",                     // nf-fa-stop
+    keywords: ["superwhisper", "dictation", "dictate", "record", "voice", "speech", "transcribe"],
+    run: { superwhisper: "stop" },
+    requires: "superwhisper",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-paste-last",
+    title: "Paste Last Dictation",
+    subtitle: "Superwhisper",
+    glyph: "\uf0ea",                     // nf-fa-clipboard
+    keywords: ["superwhisper", "dictation", "transcription", "last", "paste", "recover"],
+    run: { superwhisperLast: "paste" },
+    requires: "superwhisper-history",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-copy-last",
+    title: "Copy Last Dictation",
+    subtitle: "Superwhisper",
+    glyph: "\uf0c5",                     // nf-fa-files_o
+    keywords: ["superwhisper", "dictation", "transcription", "last", "copy", "recover"],
+    run: { superwhisperLast: "copy" },
+    requires: "superwhisper-history",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-mode",
+    title: "Switch Processing Mode",
+    subtitle: "Superwhisper",
+    glyph: "\uf0c2",                     // nf-fa-cloud
+    keywords: ["superwhisper", "dictation", "processing", "mode", "offline", "cloud", "lite"],
+    run: { push: { kind: "superwhisper-setting", setting: "mode", title: "Switch Processing Mode" } },
+    requires: "superwhisper",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-microphone",
+    title: "Switch Microphone",
+    subtitle: "Superwhisper",
+    glyph: "\uf130",                     // nf-fa-microphone
+    keywords: ["superwhisper", "dictation", "microphone", "mic", "input", "audio", "device"],
+    run: { push: { kind: "superwhisper-setting", setting: "microphone", title: "Switch Microphone" } },
+    requires: "superwhisper",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-language",
+    title: "Switch Language",
+    subtitle: "Superwhisper",
+    glyph: "\uf1ab",                     // nf-fa-language
+    keywords: ["superwhisper", "dictation", "language", "locale", "translate"],
+    run: { push: { kind: "superwhisper-setting", setting: "language", title: "Switch Language" } },
+    requires: "superwhisper",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:superwhisper-history",
+    title: "Superwhisper History",
+    subtitle: "Superwhisper",
+    glyph: "\uf1da",                     // nf-fa-history
+    keywords: ["superwhisper", "dictation", "transcription", "history", "voice", "speech"],
+    run: { push: { kind: "superwhisper-history", title: "Superwhisper History" } },
+    requires: "superwhisper-history",
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:switch-theme",
+    title: "Switch Theme",
+    subtitle: "Omarchy",
+    glyph: "\uf1fc",                     // nf-fa-paint_brush
+    keywords: ["theme", "themes", "appearance", "colors", "colours", "dark", "light", "omarchy"],
+    run: { push: { kind: "theme", title: "Switch Theme" } },
+    // Replaces Omarchy's theme picker in omacast's results. [D]
+    supersedes: ["omarchy:appearance.theme"],
+    rootSearch: { when: "always" }
+  },
+  {
     id: "builtin:calculator-history",
     title: "Calculator History",
     subtitle: "Calculator",
@@ -282,6 +401,9 @@ function rootSections(candidates, query, ctx, deps) {
   var decorated = []
   for (var i = 0; i < candidates.length; i++) {
     if (!isEnabled(candidates[i], ctx) || !passesFilter(candidates[i], ctx.filter)) continue
+    // An Omarchy item its guard disables (an installer for an app that's already
+    // installed) can't run, so root search drops it; its submenu still shows it greyed. [D]
+    if (candidates[i].disabled) continue
     decorated.push(decorate(candidates[i], ctx, deps))
   }
   var opts = rankOptions(ctx)
@@ -359,6 +481,7 @@ function actionsFor(candidate) {
     case "omarchy-menu":
     case "omarchy-link": primary = { id: "open", title: "Open Menu", icon: "" }; break
     case "fallback": primary = { id: "open", title: candidate.title, icon: "" }; break
+    case "script": primary = { id: "open", title: "Run Script", icon: "\uf120" }; break
     default: primary = { id: "open", title: "Open Command", icon: "" }
   }
   primary.shortcut = "↵"
@@ -463,6 +586,7 @@ function aboutFor(c, nowMs) {
   if (c.kind === "app") add("Desktop Entry", c.appId + ".desktop")
   if (c.kind === "omarchy-action") add("Command", c.action)
   if (c.kind === "omarchy-link") add("Opens", c.target)
+  if (c.kind === "script") { add("Script", c.script.path); add("Mode", c.script.mode) }
   add("URL", c.url || (c.run && c.run.url))
   add("Arguments", (c.arguments || []).map(function(a) { return a.name + (a.required ? "" : " (optional)") }).join(", "))
   add("Keywords", (c.keywords || []).join(", "))

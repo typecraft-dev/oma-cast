@@ -30,6 +30,7 @@ function resolve(env) {
     extensions: data + "/extensions",
     extensionSupport: data + "/extension-support",
     clipboard: data + "/clipboard",
+    gifs: data + "/gifs",
     notesAttachments: data + "/notes/attachments",
     cache: cache,
     state: state,
@@ -48,7 +49,7 @@ function legacyMoves(paths) {
 }
 
 function directoriesToCreate(paths) {
-  return [paths.config, paths.db, paths.cache, paths.logs, paths.backups, paths.runtime]
+  return [paths.config, paths.db, paths.clipboard, paths.gifs, paths.cache, paths.logs, paths.backups, paths.runtime]
 }
 
 // Histories and settings are private: other local users must not read them.

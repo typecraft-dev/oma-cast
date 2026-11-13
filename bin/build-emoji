@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+// Builds data/emoji.json from Unicode's emoji-test.txt (Unicode License v3):
+//   bin/build-emoji path/to/emoji-test.txt
+// Each row is [symbol, name, group index, skin-toneable 0/1]. Toned variants
+// and the Component group are left out; tones are applied at paste time.
+const fs = require("fs")
+const path = require("path")
+const src = process.argv[2]
+if (!src) { console.error("usage: bin/build-emoji emoji-test.txt"); process.exit(2) }
+const text = fs.readFileSync(src, "utf8")
+const version = (text.match(/^# Version: (\S+)/m) || [])[1] || "?"
+const TONE = /[\u{1F3FB}-\u{1F3FF}]/u
+const all = new Set()
+const rows = []
+const groups = []
+let group = ""
+for (const line of text.split("\n")) {
+  const g = line.match(/^# group: (.+)/)
+  if (g) { group = g[1]; continue }
+  const m = line.match(/^[0-9A-F ]+;\s*fully-qualified\s*#\s*(\S+)\s+E\S+\s+(.+)$/)
+  if (!m) continue
+  all.add(m[1])
+  if (group === "Component" || TONE.test(m[1])) continue
+  if (groups.indexOf(group) < 0) groups.push(group)
+  rows.push([m[1], m[2], groups.indexOf(group)])
+}
+// Same rule as core/Emoji.js applyTone: the modifier follows the first code point.
+const toned = (s) => { const cps = Array.from(s); return cps[0] + "\u{1F3FB}" + cps.slice(cps[1] === "️" ? 2 : 1).join("") }
+for (const r of rows) r.push(all.has(toned(r[0])) ? 1 : 0)
+const out = path.join(__dirname, "..", "data", "emoji.json")
+fs.writeFileSync(out, JSON.stringify({ source: "Unicode emoji-test.txt " + version, groups, emoji: rows }) + "\n")
+console.log(`${rows.length} emoji, ${rows.filter((r) => r[3]).length} toneable -> ${out}`)
