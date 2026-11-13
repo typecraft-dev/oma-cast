@@ -130,7 +130,7 @@ function actionsForSelected() {
 
 // The add view is a real form: its inputs handle their own keys
 // natively (the capture listener must not steal them), Enter submits
-// unless a select/checkbox has focus, Escape backs out. [D]
+// unless a select/checkbox has focus; Escape pops via handleEscape. [D]
 function handleAddFormKey(e, enter, ctrl, alt, shift) {
   var t = document.activeElement
   var inForm = !!(t && el.todoform.contains(t))
