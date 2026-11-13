@@ -9,6 +9,7 @@ import qs.Ui
 import "../core/RootSearch.js" as RootSearch
 import "../core/Rows.js" as Rows
 import "../core/Emoji.js" as Emoji
+import "../core/Gifs.js" as Gifs
 import "../core/ScriptCommands.js" as ScriptCommands
 import "../core/ClipboardHistory.js" as ClipboardHistory
 import "../core/Superwhisper.js" as Superwhisper
@@ -132,12 +133,17 @@ PanelWindow {
   readonly property bool clipboardView: window.view.kind === "clipboard"
   // List on the left, DetailPane on the right.
   readonly property bool splitView: window.clipboardView || window.view.kind === "superwhisper-history" || window.view.kind === "theme"
-  readonly property bool hasFilter: window.clipboardView || (window.atRoot && window.backend.config.rootFilter)
-  readonly property var filterOptions: window.clipboardView ? ClipboardHistory.FILTERS : RootSearch.FILTERS
-  readonly property string activeFilter: window.clipboardView ? window.clipboardFilter : window.atRoot ? window.rootFilter : "all"
-  // Emoji & Symbols: the cell selected in a grid line.
+  readonly property bool hasFilter: window.clipboardView || window.gifView || (window.atRoot && window.backend.config.rootFilter)
+  readonly property var filterOptions: window.clipboardView ? ClipboardHistory.FILTERS : window.gifView ? Gifs.FILTERS : RootSearch.FILTERS
+  readonly property string activeFilter: window.clipboardView ? window.clipboardFilter : window.gifView ? window.gifFilter : window.atRoot ? window.rootFilter : "all"
+  // Emoji & Symbols and GIFs: the cell selected in a grid line.
   property int selectedColumn: 0
-  readonly property bool grid: window.view.kind === "emoji"
+  readonly property bool grid: window.view.kind === "emoji" || window.gifView
+  readonly property bool gifView: window.view.kind === "gif"
+  readonly property int gridColumns: window.gifView ? Gifs.COLUMNS : Emoji.COLUMNS
+  property string gifFilter: "all"
+  // A text field that edits a value (the alias, a GIF's title and tags) instead of searching.
+  readonly property bool editing: window.view.kind === "alias" || window.view.kind === "gif-edit"
   property bool dropdownOpen: false
   property bool toastPanelOpen: false
   property bool aboutOpen: false
@@ -167,6 +173,8 @@ PanelWindow {
     : window.view.kind === "superwhisper-history" ? "Search dictations…"
     : window.view.kind === "theme" ? "Search themes…"
     : window.view.kind === "superwhisper-setting" ? Superwhisper.SETTINGS[window.view.setting].placeholder
+    : window.view.kind === "gif-edit" ? "Title, tag, tag…"
+    : window.gifView ? "Search GIFs…"
     : window.grid ? "Search Emoji & Symbols…"
     : "Search for apps and commands…"
 
@@ -289,6 +297,7 @@ PanelWindow {
     window.query = ""
     window.rootFilter = "all"
     window.clipboardFilter = "all"
+    window.gifFilter = "all"
     window.rebuild(true)
   }
 
@@ -298,7 +307,8 @@ PanelWindow {
     saved[saved.length - 1] = Object.assign({}, window.view, { query: window.query, selectedIndex: window.selectedIndex })
     window.stack = saved.concat([next])
     if (next.kind === "clipboard") window.clipboardFilter = "all"
-    window.query = next.kind === "alias" ? (next.value || "") : ""
+    if (next.kind === "gif") window.gifFilter = "all"
+    window.query = next.kind === "alias" || next.kind === "gif-edit" ? (next.value || "") : ""
     window.rebuild(true)
   }
 
@@ -327,7 +337,7 @@ PanelWindow {
     pointerGate.reset()
     var keepId = !resetSelection && window.selectedRow ? window.selectedRow.itemId : ""
     window.searchPending = false
-    if (window.view.kind === "alias") { Rows.update(rows, []); window.select(-1); return }
+    if (window.editing) { Rows.update(rows, []); window.select(-1); return }
     window.searchPending = true
     var revision = window.backend.candidatesRevision
     window.backend.searchAsync({ query: window.query, view: window.view, filter: window.activeFilter }, function(result) {
@@ -347,13 +357,13 @@ PanelWindow {
     }
     var keepIndex = -1, keepColumn = 0, next = []
     if (window.grid) {
-      var lines = Emoji.gridLines(result.data, Emoji.COLUMNS)
+      var lines = Emoji.gridLines(result.data, window.gridColumns)
       for (var l = 0; l < lines.length; l++) {
         if (lines[l].section) { next.push(window.rowData({ id: "section:" + lines[l].section.id, title: lines[l].section.title }, "section")); continue }
         var cells = lines[l].cells
         for (var k = 0; k < cells.length; k++) if (keepIndex < 0 && cells[k].id === keepId) { keepIndex = next.length; keepColumn = k }
         var line = window.rowData({ id: "line:" + l }, "emoji-row")
-        line.cellsJson = JSON.stringify(cells.map(function(c) { return { id: c.id, symbol: c.symbol, title: c.title } }))
+        line.cellsJson = JSON.stringify(cells.map(function(c) { return { id: c.id, symbol: c.symbol || "", title: c.title, thumb: c.thumb || "", file: c.file || "", inbox: !!c.inbox } }))
         next.push(line)
       }
     }
@@ -462,7 +472,7 @@ PanelWindow {
     var count = JSON.parse(window.selectedRow.cellsJson).length
     if (col >= 0 && col < count) { window.select(window.selectedIndex, col); return }
     var line = window.nextSelectable(window.selectedIndex, delta)
-    if (line >= 0) window.select(line, delta > 0 ? 0 : Emoji.COLUMNS - 1)
+    if (line >= 0) window.select(line, delta > 0 ? 0 : window.gridColumns - 1)
   }
 
   function jumpSection(direction) {
@@ -562,6 +572,7 @@ PanelWindow {
     window.dropdownOpen = false
     if (window.activeFilter === id) return
     if (window.clipboardView) window.clipboardFilter = id
+    else if (window.gifView) window.gifFilter = id
     else window.rootFilter = id
     window.rebuild(true)
   }
@@ -628,6 +639,14 @@ PanelWindow {
     if (Util.editsFilter(event, value)) { set(Util.editedFilter(event, value)); return true }
     if (window.isTyping(event)) { set(value + event.text); return true }
     return false
+  }
+
+  function saveGifEdit() {
+    var r = window.backend.callSync("gifs.update", { id: window.view.gifId, text: window.query })
+    if (!r.ok) { window.showToast("failure", r.error); return }
+    window.pop()
+    window.showToast("success", r.data.inLibrary ? "Saved to the Library" : "Saved; add a title and " + Gifs.MIN_TAGS + " tags to use it in search")
+    window.rebuild(false)
   }
 
   function saveAlias() {
@@ -730,7 +749,7 @@ PanelWindow {
       window.popToRoot()
       return
     }
-    if (window.query && window.view.kind !== "alias") window.setQuery("")
+    if (window.query && !window.editing) window.setQuery("")
     else if (!window.atRoot) window.pop()
     else window.dismissRequested()
   }
@@ -813,7 +832,9 @@ PanelWindow {
       return window.handlePopupKey(event, actionPanel.item, ctrl, alt)
     }
 
-    if (window.view.kind === "alias") {
+    if (window.view.kind === "gif-edit") {
+      if (enter) { window.saveGifEdit(); return true }
+    } else if (window.view.kind === "alias") {
       if (enter) { window.saveAlias(); return true }
       if (key === Qt.Key_Space) return true
     } else {
@@ -846,12 +867,14 @@ PanelWindow {
       if (window.grid && hdir) { window.moveColumn(hdir); return true }
       if (ctrl && shift && key === Qt.Key_P) { window.performIfOffered(["pin", "unpin"]); return true }
       if (ctrl && !shift && key === Qt.Key_O) { window.performIfOffered(["open-link"]); return true }
+      if (ctrl && !shift && key === Qt.Key_G) { window.performIfOffered(["save-gif"]); return true }
+      if (ctrl && !shift && key === Qt.Key_E) { window.performIfOffered(["edit"]); return true }
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-name", "copy-raw"]); return true }
+      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-name", "copy-raw", "copy-source"]); return true }
       if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries", "clear-recent"]); return true }
-      if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry", "remove-recent"]); return true }
+      if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry", "remove-recent", "delete"]); return true }
       if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }
       if (ctrl && key >= Qt.Key_1 && key <= Qt.Key_9) {
         var target = window.nthItem(key - Qt.Key_0)
@@ -889,9 +912,9 @@ PanelWindow {
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
     // A copy, pin or delete: refresh an open Clipboard History.
     function onNotification(method) {
-      if (method !== "clipboard.stateChanged" && method !== "superwhisper.historyChanged" && method !== "themes.changed") return
+      if (method !== "clipboard.stateChanged" && method !== "superwhisper.historyChanged" && method !== "themes.changed" && method !== "gifs.stateChanged") return
       window.clipboardRevision++
-      if (window.shown && (window.splitView || window.view.kind === "superwhisper-setting") && !window.actionPanelOpen && !window.alert) window.rebuild(false)
+      if (window.shown && (window.splitView || window.gifView || window.view.kind === "superwhisper-setting") && !window.actionPanelOpen && !window.alert) window.rebuild(false)
     }
   }
 
@@ -1014,7 +1037,7 @@ PanelWindow {
 
       Row {
         id: pills
-        visible: window.argDefs.length > 0 && window.view.kind !== "alias"
+        visible: window.argDefs.length > 0 && !window.editing
         x: queryText.x + (window.query ? queryText.width : 0) + window.px(10)
         anchors.verticalCenter: parent.verticalCenter
         spacing: window.px(6)
@@ -1155,7 +1178,7 @@ PanelWindow {
         width: window.splitView ? Math.round(parent.width * 0.4) : parent.width
         anchors.topMargin: window.px(4)
         anchors.bottomMargin: window.px(4)
-        visible: window.view.kind !== "alias"
+        visible: !window.editing
         clip: true
         model: rows
         reuseItems: true
@@ -1172,7 +1195,7 @@ PanelWindow {
           appLibrary: window.appLibrary
           zoom: window.zoom
           selectedColumn: window.selectedColumn
-          columns: Emoji.COLUMNS
+          columns: window.gridColumns
           onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i, item.isGrid ? item.columnAt(mouse.x) : undefined) }
           onClicked: function(i, column) { if (window.grid) window.select(i, column); window.perform("open", i) }
         }
@@ -1192,9 +1215,20 @@ PanelWindow {
       Column {
         anchors.centerIn: parent
         spacing: window.px(8)
-        visible: window.view.kind === "alias" || rows.count === 0
+        visible: window.editing || rows.count === 0
 
+        // The GIF being edited, playing.
+        AnimatedImage {
+          visible: window.view.kind === "gif-edit"
+          anchors.horizontalCenter: parent.horizontalCenter
+          source: visible ? "file://" + window.view.thumb : ""
+          height: visible ? window.px(200) : 0
+          width: implicitHeight > 0 ? Math.round(height * implicitWidth / implicitHeight) : 0
+          fillMode: Image.PreserveAspectFit
+          asynchronous: true
+        }
         Text {
+          visible: window.view.kind !== "gif-edit"
           anchors.horizontalCenter: parent.horizontalCenter
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? "" : ""
@@ -1206,6 +1240,9 @@ PanelWindow {
           anchors.horizontalCenter: parent.horizontalCenter
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? window.view.title
+            : window.view.kind === "gif-edit" ? (Gifs.parseEdit(window.query).title || "Untitled GIF")
+            : window.gifView && !window.query && window.gifFilter === "all" ? "No GIFs Yet"
+            : window.gifView && !window.query && window.gifFilter === "inbox" ? "Inbox Zero"
             : window.view.kind === "calculator-history" && !window.query ? "No Calculations Yet"
             : window.clipboardView && !window.query && window.clipboardFilter === "all" ? "No Clipboard Entries"
             : window.view.kind === "superwhisper-history" && !window.query ? (window.backend.loading ? "Loading…" : "No Dictations Yet")
@@ -1218,6 +1255,8 @@ PanelWindow {
           anchors.horizontalCenter: parent.horizontalCenter
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? "Typing the alias exactly in the root search puts this command on top. Leave it empty to remove it."
+            : window.view.kind === "gif-edit" ? Gifs.editHint(window.query)
+            : window.gifView && !window.query && window.gifFilter === "all" ? "Run omacast gif add <file or URL>, or use Save to GIF Library in Clipboard History."
             : window.view.kind === "calculator-history" && !window.query ? "Type a calculation in the root search, then copy or paste the answer."
             : window.clipboardView && !window.query && window.clipboardFilter === "all"
               ? (window.backend.config.clipboardHistory ? "Copy something and it shows up here." : "Recording is off: clipboardHistory is false in config.json.") : ""
@@ -1274,7 +1313,8 @@ PanelWindow {
           color: window.look.foreground
           opacity: window.toast ? 0.9 : 0.6
           elide: Text.ElideRight
-          width: Math.min(implicitWidth, footer.width / 2)
+          // Whatever the actions on the right leave, so a long title never runs into them.
+          width: Math.max(0, Math.min(implicitWidth, footer.width - footerActions.width - window.px(80)))
           font.family: window.look.fontFamily
           font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
         }
@@ -1298,6 +1338,7 @@ PanelWindow {
           window.selectedRow
           window.backend.storeRevision
           if (window.view.kind === "alias") return { title: "Save Alias", shortcut: "↵" }
+          if (window.view.kind === "gif-edit") return { title: "Save", shortcut: "↵" }
           var list = window.actionsForSelected()
           return list.length ? list[0] : null
         }
@@ -1324,14 +1365,14 @@ PanelWindow {
           zoom: window.zoom
         }
         Rectangle {
-          visible: window.view.kind !== "alias"
+          visible: !window.editing
           anchors.verticalCenter: parent.verticalCenter
           width: 1
           height: window.px(14)
           color: Util.alpha(window.look.foreground, 0.2)
         }
         Text {
-          visible: window.view.kind !== "alias"
+          visible: !window.editing
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
           text: "Actions"
@@ -1341,7 +1382,7 @@ PanelWindow {
           font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
         }
         KeyHint {
-          visible: window.view.kind !== "alias"
+          visible: !window.editing
           anchors.verticalCenter: parent.verticalCenter
           keys: window.actionPanelKeys
           color: window.look.foreground

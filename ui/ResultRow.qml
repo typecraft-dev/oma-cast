@@ -31,6 +31,8 @@ Item {
   property int columns: 8
   readonly property var cells: row.isGrid && row.cellsJson ? JSON.parse(row.cellsJson) : []
   readonly property real cellWidth: row.width / row.columns
+  // GIF cells carry a thumbnail; their tiles are landscape.
+  readonly property bool imageGrid: row.cells.length > 0 && !!row.cells[0].thumb
   function columnAt(x) { return Math.max(0, Math.min(row.cells.length - 1, Math.floor(x / row.cellWidth))) }
 
   property bool selected: false
@@ -47,7 +49,7 @@ Item {
   function px(v) { return Math.round(Style.space(v) * row.zoom) }
 
   width: ListView.view ? ListView.view.width : 0
-  height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(118) : row.isGrid ? Math.round(row.cellWidth * 0.86) : px(42))
+  height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(118) : row.isGrid ? Math.round(row.cellWidth * (row.imageGrid ? 0.66 : 0.86)) : px(42))
 
   // Raycast's emoji grid (ref 04 §2 grid views): a tile per emoji, the
   // selected one filled and outlined.
@@ -66,10 +68,35 @@ Item {
       border.width: current ? Math.max(1, Style.space(2)) : 0
       border.color: row.look.accent
       Text {
+        visible: !modelData.thumb
         anchors.centerIn: parent
         textFormat: Text.PlainText
         text: modelData.symbol
         font.pixelSize: Math.round(parent.height * 0.5)
+      }
+      // A GIF: its still thumbnail, and only the selected one plays.
+      Item {
+        visible: !!modelData.thumb
+        anchors.fill: parent
+        anchors.margins: current ? Math.max(2, Style.space(3)) : 0
+        clip: true
+        Image {
+          anchors.fill: parent
+          visible: !current || still.status !== Image.Ready || moving.status !== Image.Ready
+          source: modelData.thumb ? "file://" + modelData.thumb : ""
+          sourceSize.width: Math.round(row.cellWidth * 1.5)
+          fillMode: Image.PreserveAspectCrop
+          asynchronous: true
+          id: still
+        }
+        AnimatedImage {
+          id: moving
+          anchors.fill: parent
+          source: current && modelData.file ? "file://" + modelData.file : ""
+          fillMode: Image.PreserveAspectCrop
+          asynchronous: true
+          playing: current
+        }
       }
     }
   }
