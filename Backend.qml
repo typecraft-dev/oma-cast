@@ -1270,6 +1270,12 @@ Item {
     }
   }
 
+  DownloadsWatcher {
+    enabled: backend.directoriesReady
+    onDownloaded: function(path) { gifImporter.add(path, true) }
+    onMessage: function(level, text) { backend.log(level, "gifs", text, null) }
+  }
+
   JsonStore {
     id: clipboardStore
     ready: backend.directoriesReady
