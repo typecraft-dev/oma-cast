@@ -41,6 +41,15 @@ var BUILTINS = [
     rootSearch: { when: "always" }
   },
   {
+    id: "builtin:gif-library",
+    title: "Search GIFs",
+    subtitle: "GIF Library",
+    glyph: "\uf1c5",                     // nf-fa-file_image_o
+    keywords: ["gif", "gifs", "reaction", "meme", "animated", "library"],
+    run: { push: { kind: "gif", title: "Search GIFs" } },
+    rootSearch: { when: "always" }
+  },
+  {
     id: "builtin:clipboard-history",
     title: "Clipboard History",
     subtitle: "Clipboard History",

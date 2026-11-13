@@ -89,7 +89,7 @@ Item {
   Connections {
     target: backend
     function onNotification(method, data) {
-      if (method === "superwhisper.finished") {
+      if (method === "superwhisper.finished" || method === "gifs.imported") {
         if (root.opened) launcher.showToast(data.style, data.title)
         else launcher.hud(data.title)
         return

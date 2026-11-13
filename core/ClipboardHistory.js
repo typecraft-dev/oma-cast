@@ -261,11 +261,20 @@ function actionsFor(entry, appName) {
   ]
   if (cat === "link" || cat === "email") list.push({ id: "open-link", title: cat === "email" ? "Compose Email" : "Open in Browser", shortcut: "Ctrl O", section: "primary", icon: "" })
   if (cat === "file" || (cat === "image" && entry.type === "text")) list.push({ id: "open-link", title: "Open File", shortcut: "Ctrl O", section: "primary", icon: "" })
+  if (isGif(entry)) list.push({ id: "save-gif", title: "Save to GIF Library", shortcut: "Ctrl G", section: "primary", icon: "" })
   var pinned = typeof entry.pinned === "number"
   list.push({ id: pinned ? "unpin" : "pin", title: pinned ? "Unpin Entry" : "Pin Entry", shortcut: "Ctrl Shift P", section: "pin", icon: "" })
   list.push({ id: "delete-entry", title: "Delete Entry", shortcut: "Ctrl D", section: "delete", icon: "" })
   list.push({ id: "delete-all-entries", title: "Delete All Entries", shortcut: "Ctrl Shift D", section: "delete", icon: "" })
   return list
+}
+
+// A GIF image, a copied .gif file, or a link to one.
+function isGif(entry) {
+  if (entry.mime === "image/gif") return true
+  var files = filePaths(entry.text)
+  var t = files.length === 1 ? files[0] : String(entry.text || "").trim()
+  return /^(\/|https?:\/\/)\S+\.gif([?#]\S*)?$/i.test(t)
 }
 
 function setPinned(entries, id, pin) {
@@ -291,6 +300,6 @@ if (typeof module !== "undefined") {
     FILTERS: FILTERS, DURATIONS: DURATIONS,
     filePaths: filePaths, colorHex: colorHex, categorize: categorize, primaryCategory: primaryCategory,
     add: add, prune: prune, orphanedPaths: orphanedPaths, title: title, candidate: candidate,
-    sections: sections, detail: detail, actionsFor: actionsFor, setPinned: setPinned, isDisabledSource: isDisabledSource
+    sections: sections, detail: detail, actionsFor: actionsFor, isGif: isGif, setPinned: setPinned, isDisabledSource: isDisabledSource
   }
 }

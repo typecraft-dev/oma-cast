@@ -37,6 +37,7 @@ Launcher
   show | hide            Show or hide it
   run <commandId>        Open a command directly
   call <method> [json]   Call a backend method, e.g. omacast call system.info
+  gif add <file|url>...  Add GIFs to the GIF Library's Inbox (tag them in Search GIFs)
 
 Setup
   install                Enable the plugin and link this CLI into ~/.local/bin
@@ -55,6 +56,30 @@ USAGE
 die() { echo "omacast: $*" >&2; exit 1; }
 
 ipc() { omarchy-shell "$IPC_TARGET" "$@"; }
+
+# Probes each GIF here, then hands the result to the running backend, which
+# applies the quality gate and dedup (core/Gifs.js importGif).
+cmd_gif() {
+  [[ ${1:-} == add && $# -ge 2 ]] || die "usage: omacast gif add <file|url>..."
+  need_shell
+  local dir="${XDG_DATA_HOME:-$HOME/.local/share}/omacast/gifs" src meta out status=0
+  shift
+  for src in "$@"; do
+    [[ $src == /* || $src == *://* ]] || src="$PWD/$src"
+    meta=$(printf '%s\n' "$src" | "$repo/bin/omacast-gif-probe" "$dir") || { echo "$src: probe failed" >&2; status=1; continue; }
+    out=$(ipc call gifs.import "$meta")
+    if [[ $(jq -r '.ok' <<<"$out" 2>/dev/null) != true ]]; then
+      echo "$src: $(jq -r '.error // .' <<<"$out" 2>/dev/null)" >&2; status=1; continue
+    fi
+    case $(jq -r '.data.status' <<<"$out") in
+      added) echo "$src: added to the Inbox" ;;
+      replaced) echo "$src: replaced $(jq -r '.data.title // "a GIF"' <<<"$out") with this larger copy" ;;
+      duplicate) echo "$src: already in the library$(jq -r '.data.title | select(. != "") | ": " + .' <<<"$out")" >&2; status=1 ;;
+      *) echo "$src: rejected: $(jq -r '.data.reasons | join(". ")' <<<"$out")" >&2; status=1 ;;
+    esac
+  done
+  return $status
+}
 
 need_shell() {
   command -v omarchy-shell >/dev/null || die "omarchy-shell not found; omacast runs inside the Omarchy shell"
@@ -328,6 +353,7 @@ case "${1:-}" in
   run) need_shell; [[ -n ${2:-} ]] || die "usage: omacast run <commandId>"; ipc run "$2" ;;
   call) need_shell; [[ -n ${2:-} ]] || die "usage: omacast call <method> [json]"; ipc call "$2" "${3:-}" ;;
   ping) need_shell; ipc ping ;;
+  gif) cmd_gif "${@:2}" ;;
   build-search) move_legacy_dirs; "$repo/bin/build-search" ;;
   install) cmd_install ;;
   uninstall) cmd_uninstall "${2:-}" ;;

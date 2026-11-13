@@ -81,3 +81,12 @@ test("detail and actions", () => {
   assert.ok(C.isDisabledSource({ appId: "org.keepassxc.KeePassXC" }, ["org.keepassxc.keepassxc"]))
   assert.ok(!C.isDisabledSource(null, ["x"]))
 })
+
+test("GIFs, .gif files and .gif links offer Save to GIF Library", () => {
+  const saves = (e) => C.actionsFor(Object.assign({ categories: [] }, e), "").some((a) => a.id === "save-gif")
+  assert.equal(saves({ type: "image", mime: "image/gif", path: "/c/x" }), true)
+  assert.equal(saves({ type: "text", text: "file:///home/me/nope.gif" }), true)
+  assert.equal(saves({ type: "text", text: "https://media.example.com/a/nope.gif?cid=1" }), true)
+  assert.equal(saves({ type: "image", mime: "image/png", path: "/c/x" }), false)
+  assert.equal(saves({ type: "text", text: "a gif of a cat" }), false)
+})
