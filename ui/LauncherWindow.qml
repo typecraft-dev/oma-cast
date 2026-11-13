@@ -744,7 +744,7 @@ PanelWindow {
     if (window.actionPanelOpen) { window.actionPanelOpen = false; return }
     if (window.argFocus >= 0 && !shift) { window.argFocus = -1; return }
     if (shift) { window.popToRoot(); return }
-    if (window.general.escapeKeyBehavior === "close-and-pop-to-root") {
+    if (window.general.escapeKeyBehavior === "close-and-pop-to-root" || window.view.direct) {
       window.dismissRequested()
       window.popToRoot()
       return

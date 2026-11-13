@@ -70,7 +70,8 @@ Item {
     if (outcome.push) {
       root.show()
       launcher.popToRoot()
-      launcher.push(outcome.push)
+      // direct: opened by its own shortcut (or `omacast run`), so Esc closes it. [D]
+      launcher.push(Object.assign({}, outcome.push, { direct: true }))
     } else if (outcome.close) {
       root.hide()
       if (outcome.hud) launcher.hud(outcome.hud)
@@ -129,6 +130,14 @@ Item {
     name: "theme"
     description: "Toggle omacast Switch Theme"
     onPressed: root.toggleView("builtin:switch-theme", "theme")
+  }
+
+  // Toggles the GIF Library directly: hl.dsp.global("omacast:gifs").
+  GlobalShortcut {
+    appid: "omacast"
+    name: "gifs"
+    description: "Toggle omacast GIF Library"
+    onPressed: root.toggleView("builtin:gif-library", "gif")
   }
 
   // Toggles Clipboard History directly: hl.dsp.global("omacast:clipboard").
