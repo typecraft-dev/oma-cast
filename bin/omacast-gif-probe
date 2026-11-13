@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copies a GIF into the library directory and prints its facts as one JSON
 # line, for core/Gifs.js importGif to accept or reject:
-#   printf '%s\n' <file|file://…|https://…> | omacast-gif-probe <library-dir>
+#   printf '%s\n' <file|file://…|https://…|X post link> | omacast-gif-probe <library-dir>
 # The source comes on stdin so user text never reaches argv (CLAUDE.md rule 6).
 # Needs ffmpeg/ffprobe and jq (both in omarchy-base).
 set -euo pipefail
@@ -15,17 +15,32 @@ command -v ffprobe >/dev/null && command -v ffmpeg >/dev/null || fail "ffmpeg is
 mkdir -p -- "$dir"
 
 tmp=$(mktemp -p "$dir" .probe.XXXXXX)
-trap 'rm -f -- "$tmp"' EXIT
+trap 'rm -f -- "$tmp" "$tmp.mp4"' EXIT
 source_url=""
-if [[ $src =~ ^https?:// ]]; then
-  source_url=$src
-  # The URL goes to curl through a config on stdin, not argv.
-  esc=${src//\\/\\\\}; esc=${esc//\"/\\\"}
+# fetch <url> <out>: the URL goes to curl through a config on stdin, not argv.
+fetch() {
+  local esc=${1//\\/\\\\} rc=0 code
+  esc=${esc//\"/\\\"}
   # Some hosts (Wikimedia) answer 429 to curl's default user agent.
-  rc=0
-  code=$(printf 'url = "%s"\n' "$esc" | curl -sSL --max-time 30 --max-filesize 20000000 -A "omacast-gif-library" -K - -o "$tmp" -w '%{http_code}' 2>/dev/null) || rc=$?
+  code=$(printf 'url = "%s"\n' "$esc" | curl -sSL --max-time 30 --max-filesize 20000000 -A "omacast-gif-library" -K - -o "$2" -w '%{http_code}' 2>/dev/null) || rc=$?
   (( rc == 63 )) && fail "Too large: over 20 MB"
   [[ $rc == 0 && $code == 200 ]] || fail "Could not download the GIF (HTTP ${code:-000})"
+}
+if [[ $src =~ ^https://(www\.|mobile\.)?(x|twitter)\.com/[A-Za-z0-9_]+/status/([0-9]+) ]]; then
+  # An X post: X serves its "GIFs" as MP4s. The public embed endpoint says
+  # which media is an animated_gif, so plain videos and text posts are refused.
+  source_url=$src
+  fetch "https://cdn.syndication.twimg.com/tweet-result?id=${BASH_REMATCH[3]}&token=a" "$tmp"
+  mp4=$(jq -r '[.mediaDetails[]? | select(.type == "animated_gif") | .video_info.variants[]? | select(.content_type == "video/mp4") | .url][0] // ""' -- "$tmp" 2>/dev/null) || mp4=""
+  [[ $mp4 == https://video.twimg.com/* ]] || fail "No GIF in this post"
+  fetch "$mp4" "$tmp.mp4"
+  # Palette pass: GIF's 256 colours, picked from this clip; 15 fps, ≤ 480 px wide.
+  ffmpeg -v error -y -i "$tmp.mp4" -an -vf "fps=15,scale='min(480,iw)':-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" \
+    -loop 0 -f gif -- "$tmp" </dev/null || { rm -f -- "$tmp.mp4"; fail "Could not convert the GIF"; }
+  rm -f -- "$tmp.mp4"
+elif [[ $src =~ ^https?:// ]]; then
+  source_url=$src
+  fetch "$src" "$tmp"
 else
   path=${src#file://}
   [[ $src == file://* ]] && path=$(printf '%b' "${path//%/\\x}")

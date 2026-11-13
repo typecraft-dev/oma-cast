@@ -94,6 +94,18 @@ function fileName(g) {
   return String(g.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60).replace(/^-+|-+$/g, "") || "gif"
 }
 
+// A copied X/Twitter post link, saved automatically when the post has a GIF.
+// Same pattern as bin/omacast-gif-probe.
+function isXPost(text) {
+  return /^https:\/\/(www\.|mobile\.)?(x|twitter)\.com\/[A-Za-z0-9_]+\/status\/[0-9]+(\/\S*)?([?#]\S*)?$/.test(String(text || "").trim())
+}
+
+// What an automatic import reports: nothing for a post or file with no GIF.
+function quietOutcome(r) {
+  return !r || r.status === "added" || r.status === "replaced" || r.status === "duplicate" ? r
+    : (r.reasons || []).some(function(x) { return x === "No GIF in this post" || x === "Not a GIF" }) ? null : r
+}
+
 function words(g) { return ((g.title || "") + " " + (g.tags || []).join(" ")).toLowerCase() }
 
 // Fallback scorer when the flea helper is unavailable; same rules as
@@ -212,7 +224,7 @@ function searchEntries(library) {
 if (typeof module !== "undefined") {
   module.exports = {
     COLUMNS: COLUMNS, RECENT_LIMIT: RECENT_LIMIT, MIN_TAGS: MIN_TAGS, UNUSED_DAYS: UNUSED_DAYS, LIMITS: LIMITS, FILTERS: FILTERS,
-    inLibrary: inLibrary, check: check, distance: distance, importGif: importGif, parseEdit: parseEdit, editValue: editValue, editHint: editHint, fileName: fileName,
+    inLibrary: inLibrary, check: check, distance: distance, importGif: importGif, parseEdit: parseEdit, editValue: editValue, editHint: editHint, fileName: fileName, isXPost: isXPost, quietOutcome: quietOutcome,
     matchScore: matchScore, sections: sections, candidate: candidate, actionsFor: actionsFor, aboutFor: aboutFor, searchEntries: searchEntries
   }
 }

@@ -114,3 +114,21 @@ test("names the pasted file after the title", () => {
   assert.equal(Gifs.fileName({ title: "../x" }), "x")
   assert.equal(Gifs.fileName({ title: "a".repeat(59) + " b" }), "a".repeat(59))
 })
+
+test("a copied X post link is recognised, other links are not", () => {
+  assert.ok(Gifs.isXPost("https://x.com/i/status/2120350754926129386"))
+  assert.ok(Gifs.isXPost(" https://twitter.com/some_user/status/123?s=20\n"))
+  assert.ok(Gifs.isXPost("https://mobile.x.com/a/status/1/photo/1"))
+  assert.ok(!Gifs.isXPost("http://x.com/i/status/1"))
+  assert.ok(!Gifs.isXPost("https://x.com/home"))
+  assert.ok(!Gifs.isXPost("https://evilx.com/a/status/1"))
+  assert.ok(!Gifs.isXPost("look https://x.com/a/status/1"))
+})
+
+test("automatic imports report GIFs but stay quiet about posts and files without one", () => {
+  assert.equal(Gifs.quietOutcome({ status: "rejected", reasons: ["No GIF in this post"] }), null)
+  assert.equal(Gifs.quietOutcome({ status: "rejected", reasons: ["Not a GIF"] }), null)
+  assert.equal(Gifs.quietOutcome({ status: "added" }).status, "added")
+  assert.equal(Gifs.quietOutcome({ status: "duplicate" }).status, "duplicate")
+  assert.equal(Gifs.quietOutcome({ status: "rejected", reasons: ["Too large: 9.0 MB, the limit is 8.0 MB"] }).status, "rejected")
+})

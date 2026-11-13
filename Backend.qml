@@ -360,6 +360,8 @@ Item {
   }
 
   // Takes the probe's output; returns {status, title, reasons}.
+  property real gifSourceCopiedAt: 0
+
   function importGif(meta) {
     if (!gifStore.loaded) throw new Error("The GIF Library is not loaded")
     if (!meta || meta.error) return { status: "rejected", reasons: [meta && meta.error || "Could not read the GIF"] }
@@ -413,6 +415,7 @@ Item {
         backend.namedGif(g, function(file) { clipboard.copy("file://" + encodeURI(file), "text/uri-list") })
         return { close: true, hud: "Copied GIF" }
       case "copy-source":
+        backend.gifSourceCopiedAt = Date.now()
         clipboard.copy(g.source)
         return { close: true, hud: "Copied to Clipboard" }
       case "edit":
@@ -507,6 +510,9 @@ Item {
     obs.source = source
     var now = Date.now()
     var self = obs.hash === backend.clipboardSelfHash && now - backend.clipboardSelfAt < 5000
+    // A copied X post link saves the post's GIF, if it has one [D].
+    // Skips omacast's own copies, Copy Source included.
+    if (!self && now - backend.gifSourceCopiedAt > 5000 && obs.type === "text" && Gifs.isXPost(obs.text)) gifImporter.add(String(obs.text).trim(), true)
     var id = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36)
     backend.updateClipboard(function(entries) { return ClipboardHistory.add(entries, obs, now, id, self).entries })
   }
@@ -1257,9 +1263,10 @@ Item {
   GifImporter {
     id: gifImporter
     directory: backend.directoriesReady ? backend.paths.gifs : ""
-    onFinished: function(meta) {
+    onFinished: function(meta, quiet) {
       var r = backend.importGif(meta)
-      backend.emit("gifs.imported", backend.importOutcomeToast(r))
+      if (quiet) r = Gifs.quietOutcome(r)
+      if (r) backend.emit("gifs.imported", backend.importOutcomeToast(r))
     }
   }
 
