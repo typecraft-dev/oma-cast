@@ -103,7 +103,8 @@ test("browsing shows Inbox, Pinned, Recently Used and Library; Unused lists stal
 test("Inbox GIFs open the editor; Library GIFs paste", () => {
   const inbox = Gifs.candidate(tagged("t", "", []), [])
   const lib = Gifs.candidate(tagged("n", "Nope", ["a", "b"]), [])
-  assert.equal(Gifs.actionsFor(inbox, {})[0].id, "edit")
+  assert.equal(Gifs.actionsFor(inbox, {})[0].id, "paste")
+  assert.ok(Gifs.actionsFor(inbox, {}).some((a) => a.id === "edit" && a.shortcut === ""))
   assert.equal(Gifs.actionsFor(lib, {})[0].id, "paste")
   assert.ok(Gifs.actionsFor(lib, { source: "https://x" }).some((a) => a.id === "copy-source"))
 })

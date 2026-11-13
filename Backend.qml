@@ -402,8 +402,6 @@ Item {
     }
     switch (action) {
       case "open":
-        if (!Gifs.inLibrary(g)) return backend.gifAction("edit", id, query)
-        // falls through
       // As a file: Chromium and Electron apps drop a bare image/gif offer
       // (paste event with no types) but take a file:// URI as the animated GIF.
       case "paste":

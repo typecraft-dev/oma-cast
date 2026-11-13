@@ -191,16 +191,14 @@ function candidate(g, pinned) {
 }
 
 function actionsFor(c, g, appName) {
-  var edit = { id: "edit", title: "Edit Title and Tags", shortcut: c.inbox ? "↵" : "Ctrl E", section: c.inbox ? "primary" : "edit", icon: "" }
-  // ↵ and Ctrl+↵ (Ctrl+Shift+↵ too) run the first actions, so the labels follow the order.
-  var list = c.inbox ? [edit] : []
-  list.push({ id: "paste", title: "Paste to " + (appName || "Active App"), shortcut: c.inbox ? "Ctrl ↵" : "↵", section: "primary", icon: "" })
-  list.push({ id: "copy", title: "Copy GIF", shortcut: c.inbox ? "Ctrl Shift ↵" : "Ctrl ↵", section: "primary", icon: "" })
+  // ↵ pastes, Inbox or not; editing is in the Ctrl+K panel. ↵ and Ctrl+↵ run the first actions.
+  var list = [
+    { id: "paste", title: "Paste to " + (appName || "Active App"), shortcut: "↵", section: "primary", icon: "" },
+    { id: "copy", title: "Copy GIF", shortcut: "Ctrl ↵", section: "primary", icon: "" }
+  ]
   if (g && g.source) list.push({ id: "copy-source", title: "Copy Source URL", shortcut: "Ctrl Shift C", section: "copy", icon: "" })
-  if (!c.inbox) {
-    list.push(edit)
-    list.push({ id: c.pinned ? "unpin" : "pin", title: c.pinned ? "Unpin GIF" : "Pin GIF", shortcut: "Ctrl Shift P", section: "pin", icon: "" })
-  }
+  list.push({ id: "edit", title: "Edit Title and Tags", shortcut: "", section: "edit", icon: "" })
+  if (!c.inbox) list.push({ id: c.pinned ? "unpin" : "pin", title: c.pinned ? "Unpin GIF" : "Pin GIF", shortcut: "Ctrl Shift P", section: "pin", icon: "" })
   list.push({ id: "delete", title: "Delete GIF", shortcut: "Ctrl D", section: "delete", icon: "" })
   return list
 }

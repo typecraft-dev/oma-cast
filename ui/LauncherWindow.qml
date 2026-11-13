@@ -868,7 +868,6 @@ PanelWindow {
       if (ctrl && shift && key === Qt.Key_P) { window.performIfOffered(["pin", "unpin"]); return true }
       if (ctrl && !shift && key === Qt.Key_O) { window.performIfOffered(["open-link"]); return true }
       if (ctrl && !shift && key === Qt.Key_G) { window.performIfOffered(["save-gif"]); return true }
-      if (ctrl && !shift && key === Qt.Key_E) { window.performIfOffered(["edit"]); return true }
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
