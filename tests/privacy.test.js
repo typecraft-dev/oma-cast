@@ -132,8 +132,9 @@ function runClipboardScript(t, kind, windowClass) {
 for (const kind of ["copy", "paste"]) {
   test(`calculator ${kind} keeps the text out of every command line`, (t) => {
     runClipboardScript(t, kind, "")
-    // $1, $@, ${2}, …: the scripts may use $(…) and ${var} but never read arguments.
-    assert.doesNotMatch(clipboardScripts()[kind], /\$\{?[0-9@*#]/, "the script takes no arguments")
+    // $1 is a MIME type and $2 a file in our clipboard dir (ClipboardWriter.send);
+    // $@, $*, $3… would mean more of the caller's data on the command line.
+    assert.doesNotMatch(clipboardScripts()[kind], /\$\{?([03-9@*#])/, "the script reads only $1 and $2")
   })
 }
 
@@ -155,6 +156,35 @@ for (const windowClass of ["Slack", "chromium", ""]) {
     assert.doesNotMatch(cmdlines, ctrlShiftV)
   })
 }
+
+test("a Clipboard History file is copied from its path with its MIME type", (t) => {
+  const home = tempHome(t)
+  const log = home + "/cmdlines"
+  fs.writeFileSync(home + "/wl-copy", '#!/bin/bash\necho "$@" >>"$LOG"; cat >"$LOG.clipboard"\n', { mode: 0o755 })
+  fs.writeFileSync(home + "/blob.png", "PNGDATA")
+  const r = spawnSync("bash", ["-c", clipboardScripts().copy, "omacast-copy", "image/png", home + "/blob.png"], {
+    encoding: "utf8", env: { ...process.env, LOG: log, PATH: home + ":" + process.env.PATH }
+  })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(fs.readFileSync(log, "utf8").trim(), "--type image/png")
+  assert.equal(fs.readFileSync(log + ".clipboard", "utf8"), "PNGDATA")
+})
+
+test("a Clipboard History file pasted into a terminal goes in with Ctrl+Shift+V", (t) => {
+  const home = tempHome(t)
+  const log = home + "/cmdlines"
+  fs.writeFileSync(home + "/wl-copy", '#!/bin/bash\necho "$@" >>"$LOG"; cat >"$LOG.clipboard"\n', { mode: 0o755 })
+  fs.writeFileSync(home + "/wtype", '#!/bin/bash\necho "wtype $*" >>"$LOG"\n', { mode: 0o755 })
+  fs.writeFileSync(home + "/sleep", "#!/bin/bash\nexit 0\n", { mode: 0o755 })
+  fs.writeFileSync(home + "/hyprctl", '#!/bin/bash\necho \'{"class":"com.mitchellh.ghostty"}\'\n', { mode: 0o755 })
+  fs.writeFileSync(home + "/blob.png", "PNGDATA")
+  const r = spawnSync("bash", ["-c", clipboardScripts().paste, "omacast-copy", "image/png", home + "/blob.png"], {
+    encoding: "utf8", env: { ...process.env, LOG: log, PATH: home + ":" + process.env.PATH }
+  })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(fs.readFileSync(log + ".clipboard", "utf8"), "PNGDATA")
+  assert.equal(fs.readFileSync(log, "utf8"), "--type image/png\nwtype -M ctrl -M shift -k v -m shift -m ctrl\n")
+})
 
 test("no QML hands clipboard text or prompts to a process's argv", () => {
   const files = ["Backend.qml", "Launcher.qml", ...["ui", "services"].flatMap((d) =>

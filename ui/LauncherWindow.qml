@@ -9,6 +9,7 @@ import qs.Ui
 import "../core/RootSearch.js" as RootSearch
 import "../core/Rows.js" as Rows
 import "../core/Emoji.js" as Emoji
+import "../core/ClipboardHistory.js" as ClipboardHistory
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
 // overlay layer the shell's own emoji picker uses.
@@ -122,6 +123,15 @@ PanelWindow {
   // Emoji & Symbols: the cell selected in a grid line.
   property int selectedColumn: 0
   readonly property bool grid: window.view.kind === "emoji"
+  // Clipboard History's type dropdown (ref 04 App. A: All/Text/Images/…).
+  property string clipboardFilter: "all"
+  readonly property bool clipboardView: window.view.kind === "clipboard"
+  // List on the left, DetailPane on the right.
+  readonly property bool splitView: window.clipboardView || window.view.kind === "theme"
+  // The dropdown: Clipboard History's types, or the root's (config rootFilter).
+  readonly property bool hasFilter: window.clipboardView || (window.atRoot && window.backend.config.rootFilter)
+  readonly property var filterOptions: window.clipboardView ? ClipboardHistory.FILTERS : RootSearch.FILTERS
+  readonly property string activeFilter: window.clipboardView ? window.clipboardFilter : window.atRoot ? window.rootFilter : "all"
   property bool dropdownOpen: false
   property bool toastPanelOpen: false
   property bool aboutOpen: false
@@ -147,6 +157,8 @@ PanelWindow {
   readonly property string placeholder: window.view.kind === "alias" ? "Type an alias, then press ↵"
     : window.view.kind === "menu" ? "Search " + window.view.title + "…"
     : window.view.kind === "calculator-history" ? "Search calculations…"
+    : window.clipboardView ? "Type to filter entries…"
+    : window.view.kind === "theme" ? "Search themes…"
     : window.grid ? "Search Emoji & Symbols…"
     : "Search for apps and commands…"
 
@@ -156,6 +168,14 @@ PanelWindow {
   readonly property int footerHeight: px(42)
 
   ListModel { id: rows }
+
+  property int clipboardRevision: 0
+  readonly property var clipboardDetail: {
+    window.clipboardRevision
+    if (!window.splitView || !window.selectedRow) return null
+    var r = window.backend.callSync(window.clipboardView ? "clipboard.getDetail" : "themes.getDetail", { id: window.selectedRow.itemId })
+    return r.ok ? r.data : null
+  }
 
   PointerMoveGate {
     id: pointerGate
@@ -258,6 +278,7 @@ PanelWindow {
     window.stack = [{ kind: "root", title: "omacast", query: "" }]
     window.query = ""
     window.rootFilter = "all"
+    window.clipboardFilter = "all"
     window.rebuild(true)
   }
 
@@ -266,6 +287,7 @@ PanelWindow {
     var saved = window.stack.slice()
     saved[saved.length - 1] = Object.assign({}, window.view, { query: window.query, selectedIndex: window.selectedIndex })
     window.stack = saved.concat([next])
+    if (next.kind === "clipboard") window.clipboardFilter = "all"
     window.query = next.kind === "alias" ? (next.value || "") : ""
     window.rebuild(true)
   }
@@ -298,7 +320,7 @@ PanelWindow {
     if (window.view.kind === "alias") { Rows.update(rows, []); window.select(-1); return }
     window.searchPending = true
     var revision = window.backend.candidatesRevision
-    window.backend.searchAsync({ query: window.query, view: window.view, filter: window.atRoot ? window.rootFilter : "all" }, function(result) {
+    window.backend.searchAsync({ query: window.query, view: window.view, filter: window.activeFilter }, function(result) {
       if (serial !== window.searchSerial || revision !== window.backend.candidatesRevision) return
       window.applySearch(result, keepId, restoreIndex)
       window.searchPending = false
@@ -334,6 +356,9 @@ PanelWindow {
         next.push(window.rowData(c, c.kind === "calculator" ? "calculator" : "item"))
       }
     }
+    // Switch Theme opens on the current theme.
+    if (keepIndex < 0 && window.view.kind === "theme")
+      for (var n = 0; n < next.length; n++) if (next[n].checked) { keepIndex = n; break }
     Rows.update(rows, next)
     if (restoreIndex >= 0 && restoreIndex < rows.count && window.isSelectable(restoreIndex)) window.select(restoreIndex)
     else window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1), keepIndex >= 0 ? keepColumn : 0)
@@ -352,13 +377,15 @@ PanelWindow {
       alias: String(c.alias || ""),
       checked: !!c.checked,
       disabled: !!c.disabled,
-      favorite: typeof c.favoriteOrder === "number",
+      favorite: typeof c.favoriteOrder === "number" || !!c.pinned,
       calcInput: String(c.calcInput || ""),
       calcResult: String(c.calcResult || ""),
       calcInputCaption: String(c.calcInputCaption || ""),
       calcResultCaption: String(c.calcResultCaption || ""),
       argsJson: JSON.stringify(c.arguments || []),
-      cellsJson: ""
+      cellsJson: "",
+      // Switch Theme's rows are names only, flush left.
+      iconless: c.kind === "theme"
     }
   }
 
@@ -511,17 +538,18 @@ PanelWindow {
   }
 
   function toggleDropdown() {
-    if (window.dropdownOpen || !window.atRoot || !window.backend.config.rootFilter) { window.dropdownOpen = false; return }
+    if (window.dropdownOpen || !window.hasFilter) { window.dropdownOpen = false; return }
     window.dropdownOpen = true
     dropdown.item.filter = ""
-    var at = RootSearch.FILTERS.map(function(f) { return f.id }).indexOf(window.rootFilter)
+    var at = window.filterOptions.map(function(f) { return f.id }).indexOf(window.activeFilter)
     dropdown.item.selectedIndex = Math.max(0, at)
   }
 
   function setRootFilter(id) {
     window.dropdownOpen = false
-    if (window.rootFilter === id) return
-    window.rootFilter = id
+    if (window.activeFilter === id) return
+    if (window.clipboardView) window.clipboardFilter = id
+    else window.rootFilter = id
     window.rebuild(true)
   }
 
@@ -789,6 +817,7 @@ PanelWindow {
       }
       if (window.grid && !ctrl && !alt && (key === Qt.Key_Left || key === Qt.Key_Right)) { window.moveColumn(key === Qt.Key_Left ? -1 : 1); return true }
       if (ctrl && shift && key === Qt.Key_P) { window.performIfOffered(["pin", "unpin"]); return true }
+      if (ctrl && !shift && key === Qt.Key_O) { window.performIfOffered(["open-link"]); return true }
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
@@ -821,6 +850,12 @@ PanelWindow {
     function onCandidatesRevisionChanged() { if (window.shown && !window.actionPanelOpen && !window.alert) window.rebuild(false) }
     // Exchange rates or zone offsets arrived: re-evaluate a calculation on screen.
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
+    // A copy, pin or delete: refresh an open Clipboard History.
+    function onNotification(method) {
+      if (method !== "clipboard.stateChanged" && method !== "themes.changed") return
+      window.clipboardRevision++
+      if (window.shown && window.splitView && !window.actionPanelOpen && !window.alert) window.rebuild(false)
+    }
   }
 
 
@@ -989,7 +1024,7 @@ PanelWindow {
 
       Rectangle {
         id: filterButton
-        visible: window.atRoot && !window.compact && window.backend.config.rootFilter
+        visible: window.hasFilter && !window.compact
         anchors.right: parent.right
         anchors.rightMargin: window.px(16)
         anchors.verticalCenter: parent.verticalCenter
@@ -1008,9 +1043,9 @@ PanelWindow {
           Text {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: (RootSearch.FILTERS.filter(function(f) { return f.id === window.rootFilter })[0] || RootSearch.FILTERS[0]).title
+            text: (window.filterOptions.filter(function(f) { return f.id === window.activeFilter })[0] || window.filterOptions[0]).title
             color: window.look.foreground
-            opacity: window.rootFilter === "all" ? 0.7 : 1
+            opacity: window.activeFilter === "all" ? 0.7 : 1
             font.family: window.look.fontFamily
             font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
           }
@@ -1053,7 +1088,11 @@ PanelWindow {
 
       ListView {
         id: list
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        // Clipboard History is list on the left, detail on the right (ref 04 §2 master-detail).
+        width: window.splitView ? Math.round(parent.width * 0.4) : parent.width
         anchors.topMargin: window.px(4)
         anchors.bottomMargin: window.px(4)
         visible: window.view.kind !== "alias"
@@ -1079,6 +1118,17 @@ PanelWindow {
         }
       }
 
+      DetailPane {
+        visible: window.splitView && rows.count > 0 && !!detail
+        anchors.left: list.right
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        detail: window.clipboardDetail
+        look: window.look
+        zoom: window.zoom
+      }
+
       Column {
         anchors.centerIn: parent
         spacing: window.px(8)
@@ -1097,6 +1147,7 @@ PanelWindow {
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? window.view.title
             : window.view.kind === "calculator-history" && !window.query ? "No Calculations Yet"
+            : window.clipboardView && !window.query && window.clipboardFilter === "all" ? "No Clipboard Entries"
             : (window.backend.ready ? "No results" : "Loading…")
           color: window.look.foreground
           font.family: window.look.fontFamily
@@ -1106,7 +1157,9 @@ PanelWindow {
           anchors.horizontalCenter: parent.horizontalCenter
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? "Typing the alias exactly in the root search puts this command on top. Leave it empty to remove it."
-            : window.view.kind === "calculator-history" && !window.query ? "Type a calculation in the root search, then copy or paste the answer." : ""
+            : window.view.kind === "calculator-history" && !window.query ? "Type a calculation in the root search, then copy or paste the answer."
+            : window.clipboardView && !window.query && window.clipboardFilter === "all"
+              ? (window.backend.config.clipboardHistory ? "Copy something and it shows up here." : "Recording is off: clipboardHistory is false in config.json.") : ""
           visible: text.length > 0
           color: window.look.foreground
           opacity: 0.55
@@ -1263,8 +1316,8 @@ PanelWindow {
       anchors.topMargin: window.px(4)
       sourceComponent: ActionPanel {
         placeholder: "Filter…"
-        actions: RootSearch.FILTERS.map(function(f) {
-          return { id: f.id, title: f.title, shortcut: "", section: "filter", icon: f.id === window.rootFilter ? "✓" : " " }
+        actions: window.filterOptions.map(function(f) {
+          return { id: f.id, title: f.title, shortcut: "", section: "filter", icon: f.id === window.activeFilter ? "✓" : " " }
         })
         look: window.look
         zoom: window.zoom
