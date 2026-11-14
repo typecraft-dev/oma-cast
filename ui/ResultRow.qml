@@ -45,7 +45,7 @@ Item {
     anchors.fill: parent
     sourceComponent: Rectangle {
       anchors.fill: parent
-      radius: Math.max(Style.cornerRadius, row.px(6))
+      radius: Style.cornerRadius
       color: row.selected ? row.look.selectedBackground : Util.alpha(row.look.foreground, 0.04)
       border.width: 1
       border.color: Util.alpha(row.look.foreground, row.selected ? 0 : 0.08)
@@ -144,7 +144,7 @@ Item {
   Rectangle {
     visible: !row.isSection && !row.isCalculator
     anchors.fill: parent
-    radius: Math.max(Style.cornerRadius, row.px(6))
+    radius: Style.cornerRadius
     color: row.selected ? row.look.selectedBackground : "transparent"
     opacity: row.disabled ? 0.45 : 1
 
@@ -157,13 +157,19 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
 
       Image {
+        // Not `visible`: that turns false whenever the launcher hides, which
+        // dropped every icon and reloaded it blank on the next open.
+        readonly property bool wanted: row.iconName.length > 0 && row.glyph.length === 0
         anchors.fill: parent
-        visible: row.iconName.length > 0 && row.glyph.length === 0
+        visible: wanted
         fillMode: Image.PreserveAspectFit
         asynchronous: true
+        // Keep the old icon while a new source or size decodes, instead of a
+        // blank frame (Qt 6.8+).
+        retainWhileLoading: true
         sourceSize.width: width * Screen.devicePixelRatio
         sourceSize.height: height * Screen.devicePixelRatio
-        source: !visible ? "" : (row.appLibrary ? row.appLibrary.iconSource(row.iconName) : Quickshell.iconPath(row.iconName, "application-x-executable"))
+        source: !wanted ? "" : (row.appLibrary ? row.appLibrary.iconSource(row.iconName) : Quickshell.iconPath(row.iconName, "application-x-executable"))
       }
 
       Text {
