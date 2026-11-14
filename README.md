@@ -99,6 +99,11 @@ It adds no packages and no background services.
   or times out, search falls back to the built-in matcher until the plugin reloads. Rebuild it after
   `omarchy plugin update`.
 
+### Search engine
+
+When a query matches nothing, ↵ on the first "Use … with…" row searches the web. It is Google by default;
+set `"searchEngine": "duckduckgo"` in `~/.config/omacast/config.json` to list DuckDuckGo first. Both stay listed.
+
 ### Privacy
 
 Your search history, learned search terms and calculator history stay on your machine, in owner-only

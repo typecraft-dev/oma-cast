@@ -73,12 +73,15 @@ var configDefaults = {
   remToPxRate: 16,
   workHoursPerDay: 8,
   // "auto" follows the Qt locale; "12h" or "24h" forces a clock. [D]
-  clockFormat: "auto"
+  clockFormat: "auto",
+  // Which web search the "Use <query> with…" fallbacks list first (↵ picks it).
+  searchEngine: "google"
 }
 
 // Values a config key or general setting may take, beyond its type.
 var configChoices = {
-  clockFormat: ["auto", "12h", "24h"]
+  clockFormat: ["auto", "12h", "24h"],
+  searchEngine: ["google", "duckduckgo"]
 }
 
 var generalChoices = {

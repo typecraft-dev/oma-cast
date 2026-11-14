@@ -134,6 +134,13 @@ test("fallback URLs encode the query", () => {
   assert.equal(RS.fallbackUrl(RS.FALLBACKS[0], " a&b c "), "https://www.google.com/search?q=a%26b%20c")
 })
 
+test("the configured search engine comes first among the fallbacks", () => {
+  const fallbacks = (extra) => results("zzqx", ctx(extra)).find((s) => s.id === "fallback-commands").rows.map((r) => r.candidate.id)
+  assert.deepEqual(fallbacks(), ["fallback:google", "fallback:duckduckgo"])
+  assert.deepEqual(fallbacks({ searchEngine: "google" }), ["fallback:google", "fallback:duckduckgo"])
+  assert.deepEqual(fallbacks({ searchEngine: "duckduckgo" }), ["fallback:duckduckgo", "fallback:google"])
+})
+
 test("web searches take an inline argument", () => {
   const google = results("google")[0].rows[0].candidate
   assert.equal(google.id, "builtin:google-search")
