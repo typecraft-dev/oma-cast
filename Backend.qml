@@ -12,6 +12,7 @@ import "core/Frecency.js" as Frecency
 import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
 import "core/Calculator.js" as Calculator
+import "core/Emoji.js" as Emoji
 import "services"
 
 Item {
@@ -26,7 +27,7 @@ Item {
 
   property var config: Schema.withConfigDefaults(null)
   property bool directoriesReady: false
-  readonly property bool ready: directoriesReady && settingsStore.loaded && frecencyStore.loaded && calculatorStore.loaded
+  readonly property bool ready: directoriesReady && settingsStore.loaded && frecencyStore.loaded && calculatorStore.loaded && emojiStore.loaded
 
   readonly property var registry: Rpc.createRegistry()
   readonly property double startedAt: Date.now()
@@ -35,7 +36,7 @@ Item {
   property var candidates: []
   property var candidatesById: ({})
   property int candidatesRevision: 0
-  readonly property bool loading: menuSource.loading || nativeSearch.pending !== null
+  readonly property bool loading: menuSource.loading || nativeSearch.pending !== null || emojiSearch.pending !== null
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
@@ -45,12 +46,18 @@ Item {
 
   function call(method, data) { return Rpc.call(backend.registry, method, data) }
   function callSync(method, data) { return Rpc.callSync(backend.registry, method, data) }
-  function cancelSearch() { nativeSearch.cancel() }
+  function cancelSearch() { nativeSearch.cancel(); emojiSearch.cancel() }
 
   function searchAsync(data, callback) {
     nativeSearch.cancel()
     var query = String(data && data.query || "").trim()
     var view = data && data.view
+    if (query && view && view.kind === "emoji") {
+      emojiSearch.search(Ranker.transliterate(query.toLowerCase()), "medium", function(matches) {
+        callback(backend.callSync("rootSearch.search", Object.assign({}, data, { fleaHits: matches })))
+      })
+      return
+    }
     if (!query || (view && view.kind !== "root")) {
       callback(backend.callSync("rootSearch.search", data))
       return
@@ -63,6 +70,14 @@ Item {
   NativeSearch {
     id: nativeSearch
     onFailed: function(message) { backend.log("warning", "search", message) }
+  }
+
+  // A second flea helper over the emoji list; null hits fall back to Emoji.matchScore.
+  NativeSearch {
+    id: emojiSearch
+    ids: backend.emoji.list.map(function(e) { return e.symbol })
+    entries: FleaSearch.entries(Emoji.searchEntries(backend.emoji.list), Ranker.transliterate)
+    onFailed: function(message) { backend.log("warning", "emoji-search", message) }
   }
   function subscribe(method, callback) { return Rpc.subscribe(backend.registry, method, callback) }
 
@@ -200,6 +215,79 @@ Item {
     var list = calculatorStore.loaded ? calculatorStore.doc.history : []
     for (var i = 0; i < list.length; i++) if (list[i].id === key) return list[i]
     return null
+  }
+
+  // ---------------------------------------------------------------- emoji
+
+  property string emojiRaw: ""
+  property string emojiKeywordsRaw: ""
+  readonly property var emoji: Emoji.parse(backend.emojiRaw, backend.emojiKeywordsRaw)
+
+  function emojiEntry(id) {
+    var symbol = String(id).slice("emoji:".length)
+    var list = backend.emoji.list
+    for (var i = 0; i < list.length; i++) if (list[i].symbol === symbol) return list[i]
+    return null
+  }
+
+  function emojiState(filter) {
+    var doc = emojiStore.loaded ? emojiStore.doc : { items: {}, pinned: [], skinTone: "none" }
+    var nowSec = Date.now() / 1000
+    var recent = Object.keys(doc.items).sort(function(a, b) {
+      return Frecency.score(doc.items[b].anchor, nowSec) - Frecency.score(doc.items[a].anchor, nowSec)
+    })
+    return { pinned: doc.pinned, recent: recent, tone: doc.skinTone, filter: filter || "all" }
+  }
+
+  function emojiCandidate(id) {
+    var e = backend.emojiEntry(id)
+    if (!e) throw new Error("Unknown emoji " + id)
+    var state = backend.emojiState()
+    return { entry: e, candidate: Emoji.candidate(e, state.tone, state.pinned) }
+  }
+
+  function setPinned(symbol, pin) {
+    emojiStore.update(function(doc) {
+      doc.pinned = doc.pinned.filter(function(s) { return s !== symbol })
+      if (pin) doc.pinned.push(symbol)
+    })
+    backend.emit("emojiPicker.stateChanged", null)
+  }
+
+  function emojiAction(action, id, query) {
+    var found = backend.emojiCandidate(id)
+    var e = found.entry, c = found.candidate
+    function uprank() {
+      emojiStore.update(function(doc) { doc.items[e.symbol] = Frecency.recordVisit(doc.items[e.symbol] || null, Date.now(), query || "") })
+    }
+    switch (action) {
+      case "open":
+      case "paste":
+        uprank()
+        clipboard.paste(c.symbol)
+        return { close: true }
+      case "copy":
+        uprank()
+        clipboard.copy(c.symbol)
+        return { close: true, hud: "Copied to Clipboard" }
+      case "copy-name":
+        clipboard.copy(c.title)
+        return { close: true, hud: "Copied to Clipboard" }
+      case "pin":
+      case "unpin":
+        backend.setPinned(e.symbol, action === "pin")
+        return { toast: { style: "success", title: action === "pin" ? "Pinned" : "Unpinned" } }
+      case "remove-recent":
+        emojiStore.update(function(doc) { delete doc.items[e.symbol] })
+        return { toast: { style: "success", title: "Removed from Recently Used" } }
+      case "tone:none": case "tone:light": case "tone:medium-light": case "tone:medium": case "tone:medium-dark": case "tone:dark":
+        backend.callSync("emojiPicker.setSkinTone", { tone: action.slice(5) })
+        return { toast: { style: "success", title: "Skin tone set" } }
+      case "clear-recent":
+        emojiStore.update(function(doc) { doc.items = {} })
+        return { toast: { style: "success", title: "Recently Used cleared" } }
+    }
+    throw new Error("Unknown action " + action)
   }
 
   // ------------------------------------------------------------- execution
@@ -428,12 +516,14 @@ Item {
         if (data && data.fleaHits) ctx.fleaHits = data.fleaHits
         var sections
         if (view && view.kind === "menu") sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
+        else if (view && view.kind === "emoji") sections = Emoji.sections(backend.emoji.list, query, Object.assign(backend.emojiState(), { fleaHits: data.fleaHits || null }))
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else {
           ctx.filter = String(data && data.filter || "all")
           if (query.trim() && ctx.filter === "all") ctx.calculation = backend.calculate(query)
           sections = RootSearch.rootSections(backend.candidates, query, ctx, backend.deps)
         }
+        if (view && view.kind === "emoji") return sections
         return sections.map(function(s) {
           return { id: s.id, title: s.title, rows: s.rows.map(function(r) { return r.candidate }) }
         })
@@ -442,6 +532,7 @@ Item {
         var rowId = String(data && data.id || "")
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
+        if (rowId.indexOf("emoji:") === 0) return Emoji.actionsFor(backend.emojiCandidate(rowId).candidate, backend.emojiState().tone)
         var candidate = backend.decorated(rowId)
         if (!candidate) {
           var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === data.id })[0]
@@ -460,6 +551,10 @@ Item {
         if (rowId.indexOf("calculator-history:") === 0) {
           var entry = backend.historyEntry(rowId)
           return entry ? RootSearch.aboutFor(RootSearch.historyCandidate(entry, nowMs), nowMs) : []
+        }
+        if (rowId.indexOf("emoji:") === 0) {
+          var found = backend.emojiCandidate(rowId)
+          return Emoji.aboutFor(found.candidate, found.entry)
         }
         var candidate = backend.decorated(rowId)
         if (!candidate) {
@@ -491,6 +586,11 @@ Item {
           if (!entry) throw new Error("No such history entry")
           return backend.calculatorAction(String(data.action || "open"), entry, entry.id)
         }
+        if (data && String(data.id).indexOf("emoji:") === 0) {
+          var confirmClear = String(data.action) === "clear-recent" && !data.confirmed
+          if (confirmClear) return { confirm: { title: "Clear Recently Used", message: "This forgets every emoji you have pasted or copied.", primary: "Clear", destructive: true } }
+          return backend.emojiAction(String(data.action || "open"), data.id, String(data.query || ""))
+        }
         return backend.performAction(data)
       },
       getSearchHistory: function() { return frecencyStore.loaded ? frecencyStore.doc.searchHistory : [] }
@@ -517,6 +617,25 @@ Item {
           fetchedAt: calculatorData.ratesFetchedAt || null,
           zones: Object.keys(calculatorData.zones).length
         }
+      }
+    })
+
+    // Names from Raycast's emojiPicker namespace (ref 02 §2); setSkinTone and
+    // getSkinTone stand in for its preference [D].
+    Rpc.register(backend.registry, "emojiPicker", {
+      search: function(data) { return Emoji.sections(backend.emoji.list, String(data && data.query || ""), backend.emojiState(data && data.filter)) },
+      get: function(data) { return backend.emojiCandidate("emoji:" + String(data && data.symbol || "")).candidate },
+      pin: function(data) { backend.emojiCandidate("emoji:" + data.symbol); backend.setPinned(String(data.symbol), true); return null },
+      unpin: function(data) { backend.setPinned(String(data && data.symbol || ""), false); return null },
+      uprank: function(data) { backend.emojiAction("open", "emoji:" + String(data && data.symbol || ""), ""); return null },
+      resetRanking: function(data) { return backend.emojiAction("remove-recent", "emoji:" + String(data && data.symbol || ""), "") },
+      getSkinTone: function() { return emojiStore.loaded ? emojiStore.doc.skinTone : "none" },
+      setSkinTone: function(data) {
+        var tone = String(data && data.tone || "")
+        if (!Emoji.TONES.some(function(t) { return t.id === tone })) throw new Error("Skin tone must be one of " + Emoji.TONES.map(function(t) { return t.id }).join(", "))
+        emojiStore.update(function(doc) { doc.skinTone = tone })
+        backend.emit("emojiPicker.stateChanged", null)
+        return tone
       }
     })
 
@@ -548,7 +667,7 @@ Item {
     function onValuesChanged() { rebuildTimer.restart() }
   }
 
-  Component.onDestruction: { settingsStore.flush(); frecencyStore.flush(); calculatorStore.flush() }
+  Component.onDestruction: { settingsStore.flush(); frecencyStore.flush(); calculatorStore.flush(); emojiStore.flush() }
   onNotification: function(method, data) {
     if (method === "window.visibilityChanged" && data && data.visible) {
       menuSource.refresh()
@@ -574,7 +693,7 @@ Item {
     id: mkdirs
     // Moves directories left under the old name, then creates everything
     // owner-only and repairs modes left readable by older builds.
-    command: Paths.setupArgv(backend.paths, [Schema.documents.settings.file, Schema.documents.frecency.file, Schema.documents.calculator.file]
+    command: Paths.setupArgv(backend.paths, [Schema.documents.settings.file, Schema.documents.frecency.file, Schema.documents.calculator.file, Schema.documents.emoji.file]
       .map(function(file) { return backend.paths.db + "/" + file }))
     onExited: function(exitCode) {
       if (exitCode !== 0) backend.log("error", "paths", "could not create data directories", { exitCode: exitCode })
@@ -612,6 +731,28 @@ Item {
     onMessage: function(level, text, metadata) { backend.log(level, "store", text, metadata) }
   }
 
+  JsonStore {
+    id: emojiStore
+    ready: backend.directoriesReady
+    path: backend.paths.db + "/" + Schema.documents.emoji.file
+    migrations: Schema.documents.emoji.migrations
+    onMessage: function(level, text, metadata) { backend.log(level, "store", text, metadata) }
+  }
+
+  FileView {
+    path: decodeURIComponent(Qt.resolvedUrl("data/emoji.json").toString().replace(/^file:\/\//, ""))
+    printErrors: false
+    onLoaded: backend.emojiRaw = text()
+    onLoadFailed: backend.log("error", "emoji", "could not read " + path)
+  }
+
+  // Omarchy's emoji keywords (MIT, read in place) make searches like "lol" work.
+  FileView {
+    path: Quickshell.env("OMARCHY_PATH") ? Quickshell.env("OMARCHY_PATH") + "/shell/plugins/emojis/emojis.json" : ""
+    printErrors: false
+    onLoaded: backend.emojiKeywordsRaw = text()
+  }
+
   CalculatorData {
     id: calculatorData
     cacheDir: backend.directoriesReady ? backend.paths.cache : ""
@@ -624,6 +765,7 @@ Item {
   Connections { target: settingsStore; function onChanged() { backend.storeRevision++ } }
   Connections { target: frecencyStore; function onChanged() { backend.storeRevision++ } }
   Connections { target: calculatorStore; function onChanged() { backend.storeRevision++ } }
+  Connections { target: emojiStore; function onChanged() { backend.storeRevision++ } }
 
   FileView {
     path: backend.directoriesReady ? backend.paths.configFile : ""
