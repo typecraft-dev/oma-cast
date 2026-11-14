@@ -27,7 +27,10 @@ function harness(text) {
   }
   const actionPanel = { item: { filter: "" } }
   const clipboardInput = { text: "", clear() { this.text = "" }, paste() { this.text = text } }
-  const context = vm.createContext({ Qt, window, actionPanel, clipboardInput, Util: { editsFilter: () => false } })
+  const KeyText = { character: () => "", isKeypad: () => false }
+  const context = vm.createContext({
+    Qt, window, actionPanel, clipboardInput, KeyText, Util: { editsFilter: () => false },
+  })
   window.setQuery = next => {
     context.next = next
     vm.runInContext(body("function setQuery(next)"), context)
