@@ -22,6 +22,15 @@ Item {
   required property string calcResult
   required property string calcInputCaption
   required property string calcResultCaption
+  required property string cellsJson
+
+  // Emoji grid line (rowKind "emoji-row"): up to `columns` cells; the
+  // selected one is selectedColumn.
+  property int selectedColumn: 0
+  property int columns: 8
+  readonly property var cells: row.isGrid && row.cellsJson ? JSON.parse(row.cellsJson) : []
+  readonly property real cellWidth: row.width / row.columns
+  function columnAt(x) { return Math.max(0, Math.min(row.cells.length - 1, Math.floor(x / row.cellWidth))) }
 
   property bool selected: false
   property var look: null
@@ -29,14 +38,41 @@ Item {
   property real zoom: 1
 
   signal hovered(int index, var item, var mouse)
-  signal clicked(int index)
+  signal clicked(int index, int column)
 
   readonly property bool isSection: row.rowKind === "section"
   readonly property bool isCalculator: row.rowKind === "calculator"
+  readonly property bool isGrid: row.rowKind === "emoji-row"
   function px(v) { return Math.round(Style.space(v) * row.zoom) }
 
   width: ListView.view ? ListView.view.width : 0
-  height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(118) : px(42))
+  height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(118) : row.isGrid ? Math.round(row.cellWidth * 0.86) : px(42))
+
+  // Raycast's emoji grid (ref 04 §2 grid views): a tile per emoji, the
+  // selected one filled and outlined.
+  Repeater {
+    model: row.isGrid ? row.cells : []
+    delegate: Rectangle {
+      required property var modelData
+      required property int index
+      readonly property bool current: row.selected && index === row.selectedColumn
+      x: index * row.cellWidth + row.px(3)
+      y: row.px(3)
+      width: row.cellWidth - row.px(6)
+      height: row.height - row.px(6)
+      radius: Style.cornerRadius
+      color: current ? row.look.selectedBackground : Util.alpha(row.look.foreground, 0.04)
+      border.width: current ? Math.max(1, Style.space(2)) : 0
+      border.color: row.look.accent
+      Text {
+        anchors.centerIn: parent
+        textFormat: Text.PlainText
+        text: modelData.symbol
+        font.pixelSize: Math.round(parent.height * 0.5)
+      }
+    }
+  }
+
 
   // The inline calculator (ref 04 §1 Calculator): question on the left,
   // answer on the right, each with a caption, an arrow between them.
@@ -142,7 +178,7 @@ Item {
   }
 
   Rectangle {
-    visible: !row.isSection && !row.isCalculator
+    visible: !row.isSection && !row.isCalculator && !row.isGrid
     anchors.fill: parent
     radius: Style.cornerRadius
     color: row.selected ? row.look.selectedBackground : "transparent"
@@ -284,6 +320,6 @@ Item {
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
     onPositionChanged: function(mouse) { row.hovered(row.index, row, mouse) }
-    onClicked: row.clicked(row.index)
+    onClicked: function(mouse) { row.clicked(row.index, row.isGrid ? row.columnAt(mouse.x) : 0) }
   }
 }

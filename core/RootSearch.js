@@ -32,6 +32,15 @@ var BUILTINS = [
     rootSearch: { when: "always" }
   },
   {
+    id: "builtin:emoji-picker",
+    title: "Search Emoji & Symbols",
+    subtitle: "Emoji & Symbols",
+    glyph: "\uf118",                     // nf-fa-smile_o
+    keywords: ["emoji", "emoticon", "smiley", "symbols", "picker"],
+    run: { push: { kind: "emoji", title: "Search Emoji & Symbols" } },
+    rootSearch: { when: "always" }
+  },
+  {
     id: "builtin:calculator-history",
     title: "Calculator History",
     subtitle: "Calculator",
