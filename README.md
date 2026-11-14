@@ -87,6 +87,11 @@ and `~/.local/state/omacast`.
 omacast needs only what Omarchy ships: `omarchy-shell` (Quickshell), Hyprland, bash, `jq` and `socat`.
 It adds no packages and no background services.
 
+- **Superwhisper recording indicator.** When `python3` with PyGObject is installed, the
+  plugin runs `services/superwhisper-frame.py` alongside the shell. While the launcher is open it tells
+  [Superwhisper](https://superwhisper.com) where the card is over the session bus
+  (`com.superwhisper.ShellOverlay`), so Superwhisper's recording glow or pill draws on the launcher instead
+  of the window under it. It makes no network requests, and does nothing without Superwhisper.
 - **Currency rates.** When you open the launcher and its rates are over 12 hours old, the calculator downloads
   ECB exchange rates from `api.frankfurter.dev` (retrying 30 minutes after a failure) and caches them in
   `~/.cache/omacast/currencies.json`. This is the only network request omacast makes. Turn it off with
