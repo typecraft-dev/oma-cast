@@ -1,49 +1,38 @@
-<div align="center">
-
-# omacast
-
-**A Raycast-esque launcher for [Omarchy](https://omarchy.org).**
-It learns what you use, searches your apps and every Omarchy action, and looks like it shipped with your theme.
-
-<img src="docs/screenshots/hero.png" alt="omacast showing suggestions for apps and Omarchy commands" width="760">
-
-</div>
-
----
-
-## Why
-
-Omarchy's built-in menu is great at what it does. omacast adds what Raycast users miss on Linux:
-
-* **Learns your habits.** Results are ranked with a port of Raycast's root-search algorithm, plus frecency and learned search terms. The things you actually use float to the top, and if you type `ff` and pick Firefox, `ff` keeps meaning Firefox.
-* **One search for everything.** Your apps, all ~400 Omarchy menu actions (with breadcrumbs and live ✓ state), and web-search fallbacks.
-* **Your shortcuts.** Give anything an alias, pin favorites, and hide the commands you never touch.
-* **Keyboard-first.** A Ctrl+K action panel, Ctrl+1–9 quick picks, search history on ↑, section jumping, and emacs-style navigation.
-* **Native to Omarchy.** It runs inside `omarchy-shell` as a plugin, with no Electron, no Node and no extra daemons. It opens in about 40 ms and follows your theme live when you run `omarchy theme set`.
-
-## Screenshots
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/search.png" alt="Searching 'screen' shows Omarchy actions with breadcrumbs"></td>
-    <td width="50%"><img src="docs/screenshots/actions.png" alt="The Ctrl+K action panel"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Every Omarchy action, with breadcrumbs</b></td>
-    <td align="center"><b>Ctrl+K: actions for any result</b></td>
-  </tr>
-</table>
+<h1 align="center">omacast</h1>
 
 <p align="center">
-  <img src="docs/screenshots/fallbacks.png" alt="Web-search fallbacks under the results" width="49%">
+  <strong>A Raycast-esque launcher for Linux.</strong><br>
+  Keyboard-first. Learns what you use. Built for Omarchy.
 </p>
-<p align="center"><b>No match? Send the query to Google or DuckDuckGo</b></p>
 
-### Follows your Omarchy theme
+<p align="center">
+  <a href="https://github.com/tcballard/omarchy-badges"><img src="https://raw.githubusercontent.com/tcballard/omarchy-badges/85f859029e236e784e7b05ada6dbe73506d07a91/badges/v1/built-for-omarchy.svg" alt="Built for Omarchy"></a>
+</p>
 
-There's no theme config. omacast binds to Omarchy's own colours, so it changes the moment you switch themes.
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#search">Search</a> ·
+  <a href="#clipboard-history">Clipboard History</a> ·
+  <a href="#switch-theme">Switch Theme</a> ·
+  <a href="#superwhisper">Superwhisper</a> ·
+  <a href="#keyboard">Keyboard</a>
+</p>
 
-<img src="docs/screenshots/themes.png" alt="omacast in Tokyo Night, Gruvbox, Rose Pine, Flexoki Light, Everforest and Osaka Jade">
+<p align="center">
+  <img src="docs/screenshots/hero.gif" alt="omacast cycling through six Omarchy themes: Tokyo Night, Gruvbox, Rose Pine, Flexoki Light, Everforest and Kanagawa">
+</p>
+
+omacast runs inside `omarchy-shell` as a plugin, with no Electron, no Node and no extra daemons. It opens in
+about 40 ms, searches your apps and every Omarchy action, and binds to Omarchy's own colours, so it changes
+the moment you switch themes.
+
+- **Learns your habits.** A port of Raycast's root-search ranking, plus frecency and learned search terms. Type `ff`, pick Firefox, and `ff` keeps meaning Firefox.
+- **One search for everything.** Your apps, all ~400 Omarchy menu actions with breadcrumbs and live ✓ state, a calculator and web-search fallbacks.
+- **Clipboard History.** Text, links, colours, files and images you copy, with a preview, where each came from, pins and a type filter.
+- **Switch Theme.** Every Omarchy theme with its preview beside the list.
+- **Superwhisper.** Start and stop dictation, recover your last dictation, and switch microphone, language or processing mode.
+- **Your shortcuts.** Aliases, favorites, a Ctrl+K action panel, Ctrl+1–9 quick picks, emacs or vim navigation, and Super+H/J/K/L arrows.
+- **Script Commands.** Drop a Raycast-style script in a folder and it becomes a command.
 
 ## Install
 
@@ -66,10 +55,20 @@ Press **Alt+Space**. Super+Space stays the Omarchy menu.
 this to your Hyprland config:
 
 ```lua
-o.bind("ALT + SPACE", "omacast launcher", hl.dsp.global("omacast:toggle"))
+o.bind("ALT + SPACE", "omacast launcher", hl.dsp.global("omacast:toggle"), { submap_universal = true })
+-- Lets Super+H/J/K/L reach omacast while it's open (see Keyboard).
+hl.define_submap("omacast", function()
+  hl.bind("SUPER + F24", hl.dsp.no_op()) -- a submap needs one bind to exist
+end)
 ```
 
+If your `omacast.lua` predates Super+H/J/K/L, add the `define_submap` block and
+`{ submap_universal = true }` on each omacast binding; setup won't rewrite a file that exists.
+
 Update with `omarchy plugin update typecraft.omacast`.
+
+<details>
+<summary>Removal, dependencies, privacy and upgrading from oma-cast</summary>
 
 ### Remove
 
@@ -87,6 +86,11 @@ and `~/.local/state/omacast`.
 omacast needs only what Omarchy ships: `omarchy-shell` (Quickshell), Hyprland, bash, `jq` and `socat`.
 It adds no packages and no background services.
 
+- **Superwhisper recording indicator.** When `python3` with PyGObject is installed, the
+  plugin runs `services/superwhisper-frame.py` alongside the shell. While the launcher is open it tells
+  [Superwhisper](https://superwhisper.com) where the card is over the session bus
+  (`com.superwhisper.ShellOverlay`), so Superwhisper's recording glow or pill draws on the launcher instead
+  of the window under it. It makes no network requests, and does nothing without Superwhisper.
 - **Currency rates.** When you open the launcher and its rates are over 12 hours old, the calculator downloads
   ECB exchange rates from `api.frankfurter.dev` (retrying 30 minutes after a failure) and caches them in
   `~/.cache/omacast/currencies.json`. This is the only network request omacast makes. Turn it off with
@@ -101,11 +105,13 @@ It adds no packages and no background services.
 
 ### Privacy
 
-Your search history, learned search terms and calculator history stay on your machine, in owner-only
+Your search history, learned search terms, calculator history and clipboard history stay on your machine, in owner-only
 files: omacast creates its `~/.config`, `~/.local/share`, `~/.cache` and `~/.local/state` directories as
 `0700` and its database files as `0600`, and tightens any it finds readable by other users. Text you copy
 or paste from the calculator goes to `wl-copy` on stdin, never on a command line, so other local users
 can't read it from the process list. Paste sends Shift+Insert after copying, as Omarchy's clipboard history does.
+The one exception is a script command's arguments: they reach your script as `$1`…`$3`, so they are on its
+command line while it runs.
 
 ### Upgrading from oma-cast
 
@@ -113,6 +119,98 @@ The plugin used to be `typecraft.oma-cast`. On first start, omacast moves your `
 cache and state directories to the `omacast` names. In a development checkout, `bin/omacast install` removes
 the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` moves `oma-cast.lua` to
 `omacast.lua`, keeping your key. `omacast doctor` reports anything left over.
+
+</details>
+
+## Search
+
+**Suggestions** learn from what you open. **Results** cover apps and every Omarchy action, with the menu path beside each one. Installers for apps you already have stay out of results, so the app itself comes up.
+
+<p align="center">
+  <img src="docs/screenshots/hero.png" width="49%" alt="The empty launcher with Suggestions: Search Emoji &amp; Symbols, Switch Theme, Clipboard History and Superwhisper commands">
+  <img src="docs/screenshots/search.png" width="49%" alt="Searching 'screen' lists Omarchy actions such as Screenshot and Screensaver with their menu paths">
+</p>
+
+**Ctrl+K** opens the actions for any result. **No match?** Send the query to Google or DuckDuckGo.
+
+<p align="center">
+  <img src="docs/screenshots/actions.png" width="49%" alt="The Ctrl+K action panel for Screenshot: Run, Open in Omarchy Menu, Copy Command, Add to Favorites, Set Alias, Disable Command">
+  <img src="docs/screenshots/fallbacks.png" width="49%" alt="A query with no matches offers Search Google and Search DuckDuckGo">
+</p>
+
+## Clipboard History
+
+<p align="center">
+  <img src="docs/screenshots/clipboard.gif" width="49%" alt="Moving through Clipboard History: text, an image, colours, a link and a file, each previewed beside the list">
+  <img src="docs/screenshots/clipboard-filter.png" width="49%" alt="Clipboard History with the type filter open: All Types, Text, Images, Files, Links, Colors">
+</p>
+
+Search **Clipboard History** in the root search, or bind it directly:
+
+```lua
+o.bind("SUPER + CTRL + V", "omacast clipboard history", hl.dsp.global("omacast:clipboard"))
+```
+
+Pressing the binding again closes it; the emoji picker's `omacast:emoji` binding toggles the same way.
+
+- omacast records text, links, colours, files and images you copy, with the app you copied from, when, and how many times.
+- The list is on the left and a preview with its details is on the right. The type dropdown (`Ctrl+P`) filters by All Types, Text, Images, Files, Links or Colors.
+- `↵` pastes into the app you came from, `Ctrl+↵` copies, `Ctrl+O` opens a link or file, `Ctrl+Shift+P` pins, `Ctrl+D` deletes an entry and `Ctrl+Shift+D` deletes everything except pins.
+- Entries are kept for a week, as in Raycast. Pinned entries are always kept. Change it with `"clipboardHistoryDuration"` in `config.json` (`P1D`, `P1W`, `P1M`, `P3M`, `P6M`, `P1Y` or `unlimited`).
+- Copies from password managers are never recorded: anything marked sensitive, plus the apps in `"clipboardDisabledApplications"` (Wayland app ids; KeePassXC, Bitwarden, 1Password and Seahorse by default). `"clipboardHistory": false` stops recording.
+- The history is in `~/.local/share/omacast/db/clipboard.json`, and images and long text are in `~/.local/share/omacast/clipboard/`, both readable only by you.
+
+## Switch Theme
+
+<p align="center">
+  <img src="docs/screenshots/themes.gif" width="760" alt="Moving through Switch Theme: each Omarchy theme's preview shows beside the list">
+</p>
+
+**Switch Theme** lists your Omarchy themes, your own and Omarchy's, with the current one checked and a preview of the highlighted theme beside the list. `↵` applies it with `omarchy-theme-set`, and omacast changes with it. It replaces Omarchy's own theme picker in omacast's results. To open it from Omarchy's theme keys as well:
+
+```lua
+hl.unbind("SUPER + CTRL + T")
+o.bind("SUPER + CTRL + T", "omacast switch theme", hl.dsp.global("omacast:theme"))
+```
+
+Pressing the key again closes it.
+
+## Superwhisper
+
+<p align="center">
+  <img src="docs/screenshots/superwhisper.png" width="49%" alt="Searching 'superwhisper' lists its commands: Switch Language, Superwhisper History, Paste Last Dictation, Switch Microphone, Copy Last Dictation">
+  <img src="docs/screenshots/superwhisper-language.png" width="49%" alt="Switch Language lists Superwhisper's languages with English checked as current">
+</p>
+
+When [Superwhisper](https://superwhisper.com) is your dictation backend (Setup › Defaults › Dictation in the Omarchy menu) and installed, omacast adds these commands:
+
+- **Start Recording** and **Stop Recording** run `superwhisper start` / `stop` once the launcher has closed, so the dictation lands in the window you came from.
+- **Paste Last Dictation** and **Copy Last Dictation** recover your newest dictation, for when it landed in the wrong window.
+- **Switch Processing Mode**, **Switch Microphone** and **Switch Language** list Superwhisper's own choices (only modes whose models are downloaded) with the current one checked; `↵` switches.
+- **Superwhisper History** (shown once history is on in Superwhisper and holds a dictation) lists your recent dictations (the newest 500) by day, with the full text and its details beside the list. `↵` pastes one into the app you came from, `Ctrl+↵` copies it, `Ctrl+Shift+C` copies the raw transcript when it differs, and the action panel opens it in Superwhisper.
+
+## Script Commands
+
+Executable scripts in `~/.config/omacast/script-commands/` become commands, using the same
+[Raycast Script Commands](https://github.com/raycast/script-commands) headers:
+
+```bash
+#!/bin/bash
+# @raycast.schemaVersion 1
+# @raycast.title Switch Display
+# @raycast.mode silent
+# @raycast.icon 🖥️
+# @raycast.argument1 { "type": "dropdown", "placeholder": "Input", "data": [{"title": "Mac mini", "value": "x0091"}, {"title": "MacBook Pro", "value": "x00d0"}] }
+
+monitor-input-cycle "$1" && echo "Switching display"
+```
+
+- Arguments (`text`, `password`, `dropdown`, up to three) appear as pills after the query: `Tab` moves into them,
+  and `←`/`→` pick a dropdown option.
+- The last line the script prints becomes the result: a HUD for `silent`, a toast for `compact`.
+- `fullOutput` and `inline` scripts run as `compact` for now.
+- `needsConfirmation` asks first, and `currentDirectoryPath` sets the folder the script runs in.
+- The folder is rescanned each time the launcher opens. Scripts need `chmod +x` and a shebang.
 
 ## Keyboard
 
@@ -126,11 +224,22 @@ the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` mo
 | `↑` on an empty search | Search history |
 | `Ctrl+↑` / `Ctrl+↓` | Jump between sections |
 | `Ctrl+N` / `Ctrl+P` | Next / previous |
+| `Super+J` / `Super+K` · `Super+H` / `Super+L` | Down / up · left / right in the emoji grid, in every navigation mode |
 | `Ctrl+Shift+F` | Add to favorites (`Ctrl+Alt+↑↓` to reorder) |
 | `Ctrl+Shift+C` | Copy |
 | `Alt+Shift+D` | Disable a command |
 | `Esc` / `Shift+Esc` | Back / back to root |
+| `Ctrl+U` / `Super+Backspace` / `Shift+Home` then `Backspace` | Clear the search (Backspace alone never leaves a view) |
 | `Ctrl +` / `Ctrl −` / `Ctrl 0` | Zoom |
+
+**Super+H/J/K/L.** While omacast is open it switches Hyprland to its own `omacast` submap, so Super keys
+reach the launcher instead of your window manager bindings (Omarchy's Super+J and the like), and switches
+back when it closes. `Super+V` pastes, `Super+A` selects the search and `Super+Backspace` clears it, as
+Omarchy's own bindings do elsewhere. Other Hyprland bindings, media keys included, wait until it closes;
+omacast's own hotkeys keep working.
+
+The All / Applications / Commands filter beside the root search is optional: set `"rootFilter": false` in
+`~/.config/omacast/config.json` to hide it and its shortcut.
 
 ## CLI
 
@@ -146,15 +255,15 @@ omacast doctor
 omacast is early. Search, ranking and the Omarchy integration are done. Coming next:
 
 - [ ] Settings window
-- [ ] Script Commands
-- [ ] Clipboard history, snippets, quicklinks, calculator
+- [x] Clipboard history, calculator
+- [ ] Snippets, quicklinks
 - [ ] Running Raycast extensions built from the open-source [`raycast/extensions`](https://github.com/raycast/extensions) repo
 - [ ] Window management
 - [ ] Importing your `.rayconfig` from macOS
 
 The full plan is in [`SPEC.md`](SPEC.md).
 
-## Development
+## Build
 
 ```sh
 git clone https://github.com/typecraft-dev/oma-cast.git
@@ -170,4 +279,8 @@ Quickshell caches QML for the life of the process, so run `omacast reload` after
 
 ## Notes
 
-omacast is an independent, clean-room project. It isn't affiliated with or endorsed by Raycast, and it contains no Raycast code or assets. It never contacts Raycast's servers and has no telemetry. Its agent action explicitly hands your question to Omarchy's existing coding-agent launcher; it provides no embedded AI runtime.
+omacast is an independent, clean-room project. It isn't affiliated with or endorsed by Raycast, and it contains no Raycast code or assets. It never contacts Raycast's servers and has no telemetry.
+
+## Licence
+
+[MIT](LICENSE).

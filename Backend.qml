@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import qs.Commons
 import "core/Rpc.js" as Rpc
 import "core/Paths.js" as Paths
@@ -12,6 +13,12 @@ import "core/Frecency.js" as Frecency
 import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
 import "core/Calculator.js" as Calculator
+import "core/Emoji.js" as Emoji
+import "core/Gifs.js" as Gifs
+import "core/ScriptCommands.js" as ScriptCommands
+import "core/ClipboardHistory.js" as ClipboardHistory
+import "core/Superwhisper.js" as Superwhisper
+import "core/Themes.js" as Themes
 import "services"
 
 Item {
@@ -26,7 +33,7 @@ Item {
 
   property var config: Schema.withConfigDefaults(null)
   property bool directoriesReady: false
-  readonly property bool ready: directoriesReady && settingsStore.loaded && frecencyStore.loaded && calculatorStore.loaded
+  readonly property bool ready: directoriesReady && settingsStore.loaded && frecencyStore.loaded && calculatorStore.loaded && emojiStore.loaded
 
   readonly property var registry: Rpc.createRegistry()
   readonly property double startedAt: Date.now()
@@ -35,7 +42,7 @@ Item {
   property var candidates: []
   property var candidatesById: ({})
   property int candidatesRevision: 0
-  readonly property bool loading: menuSource.loading || nativeSearch.pending !== null
+  readonly property bool loading: menuSource.loading || superwhisper.loading || themeSource.loading || nativeSearch.pending !== null || emojiSearch.pending !== null || gifSearch.pending !== null
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
@@ -45,12 +52,25 @@ Item {
 
   function call(method, data) { return Rpc.call(backend.registry, method, data) }
   function callSync(method, data) { return Rpc.callSync(backend.registry, method, data) }
-  function cancelSearch() { nativeSearch.cancel() }
+  function cancelSearch() { nativeSearch.cancel(); emojiSearch.cancel(); gifSearch.cancel() }
 
   function searchAsync(data, callback) {
     nativeSearch.cancel()
     var query = String(data && data.query || "").trim()
     var view = data && data.view
+    if (query && view && view.kind === "emoji") {
+      emojiSearch.search(Ranker.transliterate(query.toLowerCase()), "medium", function(matches) {
+        callback(backend.callSync("rootSearch.search", Object.assign({}, data, { fleaHits: matches })))
+      })
+      return
+    }
+    // GIFs search the same way, over the Library only (Gifs.searchEntries).
+    if (query && view && view.kind === "gif" && String(data.filter || "all") === "all") {
+      gifSearch.search(Ranker.transliterate(query.toLowerCase()), "medium", function(matches) {
+        callback(backend.callSync("rootSearch.search", Object.assign({}, data, { fleaHits: matches })))
+      })
+      return
+    }
     if (!query || (view && view.kind !== "root")) {
       callback(backend.callSync("rootSearch.search", data))
       return
@@ -63,6 +83,22 @@ Item {
   NativeSearch {
     id: nativeSearch
     onFailed: function(message) { backend.log("warning", "search", message) }
+  }
+
+  // A second flea helper over the emoji list; null hits fall back to Emoji.matchScore.
+  NativeSearch {
+    id: emojiSearch
+    ids: backend.emoji.list.map(function(e) { return e.symbol })
+    entries: FleaSearch.entries(Emoji.searchEntries(backend.emoji.list), Ranker.transliterate)
+    onFailed: function(message) { backend.log("warning", "emoji-search", message) }
+  }
+
+  // A third flea helper, over Library GIFs: title, and tags as keywords.
+  NativeSearch {
+    id: gifSearch
+    ids: backend.gifLibrary.map(function(g) { return g.id })
+    entries: FleaSearch.entries(Gifs.searchEntries(backend.gifLibrary), Ranker.transliterate)
+    onFailed: function(message) { backend.log("warning", "gif-search", message) }
   }
   function subscribe(method, callback) { return Rpc.subscribe(backend.registry, method, callback) }
 
@@ -94,7 +130,17 @@ Item {
     var apps = backend.appEntries()
     for (var i = 0; i < apps.length; i++) if (apps[i] && apps[i].id) next.push(RootSearch.appCandidate(apps[i]))
     next = next.concat(RootSearch.menuCandidates(menuSource.tree, menuSource.guards, menuSource.providerItems, backend.deps))
-    for (var b = 0; b < RootSearch.BUILTINS.length; b++) next.push(RootSearch.builtinCandidate(RootSearch.BUILTINS[b]))
+    for (var b = 0; b < RootSearch.BUILTINS.length; b++) {
+      var def = RootSearch.BUILTINS[b]
+      if (def.requires === "superwhisper" && !superwhisper.available) continue
+      if (def.requires === "superwhisper-history" && !(superwhisper.available && superwhisper.hasHistory)) continue
+      next.push(RootSearch.builtinCandidate(def))
+    }
+    for (var s = 0; s < scriptSource.commands.length; s++) next.push(ScriptCommands.candidate(scriptSource.commands[s]))
+    // A built-in that replaces an Omarchy command hides that command.
+    var superseded = ({})
+    RootSearch.BUILTINS.forEach(function(d) { (d.supersedes || []).forEach(function(id) { superseded[id] = true }) })
+    next = next.filter(function(c) { return !superseded[c.id] })
     var byId = ({})
     for (var j = 0; j < next.length; j++) byId[next[j].id] = next[j]
     var entries = FleaSearch.entries(next, Ranker.transliterate)
@@ -202,6 +248,356 @@ Item {
     return null
   }
 
+  // ---------------------------------------------------------------- emoji
+
+  property string emojiRaw: ""
+  property string emojiKeywordsRaw: ""
+  readonly property var emoji: Emoji.parse(backend.emojiRaw, backend.emojiKeywordsRaw)
+
+  function emojiEntry(id) {
+    var symbol = String(id).slice("emoji:".length)
+    var list = backend.emoji.list
+    for (var i = 0; i < list.length; i++) if (list[i].symbol === symbol) return list[i]
+    return null
+  }
+
+  function emojiState(filter) {
+    var doc = emojiStore.loaded ? emojiStore.doc : { items: {}, pinned: [], skinTone: "none" }
+    var nowSec = Date.now() / 1000
+    var recent = Object.keys(doc.items).sort(function(a, b) {
+      return Frecency.score(doc.items[b].anchor, nowSec) - Frecency.score(doc.items[a].anchor, nowSec)
+    })
+    return { pinned: doc.pinned, recent: recent, tone: doc.skinTone, filter: filter || "all" }
+  }
+
+  function emojiCandidate(id) {
+    var e = backend.emojiEntry(id)
+    if (!e) throw new Error("Unknown emoji " + id)
+    var state = backend.emojiState()
+    return { entry: e, candidate: Emoji.candidate(e, state.tone, state.pinned) }
+  }
+
+  function setPinned(symbol, pin) {
+    emojiStore.update(function(doc) {
+      doc.pinned = doc.pinned.filter(function(s) { return s !== symbol })
+      if (pin) doc.pinned.push(symbol)
+    })
+    backend.emit("emojiPicker.stateChanged", null)
+  }
+
+  function emojiAction(action, id, query) {
+    var found = backend.emojiCandidate(id)
+    var e = found.entry, c = found.candidate
+    function uprank() {
+      emojiStore.update(function(doc) { doc.items[e.symbol] = Frecency.recordVisit(doc.items[e.symbol] || null, Date.now(), query || "") })
+    }
+    switch (action) {
+      case "open":
+      case "paste":
+        uprank()
+        clipboard.paste(c.symbol)
+        return { close: true }
+      case "copy":
+        uprank()
+        clipboard.copy(c.symbol)
+        return { close: true, hud: "Copied to Clipboard" }
+      case "copy-name":
+        clipboard.copy(c.title)
+        return { close: true, hud: "Copied to Clipboard" }
+      case "pin":
+      case "unpin":
+        backend.setPinned(e.symbol, action === "pin")
+        return { toast: { style: "success", title: action === "pin" ? "Pinned" : "Unpinned" } }
+      case "remove-recent":
+        emojiStore.update(function(doc) { delete doc.items[e.symbol] })
+        return { toast: { style: "success", title: "Removed from Recently Used" } }
+      case "tone:none": case "tone:light": case "tone:medium-light": case "tone:medium": case "tone:medium-dark": case "tone:dark":
+        backend.callSync("emojiPicker.setSkinTone", { tone: action.slice(5) })
+        return { toast: { style: "success", title: "Skin tone set" } }
+      case "clear-recent":
+        emojiStore.update(function(doc) { doc.items = {} })
+        return { toast: { style: "success", title: "Recently Used cleared" } }
+    }
+    throw new Error("Unknown action " + action)
+  }
+
+  // ------------------------------------------------------------------ gifs
+
+  readonly property var gifList: gifStore.loaded ? gifStore.doc.gifs : []
+  readonly property var gifLibrary: backend.gifList.filter(Gifs.inLibrary)
+
+  function gifEntry(id) {
+    var key = String(id).replace(/^gif:/, "")
+    for (var i = 0; i < backend.gifList.length; i++) if (backend.gifList[i].id === key) return backend.gifList[i]
+    return null
+  }
+
+  function gifState(filter) {
+    var doc = gifStore.loaded ? gifStore.doc : { items: {}, pinned: [] }
+    var nowSec = Date.now() / 1000
+    var recent = Object.keys(doc.items).sort(function(a, b) {
+      return Frecency.score(doc.items[b].anchor, nowSec) - Frecency.score(doc.items[a].anchor, nowSec)
+    })
+    return { pinned: doc.pinned, recent: recent, items: doc.items, filter: filter || "all", nowMs: Date.now() }
+  }
+
+  // Only files inside our GIF directory, whatever the store says.
+  function deleteGifFiles(paths) {
+    var dir = backend.paths.gifs + "/"
+    var mine = paths.filter(function(p) { return p && p.indexOf(dir) === 0 && p.indexOf("/..") < 0 })
+    if (mine.length) Quickshell.execDetached(["rm", "-rf", "--"].concat(mine))
+  }
+
+  // Hard-links the GIF as <gifs>/<id>/<title>.gif so a paste carries its
+  // title as the file name; calls then(path), the plain file on failure.
+  function namedGif(g, then) {
+    if (gifNamer.running) { then(g.file); return }
+    gifNamer.out = ""
+    gifNamer.done = function(path) { then(path || g.file) }
+    gifNamer.input = [g.file, backend.paths.gifs + "/" + g.id, Gifs.fileName(g)].join("\t") + "\n"
+    gifNamer.stdinEnabled = true
+    gifNamer.running = true
+  }
+
+  // Takes the probe's output; returns {status, title, reasons}.
+  property real gifSourceCopiedAt: 0
+
+  function importGif(meta) {
+    if (!gifStore.loaded) throw new Error("The GIF Library is not loaded")
+    if (!meta || meta.error) return { status: "rejected", reasons: [meta && meta.error || "Could not read the GIF"] }
+    // The probe writes only into our directory; refuse anything else.
+    if (String(meta.file).indexOf(backend.paths.gifs + "/") !== 0) throw new Error("GIF outside the library directory")
+    var result
+    gifStore.update(function(doc) {
+      result = Gifs.importGif(doc.gifs, meta, Date.now())
+      doc.gifs = result.gifs
+    })
+    backend.deleteGifFiles(result.removeFiles)
+    backend.emit("gifs.stateChanged", null)
+    return { status: result.status, id: result.gif ? result.gif.id : null, title: result.gif ? result.gif.title : "", reasons: result.reasons }
+  }
+
+  function importOutcomeToast(r) {
+    if (r.status === "added") return { style: "success", title: "Added to the GIF Inbox" }
+    if (r.status === "replaced") return { style: "success", title: "Replaced " + (r.title || "a GIF") + " with a larger copy" }
+    if (r.status === "duplicate") return { style: "failure", title: "Already in the library" + (r.title ? ": " + r.title : "") }
+    return { style: "failure", title: (r.reasons || []).join(". ") || "Could not add the GIF" }
+  }
+
+  function updateGif(id, title, tags) {
+    var g = backend.gifEntry(id)
+    if (!g) throw new Error("No such GIF")
+    gifStore.update(function(doc) {
+      doc.gifs = doc.gifs.map(function(x) { return x.id === g.id ? Object.assign({}, x, { title: title, tags: tags }) : x })
+    })
+    backend.emit("gifs.stateChanged", null)
+    return Gifs.inLibrary({ title: title, tags: tags })
+  }
+
+  function gifAction(action, id, query, confirmed) {
+    var g = backend.gifEntry(id)
+    if (!g) throw new Error("No such GIF")
+    function uprank() {
+      gifStore.update(function(doc) { doc.items[g.id] = Frecency.recordVisit(doc.items[g.id] || null, Date.now(), query || "") })
+    }
+    switch (action) {
+      case "open":
+      // As a file: Chromium and Electron apps drop a bare image/gif offer
+      // (paste event with no types) but take a file:// URI as the animated GIF.
+      case "paste":
+        uprank()
+        backend.namedGif(g, function(file) { clipboard.paste("file://" + encodeURI(file), "text/uri-list") })
+        return { close: true }
+      case "copy":
+        uprank()
+        backend.namedGif(g, function(file) { clipboard.copy("file://" + encodeURI(file), "text/uri-list") })
+        return { close: true, hud: "Copied GIF" }
+      case "copy-source":
+        backend.gifSourceCopiedAt = Date.now()
+        clipboard.copy(g.source)
+        return { close: true, hud: "Copied to Clipboard" }
+      case "edit":
+        return { push: { kind: "gif-edit", title: "Edit GIF", gifId: g.id, thumb: g.file, value: Gifs.editValue(g) } }
+      case "pin":
+      case "unpin":
+        gifStore.update(function(doc) {
+          doc.pinned = doc.pinned.filter(function(x) { return x !== g.id })
+          if (action === "pin") doc.pinned.push(g.id)
+        })
+        return { toast: { style: "success", title: action === "pin" ? "Pinned" : "Unpinned" } }
+      case "delete":
+        if (!confirmed) return { confirm: { title: "Delete GIF", message: "This removes “" + (g.title || "Untitled GIF") + "” and its file from the library.", primary: "Delete", destructive: true } }
+        gifStore.update(function(doc) {
+          doc.gifs = doc.gifs.filter(function(x) { return x.id !== g.id })
+          doc.pinned = doc.pinned.filter(function(x) { return x !== g.id })
+          delete doc.items[g.id]
+        })
+        backend.deleteGifFiles([g.file, g.thumb, backend.paths.gifs + "/" + g.id])
+        backend.emit("gifs.stateChanged", null)
+        return { toast: { style: "success", title: "GIF deleted" } }
+    }
+    throw new Error("Unknown action " + action)
+  }
+
+  // ----------------------------------------------------- clipboard history
+
+  // Our own write from the history comes back through the watcher; it moves
+  // the entry up without counting as a new copy.
+  property string clipboardSelfHash: ""
+  property double clipboardSelfAt: 0
+
+  // The focused app: the source of a copy, and where a paste lands.
+  function activeApp() {
+    var t = ToplevelManager.activeToplevel
+    var appId = t ? String(t.appId || "") : ""
+    if (!appId) return null
+    var entry = DesktopEntries.heuristicLookup(appId)
+    return { appId: appId, name: entry && entry.name ? String(entry.name) : appId }
+  }
+
+  function clipboardEntries() { return clipboardStore.loaded ? clipboardStore.doc.entries : [] }
+
+  function clipboardEntry(id) {
+    var key = String(id).replace(/^clipboard:/, "")
+    var list = backend.clipboardEntries()
+    for (var i = 0; i < list.length; i++) if (list[i].id === key) return list[i]
+    return null
+  }
+
+  // Only files inside our clipboard directory, whatever the store says.
+  function deleteClipboardFiles(paths) {
+    var dir = backend.paths.clipboard + "/"
+    var mine = paths.filter(function(p) { return p.indexOf(dir) === 0 && p.indexOf("/..") < 0 })
+    if (mine.length) Quickshell.execDetached(["rm", "-f", "--"].concat(mine))
+  }
+
+  // Applies mutate(entries) → entries, then retention, and deletes the files
+  // no entry uses any more.
+  function updateClipboard(mutate) {
+    if (!clipboardStore.loaded) throw new Error("Clipboard History is not loaded")
+    var orphans = []
+    clipboardStore.update(function(doc) {
+      var before = doc.entries
+      var pruned = ClipboardHistory.prune(mutate(before), Date.now(), backend.config.clipboardHistoryDuration)
+      var kept = ({})
+      pruned.entries.forEach(function(e) { kept[e.id] = true })
+      var gone = before.filter(function(e) { return !kept[e.id] }).concat(pruned.removed)
+      orphans = ClipboardHistory.orphanedPaths(gone, pruned.entries)
+      doc.entries = pruned.entries
+    })
+    backend.deleteClipboardFiles(orphans)
+    backend.emit("clipboard.stateChanged", null)
+  }
+
+  function pruneClipboard() {
+    if (!clipboardStore.loaded) return
+    if (ClipboardHistory.prune(clipboardStore.doc.entries, Date.now(), backend.config.clipboardHistoryDuration).removed.length)
+      backend.updateClipboard(function(entries) { return entries })
+  }
+
+  function recordClipboard(obs) {
+    if (!clipboardStore.loaded || !obs || !obs.hash) return
+    // The selection that was there when the watcher started is old news.
+    if (obs.initial && backend.clipboardEntries().some(function(e) { return e.hash === obs.hash })) return
+    delete obs.initial
+    var source = backend.activeApp()
+    if (ClipboardHistory.isDisabledSource(source, backend.config.clipboardDisabledApplications)) {
+      backend.deleteClipboardFiles(ClipboardHistory.orphanedPaths([obs], backend.clipboardEntries()))
+      return
+    }
+    obs.source = source
+    var now = Date.now()
+    var self = obs.hash === backend.clipboardSelfHash && now - backend.clipboardSelfAt < 5000
+    // A copied X post link saves the post's GIF, if it has one [D].
+    // Skips omacast's own copies, Copy Source included.
+    if (!self && now - backend.gifSourceCopiedAt > 5000 && obs.type === "text" && Gifs.isXPost(obs.text)) gifImporter.add(String(obs.text).trim(), true)
+    var id = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36)
+    backend.updateClipboard(function(entries) { return ClipboardHistory.add(entries, obs, now, id, self).entries })
+  }
+
+  // Puts an entry back on the clipboard, pasting it into the focused app if asked.
+  function writeClipboardEntry(e, paste) {
+    backend.clipboardSelfHash = e.hash
+    backend.clipboardSelfAt = Date.now()
+    var mime = e.mime === "text/uri-list" || e.type === "image" ? e.mime : ""
+    if (e.path) clipboard.copyFile(e.path, e.mime || "text/plain", paste)
+    else if (paste) clipboard.paste(e.text, mime)
+    else clipboard.copy(e.text, mime)
+  }
+
+  function clipboardAction(action, id, confirmed) {
+    if (action === "delete-all-entries") {
+      if (!confirmed) return { confirm: { title: "Delete All Entries", message: "This removes every unpinned entry from Clipboard History. Pinned entries are kept.", primary: "Delete All", destructive: true } }
+      backend.updateClipboard(function(entries) { return entries.filter(function(e) { return typeof e.pinned === "number" }) })
+      return { toast: { style: "success", title: "History cleared" } }
+    }
+    var e = backend.clipboardEntry(id)
+    if (!e) throw new Error("No such clipboard entry")
+    switch (action) {
+      case "open":
+      case "paste":
+        backend.writeClipboardEntry(e, true)
+        return { close: true }
+      case "copy":
+        backend.writeClipboardEntry(e, false)
+        return { close: true, hud: "Copied to Clipboard" }
+      case "open-link":
+        var files = ClipboardHistory.filePaths(e.text)
+        var target = files.length ? files[0] : String(e.text || "").trim()
+        if (/^https?:/i.test(target)) Util.execArgv(["omarchy-launch-browser", target])
+        else Util.execArgv(["xdg-open", target])
+        return { close: true }
+      case "pin":
+      case "unpin":
+        backend.updateClipboard(function(entries) { return ClipboardHistory.setPinned(entries, e.id, action === "pin") })
+        return { toast: { style: "success", title: action === "pin" ? "Pinned" : "Unpinned" } }
+      case "save-gif":
+        gifImporter.add(e.path || ClipboardHistory.filePaths(e.text)[0] || String(e.text || "").trim())
+        return { toast: { style: "animated", title: "Adding to the GIF Library…" } }
+      case "delete-entry":
+        backend.updateClipboard(function(entries) { return entries.filter(function(x) { return x.id !== e.id }) })
+        return { toast: { style: "success", title: "Entry deleted" } }
+    }
+    throw new Error("Unknown action " + action)
+  }
+
+  // ----------------------------------------------------------------- themes
+
+  function themeEntry(id) {
+    var slug = String(id).replace(/^theme:/, "")
+    return themeSource.themes.filter(function(t) { return t.slug === slug })[0] || null
+  }
+
+  // ---------------------------------------------------------- superwhisper
+
+  function superwhisperEntry(id) {
+    var key = String(id).replace(/^superwhisper:/, "")
+    var list = superwhisper.entries
+    for (var i = 0; i < list.length; i++) if (list[i].id === key) return list[i]
+    return null
+  }
+
+  function superwhisperAction(action, id) {
+    var e = backend.superwhisperEntry(id)
+    if (!e) throw new Error("No such dictation")
+    switch (action) {
+      case "open":
+      case "paste":
+        clipboard.paste(e.text)
+        return { close: true }
+      case "copy":
+        clipboard.copy(e.text)
+        return { close: true, hud: "Copied to Clipboard" }
+      case "copy-raw":
+        clipboard.copy(e.raw)
+        return { close: true, hud: "Copied to Clipboard" }
+      case "open-in-superwhisper":
+        Util.execArgv(["superwhisper", "settings", "history"])
+        return { close: true }
+    }
+    throw new Error("Unknown action " + action)
+  }
+
   // ------------------------------------------------------------- execution
 
   function summonPlugin(id, payload) {
@@ -292,12 +688,43 @@ Item {
             return { close: true }
           }
           backend.recordVisit(id, query)
+          if (candidate.run.superwhisperLast) {
+            var verb = candidate.run.superwhisperLast
+            superwhisper.withLastDictation(function(entry) {
+              if (!entry) { backend.emit("superwhisper.finished", { style: "failure", title: "No dictations yet" }); return }
+              if (verb === "paste") clipboard.paste(entry.text)
+              else {
+                clipboard.copy(entry.text)
+                backend.emit("superwhisper.finished", { style: "success", title: "Copied to Clipboard" })
+              }
+            })
+            return { close: true }
+          }
+          if (candidate.run.superwhisper) {
+            superwhisper.run(candidate.run.superwhisper)
+            return { close: true }
+          }
+          if (candidate.run.push && candidate.run.push.kind === "theme") themeSource.refresh()
+          if (candidate.run.push && candidate.run.push.kind === "superwhisper-setting") superwhisper.loadSetting(candidate.run.push.setting)
           if (candidate.run.push) return { push: candidate.run.push }
           if (candidate.run.summon) backend.summonPlugin(candidate.run.summon, candidate.run.payload || "{}")
           return { close: true }
         case "fallback":
           Util.execArgv(["omarchy-launch-browser", RootSearch.fallbackUrl(candidate, query)])
           return { close: true }
+        case "script":
+          var script = candidate.script
+          var args = ScriptCommands.argv(script, (data && data.arguments) || {})
+          if (args.error) throw new Error(args.error)
+          if (script.needsConfirmation && !(data && data.confirmed))
+            return { confirm: { title: script.title, message: "Are you sure you want to run this script?", primary: "Run", destructive: false } }
+          backend.recordVisit(id, query)
+          scriptRunner.run(script, args.argv)
+          // silent closes and shows a HUD. shortcut: fullOutput and inline
+          // run as compact (toast with the last line); add the output view
+          // and inline refresh when a script needs them.
+          if (script.mode === "silent") return { close: true }
+          return { toast: { style: "success", title: "Running " + script.title + "…" } }
       }
       throw new Error("Cannot open " + id)
     }
@@ -428,12 +855,24 @@ Item {
         if (data && data.fleaHits) ctx.fleaHits = data.fleaHits
         var sections
         if (view && view.kind === "menu") sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
+        else if (view && view.kind === "emoji") sections = Emoji.sections(backend.emoji.list, query, Object.assign(backend.emojiState(), { fleaHits: data.fleaHits || null }))
+        else if (view && view.kind === "gif") sections = Gifs.sections(backend.gifList, query, Object.assign(backend.gifState(String(data.filter || "all")), { fleaHits: data.fleaHits || null }))
+        else if (view && view.kind === "superwhisper-history") {
+          superwhisper.refreshIfStale()
+          sections = Superwhisper.sections(superwhisper.entries, query, ctx.nowMs)
+        }
+        else if (view && view.kind === "theme")
+          sections = Themes.sections(themeSource.themes, themeSource.current, query)
+        else if (view && view.kind === "superwhisper-setting")
+          sections = Superwhisper.settingSections(view.setting, superwhisper.settings[view.setting], query)
+        else if (view && view.kind === "clipboard") sections = ClipboardHistory.sections(backend.clipboardEntries(), query, String(data && data.filter || "all"), ctx.nowMs)
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else {
           ctx.filter = String(data && data.filter || "all")
           if (query.trim() && ctx.filter === "all") ctx.calculation = backend.calculate(query)
           sections = RootSearch.rootSections(backend.candidates, query, ctx, backend.deps)
         }
+        if (view && (view.kind === "emoji" || view.kind === "gif")) return sections
         return sections.map(function(s) {
           return { id: s.id, title: s.title, rows: s.rows.map(function(r) { return r.candidate }) }
         })
@@ -442,6 +881,32 @@ Item {
         var rowId = String(data && data.id || "")
         if (rowId === RootSearch.CALCULATOR_ID) return RootSearch.actionsFor({ kind: "calculator" })
         if (rowId.indexOf("calculator-history:") === 0) return RootSearch.actionsFor({ kind: "calculator-history" })
+        if (rowId.indexOf("theme:") === 0) {
+          var shown = backend.themeEntry(rowId)
+          if (!shown) throw new Error("No such theme")
+          return Themes.actionsFor(shown, themeSource.current)
+        }
+        if (rowId.indexOf("superwhisper-setting:") === 0)
+          return [{ id: "open", title: "Select", shortcut: "↵", section: "primary", icon: "" }]
+        if (rowId.indexOf("superwhisper:") === 0) {
+          var dictation = backend.superwhisperEntry(rowId)
+          if (!dictation) throw new Error("No such dictation")
+          var target = backend.activeApp()
+          return Superwhisper.actionsFor(dictation, target ? target.name : "")
+        }
+        if (rowId.indexOf("clipboard:") === 0) {
+          var clip = backend.clipboardEntry(rowId)
+          if (!clip) throw new Error("No such clipboard entry")
+          var app = backend.activeApp()
+          return ClipboardHistory.actionsFor(clip, app ? app.name : "")
+        }
+        if (rowId.indexOf("gif:") === 0) {
+          var gif = backend.gifEntry(rowId)
+          if (!gif) throw new Error("No such GIF")
+          var to = backend.activeApp()
+          return Gifs.actionsFor(Gifs.candidate(gif, backend.gifState().pinned), gif, to ? to.name : "")
+        }
+        if (rowId.indexOf("emoji:") === 0) return Emoji.actionsFor(backend.emojiCandidate(rowId).candidate, backend.emojiState().tone)
         var candidate = backend.decorated(rowId)
         if (!candidate) {
           var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === data.id })[0]
@@ -461,6 +926,23 @@ Item {
           var entry = backend.historyEntry(rowId)
           return entry ? RootSearch.aboutFor(RootSearch.historyCandidate(entry, nowMs), nowMs) : []
         }
+        if (rowId.indexOf("clipboard:") === 0) {
+          var clip = backend.clipboardEntry(rowId)
+          return clip ? ClipboardHistory.detail(clip).info : []
+        }
+        if (rowId.indexOf("superwhisper:") === 0) {
+          var dictation = backend.superwhisperEntry(rowId)
+          return dictation ? Superwhisper.detail(dictation).info : []
+        }
+        if (rowId.indexOf("gif:") === 0) {
+          var gifInfo = backend.gifEntry(rowId)
+          var usage = gifInfo && gifStore.doc.items[gifInfo.id]
+          return gifInfo ? Gifs.aboutFor(gifInfo, usage ? (usage.searchTerms || []).length || 1 : 0) : []
+        }
+        if (rowId.indexOf("emoji:") === 0) {
+          var found = backend.emojiCandidate(rowId)
+          return Emoji.aboutFor(found.candidate, found.entry)
+        }
         var candidate = backend.decorated(rowId)
         if (!candidate) {
           var f = RootSearch.FALLBACKS.filter(function(x) { return x.id === rowId })[0]
@@ -470,6 +952,24 @@ Item {
         return RootSearch.aboutFor(candidate, nowMs)
       },
       performAction: function(data) {
+        if (data && String(data.id).indexOf("theme:") === 0) {
+          var theme = backend.themeEntry(data.id)
+          if (!theme) throw new Error("No such theme")
+          themeSource.apply(theme.slug)
+          return { close: true }
+        }
+        if (data && String(data.id).indexOf("superwhisper-setting:") === 0) {
+          var pick = Superwhisper.parseSettingId(data.id)
+          var state = pick && superwhisper.settings[pick.setting]
+          var option = state && state.options.filter(function(o) { return o.value === pick.value })[0]
+          if (!option) throw new Error("No such option")
+          superwhisper.select(pick.setting, option.value, { mode: "Processing mode", microphone: "Microphone", language: "Language" }[pick.setting] + " set to " + option.label)
+          return { close: true }
+        }
+        if (data && String(data.id).indexOf("superwhisper:") === 0)
+          return backend.superwhisperAction(String(data.action || "open"), data.id)
+        if (data && String(data.id).indexOf("clipboard:") === 0)
+          return backend.clipboardAction(String(data.action || "open"), data.id, !!data.confirmed)
         // Destructive commands come back as a confirmation unless confirmed.
         if (!(data && data.confirmed)) {
           var confirm = RootSearch.confirmationFor(String(data && data.id || ""), String(data && data.action || "open"))
@@ -490,6 +990,13 @@ Item {
           var entry = backend.historyEntry(data.id)
           if (!entry) throw new Error("No such history entry")
           return backend.calculatorAction(String(data.action || "open"), entry, entry.id)
+        }
+        if (data && String(data.id).indexOf("gif:") === 0)
+          return backend.gifAction(String(data.action || "open"), data.id, String(data.query || ""), !!data.confirmed)
+        if (data && String(data.id).indexOf("emoji:") === 0) {
+          var confirmClear = String(data.action) === "clear-recent" && !data.confirmed
+          if (confirmClear) return { confirm: { title: "Clear Recently Used", message: "This forgets every emoji you have pasted or copied.", primary: "Clear", destructive: true } }
+          return backend.emojiAction(String(data.action || "open"), data.id, String(data.query || ""))
         }
         return backend.performAction(data)
       },
@@ -520,6 +1027,78 @@ Item {
       }
     })
 
+    // Names from Raycast's emojiPicker namespace (ref 02 §2); setSkinTone and
+    // getSkinTone stand in for its preference [D].
+    Rpc.register(backend.registry, "emojiPicker", {
+      search: function(data) { return Emoji.sections(backend.emoji.list, String(data && data.query || ""), backend.emojiState(data && data.filter)) },
+      get: function(data) { return backend.emojiCandidate("emoji:" + String(data && data.symbol || "")).candidate },
+      pin: function(data) { backend.emojiCandidate("emoji:" + data.symbol); backend.setPinned(String(data.symbol), true); return null },
+      unpin: function(data) { backend.setPinned(String(data && data.symbol || ""), false); return null },
+      uprank: function(data) { backend.emojiAction("open", "emoji:" + String(data && data.symbol || ""), ""); return null },
+      resetRanking: function(data) { return backend.emojiAction("remove-recent", "emoji:" + String(data && data.symbol || ""), "") },
+      getSkinTone: function() { return emojiStore.loaded ? emojiStore.doc.skinTone : "none" },
+      setSkinTone: function(data) {
+        var tone = String(data && data.tone || "")
+        if (!Emoji.TONES.some(function(t) { return t.id === tone })) throw new Error("Skin tone must be one of " + Emoji.TONES.map(function(t) { return t.id }).join(", "))
+        emojiStore.update(function(doc) { doc.skinTone = tone })
+        backend.emit("emojiPicker.stateChanged", null)
+        return tone
+      }
+    })
+
+    // Names from Raycast's clipboard namespace (ref 02 §2); getDetail feeds
+    // the detail pane [D].
+    Rpc.register(backend.registry, "clipboard", {
+      getAll: function() { return backend.clipboardEntries() },
+      getDetail: function(data) {
+        var e = backend.clipboardEntry(String(data && data.id || ""))
+        return e ? ClipboardHistory.detail(e) : null
+      },
+      copy: function(data) { return backend.clipboardAction("copy", String(data && data.id || ""), true) },
+      paste: function(data) { return backend.clipboardAction("paste", String(data && data.id || ""), true) },
+      pin: function(data) { return backend.clipboardAction("pin", String(data && data.id || ""), true) },
+      unpin: function(data) { return backend.clipboardAction("unpin", String(data && data.id || ""), true) },
+      "delete": function(data) { return backend.clipboardAction("delete-entry", String(data && data.id || ""), true) },
+      deleteAll: function() { return backend.clipboardAction("delete-all-entries", "", true) }
+    })
+
+    // GIF Library [D]. import takes omacast-gif-probe output (the CLI's path);
+    // add probes a path or URL in the background and reports through a toast.
+    Rpc.register(backend.registry, "gifs", {
+      getAll: function() { return backend.gifList },
+      "import": function(data) { return backend.importGif(data) },
+      add: function(data) {
+        var source = String(data && data.source || "").trim()
+        if (!source) throw new Error("Give a file path or URL")
+        gifImporter.add(source)
+        return null
+      },
+      update: function(data) {
+        var edit = Gifs.parseEdit(String(data && data.text || ""))
+        if (!edit.title) throw new Error("A GIF needs a title")
+        return { inLibrary: backend.updateGif(String(data && data.id || ""), edit.title, edit.tags) }
+      },
+      "delete": function(data) { return backend.gifAction("delete", String(data && data.id || ""), "", true) }
+    })
+
+    Rpc.register(backend.registry, "themes", {
+      getAll: function() { return { current: themeSource.current, themes: themeSource.themes } },
+      getDetail: function(data) {
+        var t = backend.themeEntry(String(data && data.id || ""))
+        return t ? Themes.detail(t, themeSource.current) : null
+      }
+    })
+
+    Rpc.register(backend.registry, "superwhisper", {
+      getHistory: function() { return superwhisper.entries },
+      getDetail: function(data) {
+        var e = backend.superwhisperEntry(String(data && data.id || ""))
+        return e ? Superwhisper.detail(e) : null
+      },
+      start: function() { superwhisper.run("start"); return null },
+      stop: function() { superwhisper.run("stop"); return null }
+    })
+
     Rpc.register(backend.registry, "frecency", {
       visit: function(data) { backend.recordVisit(String(data.id), String(data.query || "")); return null },
       get: function(data) {
@@ -548,11 +1127,14 @@ Item {
     function onValuesChanged() { rebuildTimer.restart() }
   }
 
-  Component.onDestruction: { settingsStore.flush(); frecencyStore.flush(); calculatorStore.flush() }
+  Component.onDestruction: { settingsStore.flush(); frecencyStore.flush(); calculatorStore.flush(); emojiStore.flush(); clipboardStore.flush(); gifStore.flush() }
   onNotification: function(method, data) {
     if (method === "window.visibilityChanged" && data && data.visible) {
       menuSource.refresh()
+      scriptSource.refresh()
       calculatorData.refresh()
+      backend.pruneClipboard()
+      superwhisper.refresh()
     }
   }
 
@@ -562,6 +1144,42 @@ Item {
   ClipboardWriter {
     id: clipboard
     onFailed: function(message) { backend.log("error", "clipboard", message, null) }
+  }
+
+  ClipboardWatcher {
+    directory: backend.directoriesReady && clipboardStore.loaded ? backend.paths.clipboard : ""
+    enabled: backend.config.clipboardHistory
+    onCaptured: function(observation) { backend.recordClipboard(observation) }
+    onMessage: function(level, text) { backend.log(level, "clipboard", text, null) }
+  }
+
+  ThemeSource {
+    id: themeSource
+    onLoaded: backend.emit("themes.changed", null)
+  }
+
+  SuperwhisperSource {
+    id: superwhisper
+    onAvailableChanged: rebuildTimer.restart()
+    onHasHistoryChanged: rebuildTimer.restart()
+    onHistoryChanged: backend.emit("superwhisper.historyChanged", null)
+    onSettingsLoaded: backend.emit("superwhisper.historyChanged", null)
+    onFinished: function(style, title) { backend.emit("superwhisper.finished", { style: style, title: title }) }
+    onMessage: function(level, text) { backend.log(level, "superwhisper", text, null) }
+  }
+
+  ScriptCommandSource {
+    id: scriptSource
+    directory: backend.directoriesReady ? backend.paths.scriptCommands : ""
+    onDirectoryChanged: refresh()
+    onRevisionChanged: rebuildTimer.restart()
+    onMessage: function(level, text, metadata) { backend.log(level, "script-commands", text, metadata) }
+  }
+
+  // Launcher.qml shows the result as a toast while the window is open, else a HUD.
+  ScriptRunner {
+    id: scriptRunner
+    onFinished: function(command, result) { backend.emit("scriptCommands.finished", { mode: command.mode, style: result.style, title: result.title }) }
   }
 
   AppFocuser {
@@ -574,7 +1192,7 @@ Item {
     id: mkdirs
     // Moves directories left under the old name, then creates everything
     // owner-only and repairs modes left readable by older builds.
-    command: Paths.setupArgv(backend.paths, [Schema.documents.settings.file, Schema.documents.frecency.file, Schema.documents.calculator.file]
+    command: Paths.setupArgv(backend.paths, [Schema.documents.settings.file, Schema.documents.frecency.file, Schema.documents.calculator.file, Schema.documents.emoji.file, Schema.documents.clipboard.file, Schema.documents.gifs.file]
       .map(function(file) { return backend.paths.db + "/" + file }))
     onExited: function(exitCode) {
       if (exitCode !== 0) backend.log("error", "paths", "could not create data directories", { exitCode: exitCode })
@@ -612,6 +1230,73 @@ Item {
     onMessage: function(level, text, metadata) { backend.log(level, "store", text, metadata) }
   }
 
+  JsonStore {
+    id: emojiStore
+    ready: backend.directoriesReady
+    path: backend.paths.db + "/" + Schema.documents.emoji.file
+    migrations: Schema.documents.emoji.migrations
+    onMessage: function(level, text, metadata) { backend.log(level, "store", text, metadata) }
+  }
+
+  JsonStore {
+    id: gifStore
+    ready: backend.directoriesReady
+    path: backend.paths.db + "/" + Schema.documents.gifs.file
+    migrations: Schema.documents.gifs.migrations
+    onMessage: function(level, text, metadata) { backend.log(level, "store", text, metadata) }
+  }
+
+  // Paths go on stdin, never argv (CLAUDE.md rule 6).
+  Process {
+    id: gifNamer
+    property var done: null
+    property string input: ""
+    property string out: ""
+    command: ["bash", "-c", "umask 077; IFS=$'\\t' read -r src dir name; rm -rf -- \"$dir\"; mkdir -p -- \"$dir\" && ln -f -- \"$src\" \"$dir/$name.gif\" && printf '%s\\n' \"$dir/$name.gif\""]
+    stdout: SplitParser { onRead: function(line) { gifNamer.out = line } }
+    onStarted: { write(gifNamer.input); gifNamer.input = ""; gifNamer.stdinEnabled = false }
+    onExited: { var f = gifNamer.done; gifNamer.done = null; if (f) f(gifNamer.out) }
+  }
+
+  GifImporter {
+    id: gifImporter
+    directory: backend.directoriesReady ? backend.paths.gifs : ""
+    onFinished: function(meta, quiet) {
+      var r = backend.importGif(meta)
+      if (quiet) r = Gifs.quietOutcome(r)
+      if (r) backend.emit("gifs.imported", backend.importOutcomeToast(r))
+    }
+  }
+
+  DownloadsWatcher {
+    enabled: backend.directoriesReady
+    onDownloaded: function(path) { gifImporter.add(path, true) }
+    onMessage: function(level, text) { backend.log(level, "gifs", text, null) }
+  }
+
+  JsonStore {
+    id: clipboardStore
+    ready: backend.directoriesReady
+    path: backend.paths.db + "/" + Schema.documents.clipboard.file
+    migrations: Schema.documents.clipboard.migrations
+    onMessage: function(level, text, metadata) { backend.log(level, "store", text, metadata) }
+    onLoadedChanged: if (loaded) backend.pruneClipboard()
+  }
+
+  FileView {
+    path: decodeURIComponent(Qt.resolvedUrl("data/emoji.json").toString().replace(/^file:\/\//, ""))
+    printErrors: false
+    onLoaded: backend.emojiRaw = text()
+    onLoadFailed: backend.log("error", "emoji", "could not read " + path)
+  }
+
+  // Omarchy's emoji keywords (MIT, read in place) make searches like "lol" work.
+  FileView {
+    path: Quickshell.env("OMARCHY_PATH") ? Quickshell.env("OMARCHY_PATH") + "/shell/plugins/emojis/emojis.json" : ""
+    printErrors: false
+    onLoaded: backend.emojiKeywordsRaw = text()
+  }
+
   CalculatorData {
     id: calculatorData
     cacheDir: backend.directoriesReady ? backend.paths.cache : ""
@@ -624,6 +1309,8 @@ Item {
   Connections { target: settingsStore; function onChanged() { backend.storeRevision++ } }
   Connections { target: frecencyStore; function onChanged() { backend.storeRevision++ } }
   Connections { target: calculatorStore; function onChanged() { backend.storeRevision++ } }
+  Connections { target: emojiStore; function onChanged() { backend.storeRevision++ } }
+  Connections { target: gifStore; function onChanged() { backend.storeRevision++ } }
 
   FileView {
     path: backend.directoriesReady ? backend.paths.configFile : ""

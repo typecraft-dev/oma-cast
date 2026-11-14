@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Copies a GIF into the library directory and prints its facts as one JSON
+# line, for core/Gifs.js importGif to accept or reject:
+#   printf '%s\n' <file|file://…|https://…|X post link> | omacast-gif-probe <library-dir>
+# The source comes on stdin so user text never reaches argv (CLAUDE.md rule 6).
+# Needs ffmpeg/ffprobe and jq (both in omarchy-base).
+set -euo pipefail
+umask 077
+
+dir=${1:?usage: omacast-gif-probe <library-dir>}
+IFS= read -r src || true
+fail() { jq -cn --arg e "$1" '{error: $e}'; exit 0; }
+[[ -n $src ]] || fail "No GIF given"
+command -v ffprobe >/dev/null && command -v ffmpeg >/dev/null || fail "ffmpeg is not installed"
+mkdir -p -- "$dir"
+
+tmp=$(mktemp -p "$dir" .probe.XXXXXX)
+trap 'rm -f -- "$tmp" "$tmp.mp4"' EXIT
+source_url=""
+# fetch <url> <out>: the URL goes to curl through a config on stdin, not argv.
+fetch() {
+  local esc=${1//\\/\\\\} rc=0 code
+  esc=${esc//\"/\\\"}
+  # Some hosts (Wikimedia) answer 429 to curl's default user agent.
+  code=$(printf 'url = "%s"\n' "$esc" | curl -sSL --max-time 30 --max-filesize 20000000 -A "omacast-gif-library" -K - -o "$2" -w '%{http_code}' 2>/dev/null) || rc=$?
+  (( rc == 63 )) && fail "Too large: over 20 MB"
+  [[ $rc == 0 && $code == 200 ]] || fail "Could not download the GIF (HTTP ${code:-000})"
+}
+if [[ $src =~ ^https://(www\.|mobile\.)?(x|twitter)\.com/[A-Za-z0-9_]+/status/([0-9]+) ]]; then
+  # An X post: X serves its "GIFs" as MP4s. The public embed endpoint says
+  # which media is an animated_gif, so plain videos and text posts are refused.
+  source_url=$src
+  fetch "https://cdn.syndication.twimg.com/tweet-result?id=${BASH_REMATCH[3]}&token=a" "$tmp"
+  mp4=$(jq -r '[.mediaDetails[]? | select(.type == "animated_gif") | .video_info.variants[]? | select(.content_type == "video/mp4") | .url][0] // ""' -- "$tmp" 2>/dev/null) || mp4=""
+  [[ $mp4 == https://video.twimg.com/* ]] || fail "No GIF in this post"
+  fetch "$mp4" "$tmp.mp4"
+  # Palette pass: GIF's 256 colours, picked from this clip; 15 fps, ≤ 480 px wide.
+  ffmpeg -v error -y -i "$tmp.mp4" -an -vf "fps=15,scale='min(480,iw)':-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" \
+    -loop 0 -f gif -- "$tmp" </dev/null || { rm -f -- "$tmp.mp4"; fail "Could not convert the GIF"; }
+  rm -f -- "$tmp.mp4"
+elif [[ $src =~ ^https?:// ]]; then
+  source_url=$src
+  fetch "$src" "$tmp"
+else
+  path=${src#file://}
+  [[ $src == file://* ]] && path=$(printf '%b' "${path//%/\\x}")
+  [[ -f $path ]] || fail "No such file"
+  cp -- "$path" "$tmp"
+fi
+
+info=$(ffprobe -v error -select_streams v:0 -count_packets \
+  -show_entries stream=codec_name,width,height,nb_read_packets -of json -- "$tmp" 2>/dev/null) || fail "Not a GIF"
+codec=$(jq -r '.streams[0].codec_name // ""' <<<"$info")
+width=$(jq -r '.streams[0].width // 0' <<<"$info")
+height=$(jq -r '.streams[0].height // 0' <<<"$info")
+frames=$(jq -r '.streams[0].nb_read_packets // 0 | tonumber' <<<"$info")
+bytes=$(stat -c %s -- "$tmp")
+[[ $codec == gif ]] || fail "Not a GIF"
+
+id=$(sha256sum -- "$tmp" | cut -c1-16)
+file=$dir/$id.gif thumb=$dir/$id.png
+mid=$(( frames / 2 ))
+# The middle frame: first frames are often blank or mid-fade.
+ffmpeg -v error -y -i "$tmp" -vf "select=eq(n\,$mid),scale='min(360,iw)':-2" -frames:v 1 -- "$thumb" </dev/null || fail "Could not read the frames"
+# dHash of the middle frame: 9×8 greyscale, one bit per left<right pair.
+phash=$(ffmpeg -v error -i "$tmp" -vf "select=eq(n\,$mid),scale=9:8:flags=area,format=gray" -frames:v 1 -f rawvideo - </dev/null \
+  | od -An -v -tu1 | awk '{ for (i = 1; i <= NF; i++) p[n++] = $i }
+      END { if (n < 72) exit 1; h = ""; for (r = 0; r < 8; r++) for (c = 0; c < 8; c += 4) {
+        v = 0; for (k = 0; k < 4; k++) v = v * 2 + (p[r*9+c+k] < p[r*9+c+k+1]); h = h sprintf("%x", v) }; print h }') || fail "Could not read the frames"
+mv -f -- "$tmp" "$file"
+
+jq -cn --arg id "$id" --arg file "$file" --arg thumb "$thumb" --arg codec "$codec" --arg phash "$phash" --arg source "$source_url" \
+  --argjson width "$width" --argjson height "$height" --argjson frames "$frames" --argjson bytes "$bytes" \
+  '{id: $id, file: $file, thumb: $thumb, codec: $codec, width: $width, height: $height, frames: $frames, bytes: $bytes, phash: $phash, source: $source}'

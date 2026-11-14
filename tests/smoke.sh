@@ -24,28 +24,22 @@ search zzzz-no-match | grep -q '"id":"fallback-commands"' && pass "fallback sect
 count=$($cli call system.info | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["data"]["candidates"])')
 (( count > 300 )) && pass "$count candidates (apps + Omarchy menu)" || bad "only $count candidates"
 
-echo "toggle latency (show -> layer mapped, hide -> unmapped; budget 100 ms)"
-sock="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
-events=$(mktemp)
-socat -u "UNIX-CONNECT:$sock" - 2>/dev/null | while IFS= read -r line; do
-  case $line in *layer\>\>omacast*) echo "$(date +%s%N) ${line%%>>*}" >>"$events" ;; esac
-done &
-watcher=$!
-sleep 0.3
-$cli hide
+# The surface stays mapped between opens, so time the commit that takes or
+# gives back the keyboard (Hyprland sends no event for it), polled over IPC.
+echo "toggle latency (show -> keyboard taken, hide -> given back; budget 100 ms)"
+ki() { hyprctl repl "for _, l in ipairs(hl.get_layers()) do if l.namespace == 'omacast' then return l.keyboard_interactivity end end return 0" 2>/dev/null; }
+until_ki() { local deadline=$(( $(date +%s%N) + 1000000000 )); until [[ $(ki) == "$1" ]]; do (( $(date +%s%N) < deadline )) || return 1; done; }
+$cli hide; sleep 0.3
 worst=0
 for i in 1 2 3 4 5; do
-  t0=$(date +%s%N); $cli show; sleep 0.3
-  t1=$(date +%s%N); $cli hide; sleep 0.3
-  open=$(grep openlayer "$events" | sed -n "${i}p" | cut -d' ' -f1)
-  close=$(grep closelayer "$events" | sed -n "${i}p" | cut -d' ' -f1)
-  if [[ -z $open || -z $close ]]; then bad "run $i: no layer event seen"; continue; fi
-  show_ms=$(( (open - t0) / 1000000 )); hide_ms=$(( (close - t1) / 1000000 ))
+  t0=$(date +%s%N); $cli show; until_ki 1 || { bad "run $i: launcher never took the keyboard"; continue; }
+  show_ms=$(( ($(date +%s%N) - t0) / 1000000 )); sleep 0.3
+  t1=$(date +%s%N); $cli hide; until_ki 0 || { bad "run $i: launcher kept the keyboard"; continue; }
+  hide_ms=$(( ($(date +%s%N) - t1) / 1000000 )); sleep 0.3
   printf '        run %d: show %3d ms, hide %3d ms\n' "$i" "$show_ms" "$hide_ms"
   (( show_ms > worst )) && worst=$show_ms
   (( hide_ms > worst )) && worst=$hide_ms
 done
-kill "$watcher" 2>/dev/null; pkill -f "socat -u UNIX-CONNECT:$sock" 2>/dev/null; rm -f "$events"
 (( worst > 0 && worst < 100 )) && pass "worst toggle ${worst} ms" || bad "worst toggle ${worst} ms"
 
 exit $fail
