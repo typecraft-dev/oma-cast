@@ -108,26 +108,51 @@ function clipboardScripts() {
   return { copy: grab("copyScript"), paste: grab("pasteScript") }
 }
 
+function runClipboardScript(t, kind, windowClass) {
+  const home = tempHome(t)
+  const log = home + "/cmdlines"
+  const fake = '#!/bin/bash\ntr "\\0" " " </proc/$$/cmdline >>"$LOG"; echo >>"$LOG"\n'
+  fs.writeFileSync(home + "/wl-copy", fake + 'cat >"$LOG.clipboard"\n', { mode: 0o755 })
+  fs.writeFileSync(home + "/wtype", fake, { mode: 0o755 })
+  fs.writeFileSync(home + "/sleep", "#!/bin/bash\nexit 0\n", { mode: 0o755 })
+  // The paste picks its keystroke from the focused window's class.
+  fs.writeFileSync(home + "/hyprctl", "#!/bin/bash\necho " + JSON.stringify(JSON.stringify({ class: windowClass || "" })) + "\n", { mode: 0o755 })
+  const secret = "1234 * 5678 = 7006652 my private question"
+  const r = spawnSync("bash", ["-c", clipboardScripts()[kind]], {
+    input: secret, encoding: "utf8",
+    env: { ...process.env, LOG: log, PATH: home + ":" + process.env.PATH }
+  })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(fs.readFileSync(log + ".clipboard", "utf8"), secret)
+  const cmdlines = fs.readFileSync(log, "utf8")
+  assert.ok(!cmdlines.includes("private"), cmdlines)
+  return cmdlines
+}
+
 for (const kind of ["copy", "paste"]) {
   test(`calculator ${kind} keeps the text out of every command line`, (t) => {
-    const home = tempHome(t)
-    const log = home + "/cmdlines"
-    const fake = '#!/bin/bash\ntr "\\0" " " </proc/$$/cmdline >>"$LOG"; echo >>"$LOG"\n'
-    fs.writeFileSync(home + "/wl-copy", fake + 'cat >"$LOG.clipboard"\n', { mode: 0o755 })
-    fs.writeFileSync(home + "/wtype", fake, { mode: 0o755 })
-    fs.writeFileSync(home + "/sleep", "#!/bin/bash\nexit 0\n", { mode: 0o755 })
-    const secret = "1234 * 5678 = 7006652 my private question"
-    const script = clipboardScripts()[kind]
-    const r = spawnSync("bash", ["-c", script], {
-      input: secret, encoding: "utf8",
-      env: { ...process.env, LOG: log, PATH: home + ":" + process.env.PATH }
-    })
-    assert.equal(r.status, 0, r.stderr)
-    assert.equal(fs.readFileSync(log + ".clipboard", "utf8"), secret)
-    const cmdlines = fs.readFileSync(log, "utf8")
-    assert.ok(!cmdlines.includes("private"), cmdlines)
-    assert.ok(!script.includes("$"), "the script takes no arguments")
-    if (kind === "paste") assert.match(cmdlines, /wtype -M shift -k Insert -m shift/)
+    runClipboardScript(t, kind, "")
+    // $1, $@, ${2}, …: the scripts may use $(…) and ${var} but never read arguments.
+    assert.doesNotMatch(clipboardScripts()[kind], /\$\{?[0-9@*#]/, "the script takes no arguments")
+  })
+}
+
+// SPEC §5.3: terminals (and Herdr) paste with Ctrl+Shift+V; everything else
+// keeps Shift+Insert, the keystroke omarchy-clipboard-paste-text sends.
+const ctrlShiftV = /wtype -M ctrl -M shift -k v -m shift -m ctrl/
+const shiftInsert = /wtype -M shift -k Insert -m shift/
+for (const windowClass of ["herdr-app", "Alacritty", "kitty", "foot", "org.wezfurlong.wezterm", "com.mitchellh.ghostty", "org.kde.konsole", "org.gnome.Terminal", "org.gnome.Ptyxis"]) {
+  test(`paste into ${windowClass} sends Ctrl+Shift+V`, (t) => {
+    const cmdlines = runClipboardScript(t, "paste", windowClass)
+    assert.match(cmdlines, ctrlShiftV)
+    assert.doesNotMatch(cmdlines, shiftInsert)
+  })
+}
+for (const windowClass of ["Slack", "chromium", ""]) {
+  test(`paste into ${windowClass || "an unknown window"} sends Shift+Insert`, (t) => {
+    const cmdlines = runClipboardScript(t, "paste", windowClass)
+    assert.match(cmdlines, shiftInsert)
+    assert.doesNotMatch(cmdlines, ctrlShiftV)
   })
 }
 
