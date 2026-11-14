@@ -157,13 +157,19 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
 
       Image {
+        // Not `visible`: that turns false whenever the launcher hides, which
+        // dropped every icon and reloaded it blank on the next open.
+        readonly property bool wanted: row.iconName.length > 0 && row.glyph.length === 0
         anchors.fill: parent
-        visible: row.iconName.length > 0 && row.glyph.length === 0
+        visible: wanted
         fillMode: Image.PreserveAspectFit
         asynchronous: true
+        // Keep the old icon while a new source or size decodes, instead of a
+        // blank frame (Qt 6.8+).
+        retainWhileLoading: true
         sourceSize.width: width * Screen.devicePixelRatio
         sourceSize.height: height * Screen.devicePixelRatio
-        source: !visible ? "" : (row.appLibrary ? row.appLibrary.iconSource(row.iconName) : Quickshell.iconPath(row.iconName, "application-x-executable"))
+        source: !wanted ? "" : (row.appLibrary ? row.appLibrary.iconSource(row.iconName) : Quickshell.iconPath(row.iconName, "application-x-executable"))
       }
 
       Text {
