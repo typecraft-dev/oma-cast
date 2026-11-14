@@ -26,7 +26,7 @@ Rectangle {
     anchors.centerIn: parent
     width: alert.px(320)
     height: column.implicitHeight + alert.px(36)
-    radius: Math.max(Style.cornerRadius, alert.px(10))
+    radius: Style.cornerRadius
     color: alert.look.background
     border.width: 1
     border.color: Util.alpha(alert.look.foreground, 0.18)
@@ -83,7 +83,7 @@ Rectangle {
             readonly property bool danger: modelData.primary && alert.spec && alert.spec.destructive
             width: (column.width - alert.px(10)) / 2
             height: alert.px(34)
-            radius: Math.max(Style.cornerRadius, alert.px(6))
+            radius: Style.cornerRadius
             color: danger ? Util.alpha(alert.danger, 0.85)
               : modelData.primary ? alert.look.selectedBackground
               : Util.alpha(alert.look.foreground, 0.08)
