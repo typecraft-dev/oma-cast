@@ -6,6 +6,7 @@ import qs.Commons as Commons
 import qs.Ui
 import "../core/RootSearch.js" as RootSearch
 import "../core/Rows.js" as Rows
+import "../core/TextCursor.js" as TextCursor
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
 // overlay layer the shell's own emoji picker uses.
@@ -88,8 +89,8 @@ PanelWindow {
 
   // Navigation bindings (ref 04 §2.8): emacs moves with Ctrl+N (Ctrl+P is the
   // dropdown); vim-motions with Ctrl+J/K, which moves the action panel to
-  // Alt+K. Ctrl+B/F and Ctrl+H/L move a text cursor in Raycast; our search
-  // field has none, so they do nothing here. [D]
+  // Alt+K. Ctrl+B/F and Ctrl+H/L are left to Qt's text editing: the search
+  // field is a real TextInput, like Raycast's. [D]
   readonly property bool vim: window.general.navigationBindings === "vim-motions"
   readonly property string actionPanelKeys: window.vim ? "Alt K" : "Ctrl K"
 
@@ -126,8 +127,9 @@ PanelWindow {
     if (typeof payload.query === "string") window.query = payload.query
     window.closePopups()
     window.historyIndex = -1
+    window.syncQueryInput()
     window.rebuild(true)
-    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+    Qt.callLater(function() { queryInput.forceActiveFocus() })
   }
 
   onShownChanged: {
@@ -461,8 +463,52 @@ PanelWindow {
   }
 
 
+  // The search field is a TextInput, so Qt owns the caret, the selection, IME
+  // input and the standard editing keys (Ctrl+A, Ctrl+C/X/V, Ctrl+Left/Right,
+  // Shift+Ctrl+Left/Right, Home/End, …). window.query stays the plain string
+  // the backend searches with; these keep the two in step without resetting
+  // the caret on every keystroke.
+  property bool queryInputSyncing: false
+
+  function queryEdited(value) {
+    if (window.query === value) return
+    window.queryInputSyncing = true
+    window.query = value
+    window.queryInputSyncing = false
+    window.historyIndex = -1
+    window.rebuild(true)
+  }
+
+  // Programmatic query changes (history, push/pop, Esc) put the caret at the
+  // end and drop any selection.
+  function syncQueryInput() {
+    if (queryInput.text !== window.query) queryInput.text = window.query
+    queryInput.deselect()
+    queryInput.cursorPosition = queryInput.text.length
+  }
+
+  // Ctrl+Backspace / Ctrl+Delete: Qt Quick's TextInput does not delete a word
+  // on every platform, so the word range comes from core/TextCursor.js.
+  function deleteQueryWord(forward) {
+    var range = TextCursor.deletionRange(queryInput.text, queryInput.selectionStart, queryInput.selectionEnd, forward)
+    if (range.start === range.end) return
+    queryInput.remove(range.start, range.end)
+    queryInput.deselect()
+    queryInput.cursorPosition = range.start
+  }
+
+  // Paste at the caret (or over the selection) instead of appending.
+  function insertQueryText(text) {
+    var start = Math.min(queryInput.selectionStart, queryInput.selectionEnd)
+    var end = Math.max(queryInput.selectionStart, queryInput.selectionEnd)
+    if (start !== end) queryInput.remove(start, end)
+    queryInput.insert(start, text)
+    queryInput.cursorPosition = start + text.length
+    queryInput.deselect()
+  }
+
   function setQuery(next) {
-    if (window.query === next) return
+    if (window.query === next) { window.syncQueryInput(); return }
     window.query = next
     window.historyIndex = -1
     window.rebuild(true)
@@ -482,7 +528,7 @@ PanelWindow {
       window.argValues = values
     } else {
       if (window.view.kind === "alias") text = text.replace(/\s/g, "")
-      window.setQuery(window.query + text)
+      window.insertQueryText(text)
     }
   }
 
@@ -636,15 +682,26 @@ PanelWindow {
       }
     }
 
-    if (Util.editsFilter(event, window.query)) { window.setQuery(Util.editedFilter(event, window.query)); return true }
+    // Text editing (characters, Backspace/Delete, arrows, Home/End, Ctrl+A,
+    // Ctrl+C/X/V and Shift / Ctrl+Shift selection) is Qt's: return false and
+    // the focused TextInput applies it. Only the keys it would get wrong live
+    // here.
+    if (ctrl && !shift && !alt && key === Qt.Key_U) { window.setQuery(""); return true }
+    if (ctrl && !shift && !alt && key === Qt.Key_Backspace) { window.deleteQueryWord(false); return true }
+    if (ctrl && !shift && !alt && key === Qt.Key_Delete) { window.deleteQueryWord(true); return true }
     if (key === Qt.Key_Backspace && !window.query && !window.atRoot) { window.pop(); return true }
-    if (window.isTyping(event)) { window.setQuery(window.query + event.text); return true }
+    if (key === Qt.Key_Tab || key === Qt.Key_Backtab) return true
     return false
   }
 
   function isTyping(event) {
     return event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127
       && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)
+  }
+
+  Connections {
+    target: window
+    function onQueryChanged() { if (!window.queryInputSyncing) window.syncQueryInput() }
   }
 
   Connections {
@@ -671,15 +728,7 @@ PanelWindow {
     borderSpec: window.borderSpec
     clip: true
 
-    MouseArea { anchors.fill: parent; onClicked: { window.closePopups(); keyCatcher.forceActiveFocus() } }
-
-    Item {
-      id: keyCatcher
-      anchors.fill: parent
-      focus: true
-      Keys.priority: Keys.BeforeItem
-      Keys.onPressed: function(event) { if (window.handleKey(event)) event.accepted = true }
-    }
+    MouseArea { anchors.fill: parent; onClicked: { window.closePopups(); queryInput.forceActiveFocus() } }
 
     Item {
       id: header
@@ -719,44 +768,72 @@ PanelWindow {
 
       // Room left of the filter button; argument pills sit right after the
       // typed text (ref 04 §2.2 WidthSizer).
-      readonly property real queryRoom: (filterButton.visible ? filterButton.x - window.px(12) : header.width - window.px(20)) - queryText.x
+      readonly property real queryX: lead.x + lead.width + window.px(12)
+      readonly property real queryRoom: (filterButton.visible ? filterButton.x - window.px(12) : header.width - window.px(20)) - header.queryX
+      readonly property real queryTextWidth: Math.min(queryInput.contentWidth, queryInput.width)
 
       Text {
-        id: queryText
-        textFormat: Text.PlainText
-        x: lead.x + lead.width + window.px(12)
-        width: Math.min(implicitWidth, header.queryRoom - (pills.visible ? pills.width + window.px(10) : 0))
+        id: queryPlaceholder
+        x: queryInput.x
+        width: queryInput.width
         anchors.verticalCenter: parent.verticalCenter
-        text: window.query || (pills.visible ? "" : window.placeholder)
+        textFormat: Text.PlainText
+        text: window.placeholder
+        elide: Text.ElideRight
         color: window.look.foreground
-        opacity: window.query ? 1 : 0.45
+        opacity: 0.45
+        visible: queryInput.text === "" && !pills.visible
         font.family: window.look.fontFamily
         font.pixelSize: Math.round(Style.font.heading * 1.15 * window.zoom)
-        elide: Text.ElideLeft
       }
 
-      Rectangle {
-        width: Math.max(1, Style.space(2))
-        height: queryText.font.pixelSize + Style.space(4)
+      TextInput {
+        id: queryInput
+        x: header.queryX
+        width: Math.max(1, header.queryRoom - (pills.visible ? pills.width + window.px(10) : 0))
+        height: header.height
         anchors.verticalCenter: parent.verticalCenter
-        x: queryText.x + (window.query ? Math.min(queryText.contentWidth, queryText.width) + Style.space(1) : 0)
-        color: window.look.accent
-        visible: window.shown && !window.actionPanelOpen && window.argFocus < 0
+        selectByMouse: true
+        clip: true
+        color: window.look.foreground
+        selectionColor: Style.selectionFillFor(window.look.foreground, window.look.accent)
+        selectedTextColor: window.look.foreground
+        font.family: window.look.fontFamily
+        font.pixelSize: Math.round(Style.font.heading * 1.15 * window.zoom)
+        verticalAlignment: TextInput.AlignVCenter
+        cursorDelegate: Item {}
+        onTextChanged: window.queryEdited(text)
 
-        SequentialAnimation on opacity {
-          running: window.shown
-          loops: Animation.Infinite
-          NumberAnimation { to: 1; duration: 0 }
-          PauseAnimation { duration: 530 }
-          NumberAnimation { to: 0; duration: 0 }
-          PauseAnimation { duration: 530 }
+        Keys.priority: Keys.BeforeItem
+        Keys.onPressed: function(event) { if (window.handleKey(event)) event.accepted = true }
+
+        // Qt's caret is replaced (cursorDelegate above) so it keeps the
+        // launcher's accent colour and blink.
+        Rectangle {
+          readonly property rect caret: queryInput.cursorRectangle
+          readonly property real caretWidth: Math.max(1, Style.space(2))
+          x: Math.max(0, Math.min(caret.x, queryInput.width - caretWidth))
+          y: caret.y
+          width: caretWidth
+          height: caret.height
+          color: window.look.accent
+          visible: queryInput.activeFocus && window.shown && !window.actionPanelOpen && window.argFocus < 0
+
+          SequentialAnimation on opacity {
+            running: window.shown
+            loops: Animation.Infinite
+            NumberAnimation { to: 1; duration: 0 }
+            PauseAnimation { duration: 530 }
+            NumberAnimation { to: 0; duration: 0 }
+            PauseAnimation { duration: 530 }
+          }
         }
       }
 
       Row {
         id: pills
         visible: window.argDefs.length > 0 && window.view.kind !== "alias"
-        x: queryText.x + (window.query ? queryText.width : 0) + window.px(10)
+        x: queryInput.x + (window.query ? header.queryTextWidth : 0) + window.px(10)
         anchors.verticalCenter: parent.verticalCenter
         spacing: window.px(6)
 
@@ -804,7 +881,7 @@ PanelWindow {
             MouseArea {
               anchors.fill: parent
               cursorShape: Qt.IBeamCursor
-              onClicked: { window.argFocus = pill.index; keyCatcher.forceActiveFocus() }
+              onClicked: { window.argFocus = pill.index; queryInput.forceActiveFocus() }
             }
           }
         }
@@ -850,7 +927,7 @@ PanelWindow {
         MouseArea {
           anchors.fill: parent
           cursorShape: Qt.PointingHandCursor
-          onClicked: { window.toggleDropdown(); keyCatcher.forceActiveFocus() }
+          onClicked: { window.toggleDropdown(); queryInput.forceActiveFocus() }
         }
       }
 
