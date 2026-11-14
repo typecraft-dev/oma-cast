@@ -45,7 +45,7 @@ Item {
     anchors.fill: parent
     sourceComponent: Rectangle {
       anchors.fill: parent
-      radius: Math.max(Style.cornerRadius, row.px(6))
+      radius: Style.cornerRadius
       color: row.selected ? row.look.selectedBackground : Util.alpha(row.look.foreground, 0.04)
       border.width: 1
       border.color: Util.alpha(row.look.foreground, row.selected ? 0 : 0.08)
@@ -144,7 +144,7 @@ Item {
   Rectangle {
     visible: !row.isSection && !row.isCalculator
     anchors.fill: parent
-    radius: Math.max(Style.cornerRadius, row.px(6))
+    radius: Style.cornerRadius
     color: row.selected ? row.look.selectedBackground : "transparent"
     opacity: row.disabled ? 0.45 : 1
 

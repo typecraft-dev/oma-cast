@@ -664,7 +664,7 @@ PanelWindow {
     id: card
     width: window.cardWidth
     height: window.compact ? window.headerHeight + card.borderTop + card.borderBottom : window.fullHeight
-    radius: Math.max(Style.cornerRadius, window.px(8))
+    radius: Style.cornerRadius
     anchors.horizontalCenter: parent.horizontalCenter
     y: Math.max(Style.gapsOut, Math.min(Math.round(window.height / 4), window.height - window.fullHeight - Style.gapsOut))
     color: window.look.background
@@ -771,7 +771,7 @@ PanelWindow {
             readonly property bool focused: window.argFocus === index
             height: window.px(28)
             width: Math.min(window.px(220), pillText.implicitWidth + window.px(20))
-            radius: Math.max(Style.cornerRadius, window.px(6))
+            radius: Style.cornerRadius
             color: Util.alpha(window.look.foreground, pill.focused ? 0.12 : 0.06)
             border.width: 1
             border.color: pill.focused ? window.look.accent : Util.alpha(window.look.foreground, 0.15)
@@ -818,7 +818,7 @@ PanelWindow {
         anchors.verticalCenter: parent.verticalCenter
         height: window.px(28)
         width: filterRow.implicitWidth + window.px(20)
-        radius: Math.max(Style.cornerRadius, window.px(6))
+        radius: Style.cornerRadius
         color: Util.alpha(window.look.foreground, window.dropdownOpen ? 0.12 : 0.06)
         border.width: 1
         border.color: Util.alpha(window.look.foreground, 0.12)
