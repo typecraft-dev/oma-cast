@@ -58,6 +58,21 @@ var clipboardMigrations = [
   }
 ]
 
+// Emoji & Symbols: frecency per base emoji (Frecency.recordVisit entries,
+// ref 02 §4.6 "emoji recents use the same formula"), pins and skin tone.
+var emojiMigrations = [
+  {
+    version: 1,
+    name: "emoji",
+    up: function(doc) {
+      doc.items = {}            // symbol -> frecency entry
+      doc.pinned = []           // symbols, in pin order
+      doc.skinTone = "none"     // Emoji.TONES id
+      return doc
+    }
+  }
+]
+
 var SEARCH_HISTORY_LIMIT = 20
 
 function pushSearchHistory(history, query) {
@@ -73,6 +88,7 @@ var documents = {
   settings: { file: "settings.json", migrations: settingsMigrations },
   frecency: { file: "frecency.json", migrations: frecencyMigrations },
   calculator: { file: "calculator.json", migrations: calculatorMigrations },
+  emoji: { file: "emoji.json", migrations: emojiMigrations },
   clipboard: { file: "clipboard.json", migrations: clipboardMigrations }
 }
 
@@ -87,6 +103,9 @@ var configDefaults = {
   workHoursPerDay: 8,
   // "auto" follows the Qt locale; "12h" or "24h" forces a clock. [D]
   clockFormat: "auto",
+  // The All / Applications / Commands filter button (Ctrl+P) beside the root
+  // search; false hides it and leaves every result in one list. [D]
+  rootFilter: true,
   // Clipboard History preferences named after Raycast's (ref 04 App. B) [O].
   // clipboardHistory false stops recording; the history stays. [D]
   clipboardHistory: true,
@@ -133,6 +152,7 @@ if (typeof module !== "undefined") {
     frecencyMigrations: frecencyMigrations,
     calculatorMigrations: calculatorMigrations,
     clipboardMigrations: clipboardMigrations,
+    emojiMigrations: emojiMigrations,
     pushSearchHistory: pushSearchHistory,
     SEARCH_HISTORY_LIMIT: SEARCH_HISTORY_LIMIT,
     documents: documents,

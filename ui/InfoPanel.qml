@@ -15,7 +15,7 @@ Rectangle {
 
   width: px(400)
   height: content.implicitHeight + px(24)
-  radius: Math.max(Style.cornerRadius, px(8))
+  radius: Style.cornerRadius
   color: look.background
   border.width: 1
   border.color: Util.alpha(look.foreground, 0.15)

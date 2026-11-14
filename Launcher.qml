@@ -115,6 +115,14 @@ Item {
     onPressed: root.toggleView("builtin:clipboard-history", "clipboard")
   }
 
+  // Opens Emoji & Symbols directly: hl.dsp.global("omacast:emoji").
+  GlobalShortcut {
+    appid: "omacast"
+    name: "emoji"
+    description: "Open omacast Emoji & Symbols"
+    onPressed: root.run("builtin:emoji-picker")
+  }
+
   IpcHandler {
     target: "omacast"
 

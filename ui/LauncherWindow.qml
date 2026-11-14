@@ -1,11 +1,14 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 import "../core/RootSearch.js" as RootSearch
 import "../core/Rows.js" as Rows
+import "../core/Emoji.js" as Emoji
 import "../core/ClipboardHistory.js" as ClipboardHistory
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
@@ -34,13 +37,30 @@ PanelWindow {
 
   signal dismissRequested()
 
-  visible: window.shown
+  // The surface stays mapped once opened: hidden, it is fully transparent,
+  // takes no input and no keyboard. Mapping a new surface costs ~130 ms (the
+  // output's size and scale arrive a few frames late); flipping these is one
+  // commit. It is remapped only to move to another monitor.
+  property bool mapped: false
+  visible: window.mapped
+  screen: window.pinnedScreen
+  property var pinnedScreen: null
+  function focusedScreen() {
+    var monitor = Hyprland.focusedMonitor
+    var screens = Quickshell.screens
+    for (var i = 0; i < screens.length; i++) {
+      if (monitor && screens[i].name === monitor.name) return screens[i]
+    }
+    return window.pinnedScreen || (screens.length ? screens[0] : null)
+  }
+  mask: window.shown ? null : noInput
+  Region { id: noInput }
   anchors { top: true; bottom: true; left: true; right: true }
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
   WlrLayershell.namespace: "omacast"
   WlrLayershell.layer: WlrLayer.Overlay
-  WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+  WlrLayershell.keyboardFocus: window.shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
   readonly property var general: {
     window.backend.storeRevision
@@ -49,6 +69,14 @@ PanelWindow {
   }
   readonly property real zoom: window.general.uiZoom > 0 ? window.general.uiZoom : 1
   function px(value) { return Math.round(Style.space(value) * window.zoom) }
+  // The Omarchy logo glyph is drawn on a 15 px grid: at other sizes its thin
+  // strokes straddle device pixels and blur (27 px at 1.5x scale). Snap the
+  // size to the nearest multiple of 15 device pixels; the glyph also renders
+  // natively so FreeType hints it onto that grid.
+  function crispLogoSize(size) {
+    var ratio = window.devicePixelRatio || 1
+    return Math.round(Math.max(1, Math.round(size * ratio / 15)) * 15 / ratio)
+  }
 
   readonly property var look: ({
     background: Commons.Color.menu.background,
@@ -58,6 +86,24 @@ PanelWindow {
     fontFamily: Style.font.menuFamily
   })
   readonly property var borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
+
+  // Omarchy's Glassy windows (`omarchy hyprland window transparency glassy`):
+  // the card turns see-through and Hyprland blurs what is behind it, through
+  // the blur rule on the omacast layer in omacast.lua. Panels drawn over the
+  // card stay solid. Checked on every show, so switching modes needs no restart.
+  property bool glassy: false
+  readonly property color cardBackground: window.glassy
+    ? Qt.rgba(window.look.background.r, window.look.background.g, window.look.background.b, Math.min(window.look.background.a, 0.65))
+    : window.look.background
+  FileView {
+    id: glassToggle
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy/toggles/hypr/window-glassy.lua"
+    // A few bytes on local disk: read in place so the first frame already has the right card.
+    blockLoading: true
+    printErrors: false
+    onLoaded: window.glassy = true
+    onLoadFailed: window.glassy = false
+  }
 
   property var stack: [{ kind: "root", title: "omacast", query: "" }]
   readonly property var view: window.stack[window.stack.length - 1]
@@ -74,12 +120,16 @@ PanelWindow {
   // Ctrl+P root filter (RootSearch.FILTERS), Ctrl+T toast actions,
   // Ctrl+Shift+K About panel and the confirm alert.
   property string rootFilter: "all"
+  // Emoji & Symbols: the cell selected in a grid line.
+  property int selectedColumn: 0
+  readonly property bool grid: window.view.kind === "emoji"
   // Clipboard History's type dropdown (ref 04 App. A: All/Text/Images/…).
   property string clipboardFilter: "all"
   readonly property bool clipboardView: window.view.kind === "clipboard"
   // List on the left, DetailPane on the right.
   readonly property bool splitView: window.clipboardView || window.view.kind === "theme"
-  readonly property bool hasFilter: window.clipboardView || window.atRoot
+  // The dropdown: Clipboard History's types, or the root's (config rootFilter).
+  readonly property bool hasFilter: window.clipboardView || (window.atRoot && window.backend.config.rootFilter)
   readonly property var filterOptions: window.clipboardView ? ClipboardHistory.FILTERS : RootSearch.FILTERS
   readonly property string activeFilter: window.clipboardView ? window.clipboardFilter : window.atRoot ? window.rootFilter : "all"
   property bool dropdownOpen: false
@@ -109,6 +159,7 @@ PanelWindow {
     : window.view.kind === "calculator-history" ? "Search calculations…"
     : window.clipboardView ? "Type to filter entries…"
     : window.view.kind === "theme" ? "Search themes…"
+    : window.grid ? "Search Emoji & Symbols…"
     : "Search for apps and commands…"
 
   readonly property int cardWidth: Math.min(px(750), width - Style.gapsOut * 2)
@@ -145,12 +196,55 @@ PanelWindow {
     if (typeof payload.query === "string") window.query = payload.query
     window.closePopups()
     window.historyIndex = -1
-    window.rebuild(true)
+    // Hiding pops to root and rebuilds, so an unchanged root list is reused
+    // and the card shows on the next frame instead of after a search.
+    if (typeof payload.query === "string" || window.rootKey() !== window.builtRootKey) window.rebuild(true)
+    else window.select(window.nextSelectable(-1, 1), 0)
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
+  // Hold the content transparent until the surface has the output's size and
+  // scale, as Omarchy's OverlayWindow does. Qt draws the first frame after
+  // mapping at scale 1, which showed stretched and soft, with scale-dependent
+  // sizes jumping as the real scale landed.
+  readonly property var targetMonitor: {
+    var monitors = Hyprland.monitors.values
+    for (var i = 0; i < monitors.length; i++) {
+      if (window.screen && monitors[i].name === window.screen.name) return monitors[i]
+    }
+    return null
+  }
+  readonly property bool contentReady: window.shown && !!window.screen && !!window.targetMonitor
+    && window.width === window.screen.width && window.height === window.screen.height
+    && Math.round(window.devicePixelRatio * 120) === Math.round(window.targetMonitor.scale * 120)
+  property bool contentRevealed: false
+  onContentReadyChanged: {
+    window.contentRevealed = false
+    // Size and scale arrive while Qt is still updating the window; reveal once
+    // its layout has caught up.
+    if (window.contentReady) Qt.callLater(function() { if (window.contentReady) window.contentRevealed = true })
+  }
+  // Live monitor scaling emits no Hyprland event, so refresh the cached scale.
+  onDevicePixelRatioChanged: if (window.shown) Hyprland.refreshMonitors()
+  // Also what keeps the mapped surface blank while hidden: contentReady needs shown.
+  Binding {
+    target: window.contentItem
+    property: "opacity"
+    value: window.contentRevealed ? 1 : 0
+  }
+
+  // A reload or disable while shown would otherwise leave Hyprland in the submap.
+  Component.onDestruction: if (window.shown) Hyprland.dispatch('hl.dsp.submap("reset")')
   onShownChanged: {
-    if (window.shown) return
+    // The "omacast" submap (omacast.lua) lets Super+J/K past Hyprland's binds.
+    Hyprland.dispatch('hl.dsp.submap("' + (window.shown ? "omacast" : "reset") + '")')
+    if (window.shown) {
+      var target = window.focusedScreen()
+      if (target !== window.pinnedScreen) window.pinnedScreen = target
+      window.mapped = true
+      glassToggle.reload()
+      return
+    }
     window.searchSerial++
     window.backend.cancelSearch()
     window.searchPending = false
@@ -158,6 +252,21 @@ PanelWindow {
     var seconds = Number(window.general.popToRootTimeout)
     if (!(seconds > 0)) window.popToRoot()
     else { popTimer.interval = seconds * 1000; popTimer.restart() }
+  }
+
+  // Where the card is while open, for Superwhisper: its recording glow (or
+  // pill) then draws on the launcher, as on any focused window, instead of on
+  // the window under it. Idle without Superwhisper or PyGObject.
+  readonly property string overlayFrame: window.shown && window.screen
+    ? ["1", window.screen.name, Math.round(card.x), Math.round(card.y), Math.round(card.width), Math.round(card.height)].join(" ")
+    : "0"
+  onOverlayFrameChanged: superwhisperFrame.write(window.overlayFrame + "\n")
+  Process {
+    id: superwhisperFrame
+    command: ["python3", decodeURIComponent(Qt.resolvedUrl("../services/superwhisper-frame.py").toString().replace(/^file:\/\//, ""))]
+    running: true
+    stdinEnabled: true
+    onStarted: superwhisperFrame.write(window.overlayFrame + "\n")
   }
 
   Timer {
@@ -193,8 +302,17 @@ PanelWindow {
   }
 
 
+  // What the root list depends on; "" when not at an empty root.
+  property string builtRootKey: ""
+  function rootKey() {
+    return window.atRoot && window.query === "" && window.rootFilter === "all"
+      ? window.backend.candidatesRevision + ":" + window.backend.storeRevision : ""
+  }
+
   function rebuild(resetSelection, restoreIndex) {
     var serial = ++window.searchSerial
+    window.builtRootKey = ""
+    var key = window.rootKey()
     window.backend.cancelSearch()
     pointerGate.reset()
     var keepId = !resetSelection && window.selectedRow ? window.selectedRow.itemId : ""
@@ -206,6 +324,7 @@ PanelWindow {
       if (serial !== window.searchSerial || revision !== window.backend.candidatesRevision) return
       window.applySearch(result, keepId, restoreIndex)
       window.searchPending = false
+      if (result.ok) window.builtRootKey = key
     })
   }
 
@@ -216,8 +335,19 @@ PanelWindow {
       window.select(-1)
       return
     }
-    var keepIndex = -1, next = []
-    for (var s = 0; s < result.data.length; s++) {
+    var keepIndex = -1, keepColumn = 0, next = []
+    if (window.grid) {
+      var lines = Emoji.gridLines(result.data, Emoji.COLUMNS)
+      for (var l = 0; l < lines.length; l++) {
+        if (lines[l].section) { next.push(window.rowData({ id: "section:" + lines[l].section.id, title: lines[l].section.title }, "section")); continue }
+        var cells = lines[l].cells
+        for (var k = 0; k < cells.length; k++) if (keepIndex < 0 && cells[k].id === keepId) { keepIndex = next.length; keepColumn = k }
+        var line = window.rowData({ id: "line:" + l }, "emoji-row")
+        line.cellsJson = JSON.stringify(cells.map(function(c) { return { id: c.id, symbol: c.symbol, title: c.title } }))
+        next.push(line)
+      }
+    }
+    for (var s = 0; s < (window.grid ? 0 : result.data.length); s++) {
       var section = result.data[s]
       if (section.title || s > 0) next.push(window.rowData({ id: "section:" + section.id, title: section.title }, "section"))
       for (var r = 0; r < section.rows.length; r++) {
@@ -231,7 +361,7 @@ PanelWindow {
       for (var n = 0; n < next.length; n++) if (next[n].checked) { keepIndex = n; break }
     Rows.update(rows, next)
     if (restoreIndex >= 0 && restoreIndex < rows.count && window.isSelectable(restoreIndex)) window.select(restoreIndex)
-    else window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1))
+    else window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1), keepIndex >= 0 ? keepColumn : 0)
   }
 
   function rowData(c, kind) {
@@ -253,6 +383,7 @@ PanelWindow {
       calcInputCaption: String(c.calcInputCaption || ""),
       calcResultCaption: String(c.calcResultCaption || ""),
       argsJson: JSON.stringify(c.arguments || []),
+      cellsJson: "",
       // Switch Theme's rows are names only, flush left.
       iconless: c.kind === "theme"
     }
@@ -260,7 +391,7 @@ PanelWindow {
 
   function isSelectable(index) {
     var kind = rows.get(index).rowKind
-    return kind === "item" || kind === "calculator"
+    return kind === "item" || kind === "calculator" || kind === "emoji-row"
   }
 
   function nextSelectable(from, direction) {
@@ -269,7 +400,7 @@ PanelWindow {
     return -1
   }
 
-  function select(index) {
+  function select(index, column) {
     if (index !== window.selectedIndex) {
       var previous = list.itemAtIndex(window.selectedIndex)
       if (previous) previous.selected = false
@@ -277,7 +408,17 @@ PanelWindow {
     window.selectedIndex = index
     var current = list.itemAtIndex(index)
     if (current) current.selected = true
-    window.selectedRow = Rows.snapshot(rows, index)
+    var snap = Rows.snapshot(rows, index)
+    // A grid line stands for its selected cell: actions, About and the
+    // footer all see that emoji.
+    if (snap && snap.rowKind === "emoji-row") {
+      var cells = JSON.parse(snap.cellsJson)
+      var col = Math.max(0, Math.min(cells.length - 1, column === undefined ? window.selectedColumn : column))
+      window.selectedColumn = col
+      snap.itemId = cells[col].id
+      snap.title = cells[col].title
+    }
+    window.selectedRow = snap
     // Argument values belong to one command; a different row starts empty.
     var id = window.selectedRow ? window.selectedRow.itemId : ""
     if (id !== window.argsForId) {
@@ -301,6 +442,17 @@ PanelWindow {
       target = next
     }
     window.select(target)
+  }
+
+  // ← → in the emoji grid, wrapping onto the neighbouring line.
+  function moveColumn(delta) {
+    if (!window.selectedRow || window.selectedRow.rowKind !== "emoji-row") return
+    pointerGate.reset()
+    var col = window.selectedColumn + delta
+    var count = JSON.parse(window.selectedRow.cellsJson).length
+    if (col >= 0 && col < count) { window.select(window.selectedIndex, col); return }
+    var line = window.nextSelectable(window.selectedIndex, delta)
+    if (line >= 0) window.select(line, delta > 0 ? 0 : Emoji.COLUMNS - 1)
   }
 
   function jumpSection(direction) {
@@ -498,8 +650,15 @@ PanelWindow {
   function pasteClipboard() {
     clipboardInput.clear()
     clipboardInput.paste()
-    var text = clipboardInput.text.replace(/[\r\n\u2028\u2029]+/g, " ")
+    var text = clipboardInput.text
     clipboardInput.clear()
+    window.insertText(text)
+  }
+
+  // Pasted or input-method text (fcitx5, dictation apps), into whichever
+  // field has the keyboard.
+  function insertText(text) {
+    text = String(text).replace(/[\r\n\u2028\u2029]+/g, " ")
     if (!text) return
     if (window.actionPanelOpen) actionPanel.item.filter += text
     else if (window.argFocus >= 0) {
@@ -560,9 +719,15 @@ PanelWindow {
     var key = event.key
     if (!ctrl && !alt && key === Qt.Key_Down) return 1
     if (!ctrl && !alt && key === Qt.Key_Up) return -1
+    if (window.superOnly(event)) return key === Qt.Key_J ? 1 : (key === Qt.Key_K ? -1 : 0)
     if (!ctrl || alt || (event.modifiers & Qt.ShiftModifier)) return 0
     if (window.vim) return key === Qt.Key_J ? 1 : (key === Qt.Key_K ? -1 : 0)
     return key === Qt.Key_N ? 1 : (key === Qt.Key_P && inPopup ? -1 : 0)
+  }
+
+  // Super+J/K move down/up; see the submap dispatch in onShownChanged. [D]
+  function superOnly(event) {
+    return (event.modifiers & ~Qt.KeypadModifier) === Qt.MetaModifier
   }
 
   function isActionPanelKey(ctrl, alt, shift, key) {
@@ -599,7 +764,8 @@ PanelWindow {
     if (ctrl && key === Qt.Key_BracketLeft) { window.closePopups(); window.pop(); return true }
     // Ctrl+V, Ctrl+Shift+V (the terminal habit) and Shift+Insert paste.
     var meta = (event.modifiers & Qt.MetaModifier) !== 0
-    if ((key === Qt.Key_V && ctrl && !alt && !meta) || (key === Qt.Key_Insert && shift && !ctrl && !alt && !meta)) {
+    // Super+V too: the "omacast" submap keeps Omarchy's universal paste from turning it into Shift+Insert.
+    if ((key === Qt.Key_V && ((ctrl && !alt && !meta) || window.superOnly(event))) || (key === Qt.Key_Insert && shift && !ctrl && !alt && !meta)) {
       window.pasteClipboard()
       return true
     }
@@ -649,14 +815,15 @@ PanelWindow {
         if (window.historyIndex >= 0) { window.recallHistory(-1); return true }
         window.move(1); return true
       }
+      if (window.grid && !ctrl && !alt && (key === Qt.Key_Left || key === Qt.Key_Right)) { window.moveColumn(key === Qt.Key_Left ? -1 : 1); return true }
       if (ctrl && shift && key === Qt.Key_P) { window.performIfOffered(["pin", "unpin"]); return true }
       if (ctrl && !shift && key === Qt.Key_O) { window.performIfOffered(["open-link"]); return true }
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer"]); return true }
-      if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries"]); return true }
-      if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry"]); return true }
+      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-name"]); return true }
+      if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries", "clear-recent"]); return true }
+      if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry", "remove-recent"]); return true }
       if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }
       if (ctrl && key >= Qt.Key_1 && key <= Qt.Key_9) {
         var target = window.nthItem(key - Qt.Key_0)
@@ -666,6 +833,8 @@ PanelWindow {
     }
 
     if (Util.editsFilter(event, window.query)) { window.setQuery(Util.editedFilter(event, window.query)); return true }
+    // Super+Backspace (Omarchy's delete to line start) arrives raw under the submap: clear the query.
+    if (key === Qt.Key_Backspace && window.superOnly(event)) { window.setQuery(""); return true }
     if (key === Qt.Key_Backspace && !window.query && !window.atRoot) { window.pop(); return true }
     if (window.isTyping(event)) { window.setQuery(window.query + event.text); return true }
     return false
@@ -699,21 +868,28 @@ PanelWindow {
     id: card
     width: window.cardWidth
     height: window.compact ? window.headerHeight + card.borderTop + card.borderBottom : window.fullHeight
-    radius: Math.max(Style.cornerRadius, window.px(8))
+    radius: Style.cornerRadius
     anchors.horizontalCenter: parent.horizontalCenter
     y: Math.max(Style.gapsOut, Math.min(Math.round(window.height / 4), window.height - window.fullHeight - Style.gapsOut))
-    color: window.look.background
+    color: window.cardBackground
     borderSpec: window.borderSpec
     clip: true
 
     MouseArea { anchors.fill: parent; onClicked: { window.closePopups(); keyCatcher.forceActiveFocus() } }
 
-    Item {
+    // A TextInput rather than a plain Item so input-method commits (fcitx5,
+    // dictation apps) reach the launcher; key presses still go to handleKey
+    // first, and anything committed moves straight into the query.
+    TextInput {
       id: keyCatcher
-      anchors.fill: parent
+      width: 0
+      height: 0
       focus: true
+      color: "transparent"
+      cursorDelegate: Item {}
       Keys.priority: Keys.BeforeItem
       Keys.onPressed: function(event) { if (window.handleKey(event)) event.accepted = true }
+      onTextChanged: if (text) { var committed = text; clear(); window.insertText(committed) }
     }
 
     Item {
@@ -739,7 +915,8 @@ PanelWindow {
           textFormat: Text.PlainText
           text: window.atRoot ? "" : ""
           font.family: window.atRoot ? "omarchy" : window.look.fontFamily
-          font.pixelSize: window.atRoot ? window.px(18) : window.px(15)
+          font.pixelSize: window.atRoot ? window.crispLogoSize(window.px(18)) : window.px(15)
+          renderType: Text.NativeRendering
           color: window.atRoot ? window.look.accent : window.look.foreground
           opacity: window.atRoot ? 1 : 0.7
         }
@@ -806,7 +983,7 @@ PanelWindow {
             readonly property bool focused: window.argFocus === index
             height: window.px(28)
             width: Math.min(window.px(220), pillText.implicitWidth + window.px(20))
-            radius: Math.max(Style.cornerRadius, window.px(6))
+            radius: Style.cornerRadius
             color: Util.alpha(window.look.foreground, pill.focused ? 0.12 : 0.06)
             border.width: 1
             border.color: pill.focused ? window.look.accent : Util.alpha(window.look.foreground, 0.15)
@@ -853,7 +1030,7 @@ PanelWindow {
         anchors.verticalCenter: parent.verticalCenter
         height: window.px(28)
         width: filterRow.implicitWidth + window.px(20)
-        radius: Math.max(Style.cornerRadius, window.px(6))
+        radius: Style.cornerRadius
         color: Util.alpha(window.look.foreground, window.dropdownOpen ? 0.12 : 0.06)
         border.width: 1
         border.color: Util.alpha(window.look.foreground, 0.12)
@@ -922,6 +1099,9 @@ PanelWindow {
         clip: true
         model: rows
         reuseItems: true
+        // Off-screen emoji lines still decode their color glyphs, which is
+        // most of what opening the picker costs (~100 ms); build only visible lines.
+        cacheBuffer: window.grid ? 0 : 320
         boundsBehavior: Flickable.StopAtBounds
 
         delegate: ResultRow {
@@ -931,8 +1111,10 @@ PanelWindow {
           look: window.look
           appLibrary: window.appLibrary
           zoom: window.zoom
-          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i) }
-          onClicked: function(i) { window.perform("open", i) }
+          selectedColumn: window.selectedColumn
+          columns: Emoji.COLUMNS
+          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i, item.isGrid ? item.columnAt(mouse.x) : undefined) }
+          onClicked: function(i, column) { if (window.grid) window.select(i, column); window.perform("open", i) }
         }
       }
 
@@ -1018,14 +1200,16 @@ PanelWindow {
           textFormat: Text.PlainText
           text: window.toast ? (window.toast.style === "failure" ? "" : "") : ""
           font.family: window.toast ? window.look.fontFamily : "omarchy"
-          font.pixelSize: window.toast ? window.px(12) : window.px(11)
+          font.pixelSize: window.toast ? window.px(12) : window.crispLogoSize(window.px(11))
+          renderType: window.toast ? Text.QtRendering : Text.NativeRendering
           color: window.toast && window.toast.style === "failure" ? "#e06c75" : window.look.accent
         }
         Text {
           id: footerStatus
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
-          text: window.toast ? window.toast.title : window.loadingVisible ? "Loading…" : window.view.title
+          text: window.toast ? window.toast.title : window.loadingVisible ? "Loading…"
+            : window.grid && window.selectedRow ? window.selectedRow.title : window.view.title
           color: window.look.foreground
           opacity: window.toast ? 0.9 : 0.6
           elide: Text.ElideRight
@@ -1049,13 +1233,18 @@ PanelWindow {
         anchors.verticalCenter: parent.verticalCenter
         spacing: window.px(8)
 
-        readonly property var primary: {
+        readonly property var current: {
           window.selectedRow
           window.backend.storeRevision
           if (window.view.kind === "alias") return { title: "Save Alias", shortcut: "↵" }
           var list = window.actionsForSelected()
           return list.length ? list[0] : null
         }
+        // Keep the last action while a search is in flight: actionsForSelected
+        // is empty then, and blanking it made the footer flicker on each key.
+        property var primary: null
+        onCurrentChanged: if (!window.searchPending) footerActions.primary = footerActions.current
+        Component.onCompleted: footerActions.primary = footerActions.current
 
         Text {
           visible: footerActions.primary !== null
