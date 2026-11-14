@@ -183,19 +183,6 @@ PanelWindow {
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
-  // Hidden, the mapped surface draws nothing.
-  Binding {
-    target: window.contentItem
-    property: "opacity"
-    value: window.shown ? 1 : 0
-  }
-
-  onShownChanged: {
-    if (window.shown) {
-      var target = window.focusedScreen()
-      if (target !== window.pinnedScreen) window.pinnedScreen = target
-      window.mapped = true
-    }
   // Hold the content transparent until the surface has the output's size and
   // scale, as Omarchy's OverlayWindow does. Qt draws the first frame after
   // mapping at scale 1, which showed stretched and soft, with scale-dependent
@@ -219,6 +206,7 @@ PanelWindow {
   }
   // Live monitor scaling emits no Hyprland event, so refresh the cached scale.
   onDevicePixelRatioChanged: if (window.shown) Hyprland.refreshMonitors()
+  // Also what keeps the mapped surface blank while hidden: contentReady needs shown.
   Binding {
     target: window.contentItem
     property: "opacity"
@@ -226,8 +214,13 @@ PanelWindow {
   }
 
   onShownChanged: {
-    if (window.shown) glassToggle.reload()
-    if (window.shown) return
+    if (window.shown) {
+      var target = window.focusedScreen()
+      if (target !== window.pinnedScreen) window.pinnedScreen = target
+      window.mapped = true
+      glassToggle.reload()
+      return
+    }
     window.searchSerial++
     window.backend.cancelSearch()
     window.searchPending = false

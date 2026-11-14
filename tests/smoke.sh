@@ -27,7 +27,7 @@ count=$($cli call system.info | python3 -I -c 'import json,sys; print(json.load(
 # The surface stays mapped between opens, so time the commit that takes or
 # gives back the keyboard (Hyprland sends no event for it), polled over IPC.
 echo "toggle latency (show -> keyboard taken, hide -> given back; budget 100 ms)"
-ki() { hyprctl repl "for _, l in ipairs(hl.get_layers()) do if l.namespace == 'omacast' then return l.keyboard_interactivity end end return 0" 2>/dev/null; }
+ki() { hyprctl repl "for _, l in ipairs(hl.get_layers()) do if l.namespace == 'omacast' then return l.keyboard_interactivity or l.interactivity end end return 0" 2>/dev/null; }
 until_ki() { local deadline=$(( $(date +%s%N) + 1000000000 )); until [[ $(ki) == "$1" ]]; do (( $(date +%s%N) < deadline )) || return 1; done; }
 $cli hide; sleep 0.3
 worst=0
