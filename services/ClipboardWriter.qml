@@ -30,7 +30,7 @@ Item {
   readonly property string pasteScript: 'wl-copy || exit; sleep 0.15
 class=$(hyprctl activewindow -j 2>/dev/null | jq -r ".class // empty" 2>/dev/null)
 case ${class,,} in
-  *alacritty*|*kitty*|foot|footclient|*wezterm*|*ghostty*|*konsole*|*gnome-terminal*|*ptyxis*|*herdr*)
+  *alacritty*|*kitty*|foot|footclient|*wezterm*|*ghostty*|*konsole*|*gnome-terminal*|*gnome.terminal*|*ptyxis*|*herdr*)
     wtype -M ctrl -M shift -k v -m shift -m ctrl 2>/dev/null || true ;;
   *) wtype -M shift -k Insert -m shift 2>/dev/null || true ;;
 esac'
