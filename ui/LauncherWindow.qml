@@ -868,18 +868,18 @@ PanelWindow {
   Connections {
     target: window.backend
     // Commands can land after the first answer (right after a reload), when
-    // only the web fallbacks matched. Follow them, as for files, unless the
-    // user has moved off the first row.
+    // only the web fallbacks matched. In root search, follow them to the top
+    // row unless the user has moved off it; other views keep their selection.
     function onCandidatesRevisionChanged() {
       if (!window.shown || window.actionPanelOpen || window.alert) return
-      window.rebuild(window.selectedIndex === window.nextSelectable(-1, 1))
+      window.rebuild(window.atRoot && window.selectedIndex === window.nextSelectable(-1, 1))
     }
     // Exchange rates or zone offsets arrived: re-evaluate a calculation on screen.
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
-    // Files arrive after the first answer and take the top spot when nothing
-    // else matched; follow them unless the user has moved off the first row.
+    // Files arrive after the first answer, in root search and Search Files
+    // only; follow them unless the user has moved off the first row.
     function onFilesRevisionChanged() {
-      if (!window.shown || window.actionPanelOpen || !(window.query || window.fileView)) return
+      if (!window.shown || window.actionPanelOpen || !(window.fileView || (window.atRoot && window.query))) return
       window.rebuild(window.selectedIndex === window.nextSelectable(-1, 1))
     }
     // A copy, pin or delete: refresh an open Clipboard History.
