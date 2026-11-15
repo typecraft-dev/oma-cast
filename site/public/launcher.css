@@ -1,0 +1,208 @@
+/* omacast in the browser (launcher.js). Sizes are in em so the hero demo and the overlay share one
+   stylesheet; the six --m-* colours are the Omarchy theme in use. */
+@font-face {
+  font-family: "omacast-symbols"; src: url("/demo/symbols.woff2") format("woff2");
+  font-display: block; unicode-range: U+E000-F8FF, U+F0000-FFFFD;
+}
+
+.oc {
+  --m-bg: #1e1e2e; --m-bg2: #313244; --m-fg: #cdd6f4; --m-dim: #6c7086; --m-accent: #89b4fa; --m-sel: #45475a;
+  --m-line: color-mix(in srgb, var(--m-fg) 12%, transparent);
+  position: relative; display: flex; flex-direction: column; overflow: hidden; height: 31.6em;
+  font: 15px/1.4 "JetBrains Mono", "omacast-symbols", ui-monospace, monospace; text-align: left;
+  background: var(--m-bg); color: var(--m-fg);
+  border: 2px solid color-mix(in srgb, var(--m-fg) 30%, transparent); border-radius: 0.9em;
+  transition: background 500ms ease, color 500ms ease, border-color 500ms ease;
+}
+.oc *, .oc *::before, .oc *::after { box-sizing: border-box; }
+.oc > img { width: 100%; height: 100%; object-fit: cover; }
+.oc button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: left; }
+.oc kbd {
+  display: inline-block; min-width: 0; padding: 0.05em 0.45em; margin-left: 0.3em; border: 0; border-radius: 0.35em;
+  background: var(--m-bg2); color: var(--m-fg); font: inherit; font-size: 0.92em; transition: none;
+}
+.oc-glyph { color: var(--m-accent); }
+.oc-glyph.oc-fail { color: #e06c75; }
+.oc-auto { pointer-events: none; user-select: none; }
+
+/* ---------- header ---------- */
+.oc-head { display: flex; align-items: center; gap: 0.8em; height: 4.4em; padding: 0 1.05em 0 1.2em; border-bottom: 1px solid var(--m-line); flex-shrink: 0; }
+.oc .oc-lead { width: 1.9em; height: 1.9em; display: grid; place-items: center; flex-shrink: 0; cursor: default; }
+.oc-lead svg { width: 1.5em; height: 1.5em; }
+.oc .oc-lead.oc-back { cursor: pointer; }
+.oc-lead .oc-glyph { color: var(--m-fg); opacity: 0.7; }
+.oc-field { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.7em; }
+.oc-input {
+  flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: none; color: inherit;
+  font: inherit; font-size: 1.25em; caret-color: var(--m-accent);
+}
+.oc-input::placeholder { color: var(--m-fg); opacity: 0.45; }
+.oc-has-pills .oc-input { flex: 0 1 auto; max-width: 60%; }
+.oc-auto .oc-field { gap: 0; }
+.oc-auto .oc-input { flex: 0 1 auto; white-space: pre; overflow: hidden; }
+.oc-auto .oc-input:empty { order: 2; }
+.oc-auto .oc-input:empty::before { content: attr(data-placeholder); opacity: 0.45; }
+.oc-caret { width: 2px; height: 1.5em; margin: 0 1px; flex-shrink: 0; background: var(--m-accent); animation: blink 1.06s steps(1) infinite; }
+.oc-pills { display: flex; gap: 0.4em; min-width: 0; }
+.oc-auto .oc-pills { order: 3; margin-left: 0.7em; }
+.oc-pill {
+  height: 1.9em; width: 10em; min-width: 0; padding: 0 0.7em; border-radius: 0.5em; outline: 0;
+  border: 1px solid color-mix(in srgb, var(--m-fg) 15%, transparent); background: color-mix(in srgb, var(--m-fg) 6%, transparent);
+  font: inherit; color: inherit; caret-color: var(--m-accent);
+}
+.oc-pill::placeholder { color: var(--m-fg); opacity: 0.5; }
+.oc-pill:focus { border-color: var(--m-accent); background: color-mix(in srgb, var(--m-fg) 12%, transparent); }
+span.oc-pill { display: flex; align-items: center; }
+span.oc-pill:empty::before { content: attr(data-placeholder); opacity: 0.5; }
+.oc .oc-filter {
+  height: 2.2em; padding: 0 0.8em; border-radius: 0.55em; font-size: 0.86em; flex-shrink: 0; opacity: 0.75;
+  border: 1px solid var(--m-line); background: color-mix(in srgb, var(--m-fg) 6%, transparent);
+}
+.oc .oc-filter.oc-on { opacity: 1; }
+
+/* ---------- list ---------- */
+.oc-body { flex: 1; min-height: 0; display: flex; position: relative; }
+.oc-list { flex: 1; min-width: 0; overflow-y: auto; padding: 0.4em 0.55em; scrollbar-width: thin; scrollbar-color: var(--m-sel) transparent; }
+.oc-auto .oc-list { overflow: hidden; }
+.oc-sec { font-size: 0.8em; opacity: 0.55; padding: 0.75em 0.65em 0.35em; }
+.oc-row { display: flex; align-items: center; gap: 0.7em; height: 2.75em; padding: 0 0.8em; border-radius: 0.55em; cursor: pointer; }
+.oc-row.oc-sel { background: var(--m-sel); }
+.oc-row.oc-off { opacity: 0.45; }
+.oc-ic { width: 1.4em; flex-shrink: 0; text-align: center; font-size: 1.1em; }
+.oc-sel .oc-ic { color: var(--m-accent); }
+.oc-t { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 0.55em; white-space: nowrap; overflow: hidden; }
+.oc-t b { font-weight: 500; font-size: 1.04em; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; }
+.oc-t span { opacity: 0.5; font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; flex-shrink: 3; }
+.oc-acc { display: flex; align-items: center; gap: 0.7em; flex-shrink: 0; }
+.oc-alias { border: 1px solid color-mix(in srgb, var(--m-fg) 30%, transparent); border-radius: 0.3em; padding: 0 0.4em; font-size: 0.8em; opacity: 0.7; }
+.oc-fav { color: var(--m-accent); font-size: 0.8em; opacity: 0.8; }
+.oc-check { color: var(--m-accent); }
+.oc-ty { opacity: 0.45; font-size: 0.86em; }
+
+.oc-calc {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 0.15em 0.2em 0.4em; cursor: pointer;
+  border-radius: 0.7em; background: color-mix(in srgb, var(--m-fg) 6%, transparent);
+}
+.oc-calc.oc-sel { background: var(--m-sel); }
+.oc-calc > div { padding: 1.25em 0.8em 1em; text-align: center; min-width: 0; }
+.oc-calc strong { display: block; font-size: 1.45em; font-weight: 600; overflow-wrap: anywhere; }
+.oc-calc small { display: inline-block; margin-top: 0.7em; padding: 0.1em 0.6em; border-radius: 0.4em; background: var(--m-bg); opacity: 0.75; font-size: 0.78em; }
+.oc-calc-arrow { opacity: 0.4; }
+
+.oc-line { display: grid; grid-template-columns: repeat(8, 1fr); gap: 0.3em; padding: 0.15em 0.3em; content-visibility: auto; contain-intrinsic-size: auto 3.6em; }
+.oc-cell {
+  display: grid; place-items: center; height: 1.95em; border-radius: 0.35em; cursor: pointer; font-size: 1.7em; line-height: 1;
+  font-family: "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+}
+.oc-cell-sel { background: var(--m-sel); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--m-accent) 55%, transparent); }
+
+.oc-empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 0.55em; padding: 2em; text-align: center; pointer-events: none; }
+.oc-empty b { font-weight: 500; font-size: 1.05em; }
+.oc-empty span { opacity: 0.55; font-size: 0.86em; max-width: 30em; }
+.oc-empty-logo svg { width: 2em; height: 2em; display: block; }
+.oc-empty .oc-empty-icon { font-size: 1.8em; opacity: 1; }
+
+/* ---------- list + detail (Clipboard History, Switch Theme) ---------- */
+.oc-detail { display: none; }
+.oc-split .oc-list { flex: 0 0 40%; }
+.oc-split .oc-detail { display: block; flex: 1; min-width: 0; overflow-y: auto; padding: 0.9em; border-left: 1px solid var(--m-line); scrollbar-width: thin; scrollbar-color: var(--m-sel) transparent; }
+.oc-prev { min-height: 9.5em; display: grid; place-items: center; align-content: center; gap: 0.6em; margin-bottom: 0.9em; }
+.oc .oc-prev-text {
+  margin: 0; width: 100%; max-height: 11em; overflow: auto; padding: 0.8em; border-radius: 0.5em; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: inherit; font-size: 0.9em; line-height: 1.5; color: inherit; background: color-mix(in srgb, var(--m-fg) 5%, transparent);
+}
+.oc-prev-img { max-width: 100%; max-height: 11em; width: auto; border-radius: 0.5em; }
+.oc-swatch { width: 6em; height: 6em; border-radius: 0.8em; border: 1px solid color-mix(in srgb, var(--m-fg) 20%, transparent); }
+.oc-prev-hex { opacity: 0.8; }
+.oc-info-title, .oc-about-title { font-size: 0.8em; opacity: 0.55; margin-bottom: 0.45em; }
+.oc-info > div:not(.oc-info-title), .oc-about > div:not(.oc-about-title) {
+  display: flex; justify-content: space-between; gap: 1.2em; padding: 0.42em 0; border-top: 1px solid color-mix(in srgb, var(--m-fg) 8%, transparent); font-size: 0.86em;
+}
+.oc-info span, .oc-about span { opacity: 0.6; flex-shrink: 0; }
+.oc-info b, .oc-about b { font-weight: 500; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.oc-theme { width: 100%; display: grid; gap: 0.6em; padding: 0.7em; border-radius: 0.6em; background: var(--t-bg); border: 1px solid color-mix(in srgb, var(--t-fg) 25%, transparent); }
+.oc-theme-bar { display: flex; align-items: center; gap: 0.5em; }
+.oc-theme-bar i { width: 0.8em; height: 0.8em; background: var(--t-accent); }
+.oc-theme-bar b { flex: 1; height: 0.5em; border-radius: 0.25em; background: var(--t-bg2); }
+.oc-theme-win { display: grid; gap: 0.4em; padding: 0.7em; border-radius: 0.5em; border: 2px solid var(--t-accent); }
+.oc-theme-win i { height: 0.75em; width: 62%; border-radius: 0.2em; background: var(--t-dim); }
+.oc-theme-win i.s { width: 100%; height: 1.3em; background: var(--t-sel); box-shadow: inset 0.5em 0 0 var(--t-fg); }
+.oc-theme-dots { display: flex; gap: 0.4em; }
+.oc-theme-dots i { flex: 1; height: 1.4em; border-radius: 0.3em; border: 1px solid color-mix(in srgb, var(--t-fg) 22%, transparent); }
+
+/* ---------- footer ---------- */
+.oc-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 1em; height: 3.2em; padding: 0 0.9em 0 1.1em; flex-shrink: 0;
+  border-top: 1px solid var(--m-line); background: color-mix(in srgb, var(--m-fg) 4%, transparent); font-size: 0.86em;
+}
+.oc .oc-status { display: flex; align-items: center; gap: 0.65em; min-width: 0; cursor: default; }
+.oc-status svg { width: 15px; height: 15px; display: block; }
+.oc-status-icon { flex-shrink: 0; }
+.oc-status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.6; }
+.oc-toast .oc-status-text { opacity: 0.95; }
+.oc .oc-status.oc-has-actions { cursor: pointer; }
+.oc-has-actions .oc-status-text::after { content: "  ·  Undo ▴"; opacity: 0.7; }
+.oc-hints { display: flex; align-items: center; gap: 0.75em; flex-shrink: 0; white-space: nowrap; }
+.oc-hints i { width: 1px; height: 1.3em; background: color-mix(in srgb, var(--m-fg) 16%, transparent); }
+.oc-hints.oc-solo i { display: none; }
+.oc-more { opacity: 0.7; }
+
+/* ---------- action panel, dropdown, About, alert ---------- */
+.oc-layer { position: absolute; inset: 0; pointer-events: none; }
+.oc-layer > * { pointer-events: auto; }
+.oc-auto .oc-layer > * { pointer-events: none; }
+.oc-panel, .oc-about {
+  position: absolute; right: 0.7em; bottom: 3.5em; width: min(25em, 100% - 1.4em); max-height: 66%;
+  display: flex; flex-direction: column; background: var(--m-bg); border-radius: 0.75em;
+  border: 1px solid color-mix(in srgb, var(--m-fg) 22%, transparent); box-shadow: 0 18px 40px -12px rgb(0 0 0 / 0.6);
+  transform-origin: bottom right; animation: panelIn 200ms var(--ease-spring, ease-out) both;
+}
+.oc-panel-dropdown { top: 3.7em; bottom: auto; right: 1em; width: 13em; transform-origin: top right; }
+.oc-panel-toast { right: auto; left: 0.7em; width: 16em; transform-origin: bottom left; }
+.oc-panel-list { overflow-y: auto; padding: 0.4em; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--m-sel) transparent; }
+.oc-act { display: flex; align-items: center; gap: 0.5em; min-height: 2.35em; padding: 0 0.6em; border-radius: 0.45em; cursor: pointer; font-size: 0.92em; }
+.oc-act.oc-sel { background: var(--m-sel); }
+.oc-act.oc-sep { margin-top: 0.55em; position: relative; }
+.oc-act.oc-sep::before { content: ""; position: absolute; left: 0.3em; right: 0.3em; top: -0.3em; height: 1px; background: var(--m-line); }
+.oc-act-ic { width: 1em; flex-shrink: 0; color: var(--m-accent); }
+.oc-keys { margin-left: auto; display: flex; flex-shrink: 0; }
+.oc-none { padding: 0.8em; opacity: 0.5; font-size: 0.92em; }
+.oc-panel-filter {
+  width: 100%; padding: 0.75em 0.95em; border: 0; border-top: 1px solid var(--m-line); outline: 0; background: none;
+  font: inherit; font-size: 0.92em; color: inherit; caret-color: var(--m-accent);
+}
+.oc-panel-filter::placeholder { color: var(--m-fg); opacity: 0.45; }
+div.oc-panel-filter { opacity: 0.45; }
+.oc-about { display: block; overflow-y: auto; padding: 0.85em 1em; width: min(27em, 100% - 1.4em); max-height: 78%; }
+.oc-scrim { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / 0.45); }
+.oc-alert { width: min(23em, 90%); padding: 1.3em; text-align: center; background: var(--m-bg); border-radius: 0.9em; border: 1px solid color-mix(in srgb, var(--m-fg) 22%, transparent); }
+.oc-alert b { font-weight: 600; font-size: 1.05em; }
+.oc-alert p { margin: 0.5em 0 1.2em; opacity: 0.7; font-size: 0.92em; }
+.oc-alert > div { display: flex; gap: 0.6em; }
+.oc .oc-alert button { flex: 1; height: 2.6em; border-radius: 0.55em; text-align: center; background: color-mix(in srgb, var(--m-fg) 9%, transparent); font-size: 0.92em; }
+.oc .oc-alert button.oc-danger { background: color-mix(in srgb, #e06c75 24%, transparent); color: #e06c75; }
+
+/* ---------- where it sits: the hero, and the overlay it opens in ---------- */
+.desk .oc { font-size: 12.5px; height: 30em; }
+.oc-overlay {
+  position: fixed; inset: 0; z-index: 100; display: flex; justify-content: center; align-items: flex-start;
+  padding-top: min(16vh, 140px); background: rgb(10 10 16 / 0.66); backdrop-filter: blur(3px); animation: ocFade 160ms ease-out;
+}
+.oc-window { width: min(750px, 100% - 24px); animation: ocRise 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+.oc-window .oc { height: min(475px, 100dvh - 190px); box-shadow: 0 40px 90px -30px rgb(0 0 0 / 0.85); }
+.oc-note { margin: 14px auto 0; max-width: 50em; text-align: center; color: #c5c8d6; font: 13px/1.6 Inter, system-ui, sans-serif; }
+.oc-note button { font: inherit; color: #fff; background: none; border: 0; padding: 0 2px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.oc-note kbd { font-size: 11px; padding: 1px 5px; border-radius: 4px; background: rgb(255 255 255 / 0.14); color: #fff; border: 0; min-width: 0; }
+html.oc-open { overflow: hidden; }
+@keyframes ocFade { from { opacity: 0; } }
+@keyframes ocRise { from { opacity: 0; transform: translateY(10px) scale(0.985); } }
+
+@media (max-width: 640px) {
+  .oc-overlay { padding-top: 10px; }
+  .oc-window .oc { font-size: 13px; height: min(430px, 100dvh - 150px); }
+  .desk { padding: 12px; }
+  .desk .oc { font-size: 11px; }
+  .oc-ty { display: none; }
+  .oc-split .oc-list { flex-basis: 46%; }
+  .oc-more kbd, .oc-primary kbd { display: none; }
+}

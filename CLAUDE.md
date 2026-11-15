@@ -60,12 +60,16 @@ bin/omacast              # bash CLI (works from a dev checkout or a marketplace 
 bin/omacast-search       # built flea-search helper (gitignored; bin/build-search builds it from search/)
 search/                  # Rust source of the optional helper; builds into ~/.cache/omacast/search-target
 SPEC.md, reference/      # the spec
+site/                    # the website (Cloudflare, wrangler.jsonc): static public/ plus launcher.js, which runs core/*.js in the browser.
+                         #   `node site/build.mjs` bundles core/ into public/demo/core.js (gitignored); see site/README.md. Cartridge fonts are gitignored
 tests/*.test.js          # node --test unit tests for core/ (ranker, frecency, Omarchy menu, root search, …)
 tests/smoke.sh           # live acceptance check against the running shell
 LICENSE, README.md       # marketplace requirements: root license, install/removal instructions
 ```
 
 The shell loads only the manifest's entry points, so the spec, tests and Rust source ride along harmlessly. Every push to the default branch reaches marketplace users on their next `omarchy plugin update`. `omarchy plugin validate .` must pass and the tree may hold no symlinks.
+
+The website runs `core/*.js` unchanged in a browser, which is one more reason they stay free of Qt and node. `site/public/launcher.js` is a hand port of `Backend.qml` and `ui/LauncherWindow.qml`: when a change there alters behaviour a visitor would see, port it. `tests/site-demo.test.js` loads the bundle the way a browser does.
 
 Rules for `core/*.js`: one self-contained file per module (QML `import "x.js"` and node `require` must both work, so a module never imports another one). Expose functions through the `if (typeof module !== "undefined") module.exports = …` guard. QML wires the modules together.
 
@@ -109,7 +113,7 @@ Check each of these on the machine instead of assuming it; Omarchy changes often
 
 ## Status
 
-Renamed **raylinux → oma-launcher → oma-cast** on 2026-10-19, then **oma-cast → omacast** on 2026-11-01 for the Omarchy plugin marketplace (plugin `typecraft.omacast`, display name `omacast`, CLI `omacast`, IPC target `omacast`, global shortcut `omacast:toggle`, XDG dirs `omacast`). Another marketplace submission is called "Oma Cast" and uses IPC target `oma-cast`. The GitHub repo is still `typecraft-dev/oma-cast`. `core/Paths.js` `legacyMoves` moves the old XDG dirs on first start. `bin/omacast install` removes the old plugin links and CLI link, and `setup hyprland` migrates `oma-cast.lua`. The app icon is Omarchy's logo: glyph `\ue900` in the `omarchy` font, the same one the bar's menu button uses.
+Renamed **raylinux → oma-launcher → oma-cast** on 2026-10-19, then **oma-cast → omacast** on 2026-11-01 for the Omarchy plugin marketplace (plugin `typecraft.omacast`, display name `omacast`, CLI `omacast`, IPC target `omacast`, global shortcut `omacast:toggle`, XDG dirs `omacast`). Another marketplace submission is called "Oma Cast" and uses IPC target `oma-cast`. The GitHub repo is still `typecraft-dev/oma-cast`. `core/Paths.js` `legacyMoves` moves the old XDG dirs on first start. `bin/omacast install` removes the old plugin links and CLI link, and `setup hyprland` migrates `oma-cast.lua`. The app icon is omacast's own logo (`ui/logo.svg` through `ui/Logo.qml`, the same drawing as `site/public/icon.svg`; a test keeps the two files identical): Omarchy's square maze in typecraft's stripe colours. It shows in the header at root, the footer and the empty state. Omarchy's logo glyph (`\ue900` in the `omarchy` font) still marks the "Omarchy Menu" command and actions with no icon of their own.
 
 **Phase 1 (Quickshell build): done**, with the gaps listed below. **Phase 0: done.** Omarchy 4.0.0.alpha, Quickshell 0.3.2, Hyprland 0.56.2.
 

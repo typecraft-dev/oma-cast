@@ -1,0 +1,10 @@
+{
+  // Static site on Cloudflare Workers (static assets only, no Worker script).
+  // Deploy from this directory: npx wrangler deploy
+  "name": "omacast-site",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page"
+  }
+}
