@@ -128,6 +128,36 @@ test("popups and arguments transfer focus away from the query and back", () => {
   assert.deepEqual(calls, Array(6).fill(["keys", "query"]).flat())
 })
 
+test("clicking script dropdown arguments preserves cycling and query focus restoration", () => {
+  const events = []
+  const window = { query: "unchanged", argFocus: -1, argValues: { mode: "one" } }
+  Object.defineProperty(window, "queryInputActive", { get: () => window.argFocus < 0 })
+  const pill = {
+    index: 0, focused: false, value: "one",
+    modelData: { name: "mode", type: "dropdown", options: [{ value: "one" }, { value: "two" }] }
+  }
+  const context = vm.createContext({
+    window, pill, ScriptCommands: require("../core/ScriptCommands.js"),
+    queryText: { forceActiveFocus: () => events.push("query") },
+    keyCatcher: { forceActiveFocus: () => events.push("argument") }
+  })
+  window.focusInput = () => vm.runInContext(body("function focusInput()"), context)
+  const at = source.indexOf('if (pill.modelData.type === "dropdown" && pill.focused)')
+  const start = source.lastIndexOf("onClicked: {", at) + "onClicked: {".length
+  const end = source.indexOf("\n              }", at)
+  assert.ok(at >= 0 && start > 0 && end > start)
+  const click = "(function() {" + source.slice(start, end) + "})()"
+  vm.runInContext(click, context)
+  assert.equal(window.argValues.mode, "one")
+  pill.focused = true
+  vm.runInContext(click, context)
+  assert.equal(window.argValues.mode, "two")
+  assert.equal(window.query, "unchanged")
+  window.argFocus = -1
+  window.focusInput()
+  assert.deepEqual(events, ["argument", "argument", "query"])
+})
+
 test("history recall survives cursor movement and editing exits history browsing", () => {
   const h = harness()
   h.window.query = ""
