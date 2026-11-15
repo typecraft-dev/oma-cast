@@ -231,7 +231,29 @@ PanelWindow {
   Binding {
     target: window.contentItem
     property: "opacity"
-    value: window.contentRevealed ? 1 : 0
+    value: window.revealProgress
+  }
+  // Fade in with ease-out (fast start, soft landing) so the first open doesn't
+  // read as a delayed ease-in. Hiding stays instant.
+  onContentRevealedChanged: {
+    if (window.contentRevealed) revealAnim.restart()
+    else { revealAnim.stop(); window.revealProgress = 0 }
+  }
+  property real revealProgress: 0
+  NumberAnimation {
+    id: revealAnim
+    target: window
+    property: "revealProgress"
+    to: 1
+    duration: 90
+    easing.type: Easing.OutCubic
+  }
+
+  // Map the (transparent, inputless) surface at load, so the first open is a
+  // single commit instead of paying the ~130 ms mapping cost on the keypress.
+  Component.onCompleted: {
+    if (!window.pinnedScreen) window.pinnedScreen = window.focusedScreen()
+    window.mapped = true
   }
 
   // A reload or disable while shown would otherwise leave Hyprland in the submap.
