@@ -1,0 +1,5 @@
+{
+  "title": "Camera preview",
+  "noCamera": "No camera found. Connect a camera and try again.",
+  "cameraError": "Could not open the camera. Close any meeting app using it and try again.\n%1"
+}
