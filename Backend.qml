@@ -12,6 +12,7 @@ import "core/FleaSearch.js" as FleaSearch
 import "core/Frecency.js" as Frecency
 import "core/OmarchyMenu.js" as OmarchyMenu
 import "core/RootSearch.js" as RootSearch
+import "core/LargeType.js" as LargeType
 import "core/Calculator.js" as Calculator
 import "core/ClipboardHistory.js" as ClipboardHistory
 import "core/Themes.js" as Themes
@@ -744,6 +745,10 @@ Item {
         }
         var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === (data && data.id) })[0]
         if (fallback) {
+          if (fallback.largeType) {
+            // Blank input comes back empty and the window no-ops on it.
+            return { largeType: LargeType.displayText(data && data.query) }
+          }
           Util.execArgv(["omarchy-launch-browser", RootSearch.fallbackUrl(fallback, data.query)])
           return { close: true }
         }
