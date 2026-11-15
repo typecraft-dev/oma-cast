@@ -88,6 +88,11 @@ and `~/.local/state/omacast`.
 omacast needs only what Omarchy ships: `omarchy-shell` (Quickshell), Hyprland, bash, `jq`, `socat` and `fd`.
 It adds no packages and no background services.
 
+- **Superwhisper recording indicator.** When `python3` with PyGObject is installed, the
+  plugin runs `services/superwhisper-frame.py` alongside the shell. While the launcher is open it tells
+  [Superwhisper](https://superwhisper.com) where the card is over the session bus
+  (`com.superwhisper.ShellOverlay`), so Superwhisper's recording glow or pill draws on the launcher instead
+  of the window under it. It makes no network requests, and does nothing without Superwhisper.
 - **Currency rates.** When you open the launcher and its rates are over 12 hours old, the calculator downloads
   ECB exchange rates from `api.frankfurter.dev` (retrying 30 minutes after a failure) and caches them in
   `~/.cache/omacast/currencies.json`. This is the only network request omacast makes. Turn it off with
@@ -111,6 +116,8 @@ files: omacast creates its `~/.config`, `~/.local/share`, `~/.cache` and `~/.loc
 `0700` and its database files as `0600`, and tightens any it finds readable by other users. Text you copy
 or paste from the calculator goes to `wl-copy` on stdin, never on a command line, so other local users
 can't read it from the process list. Paste sends Shift+Insert after copying, as Omarchy's clipboard history does.
+The one exception is a script command's arguments: they reach your script as `$1`…`$3`, so they are on its
+command line while it runs.
 
 ### Upgrading from oma-cast
 
@@ -132,10 +139,64 @@ the old plugin link and `~/.local/bin/oma-cast`, and `omacast setup hyprland` mo
 | `Ctrl+↑` / `Ctrl+↓` | Jump between sections |
 | `Ctrl+N` / `Ctrl+P` | Next / previous |
 | `Ctrl+Shift+F` | Add to favorites (`Ctrl+Alt+↑↓` to reorder) |
-| `Ctrl+Shift+C` | Copy (desktop ID, command, file path or answer) |
+| `Ctrl+Shift+C` | Copy (desktop ID, command, file path, answer or emoji name) |
 | `Alt+Shift+D` | Disable a command |
 | `Esc` / `Shift+Esc` | Back / back to root |
 | `Ctrl +` / `Ctrl −` / `Ctrl 0` | Zoom |
+
+## Clipboard History
+
+Search **Clipboard History** in the root search, or bind it directly:
+
+```lua
+o.bind("SUPER + CTRL + V", "omacast clipboard history", hl.dsp.global("omacast:clipboard"))
+```
+
+Pressing the binding again closes it.
+
+- omacast records text, links, colours, files and images you copy, with the app you copied from, when, and how many times.
+- The list is on the left and a preview with its details is on the right. The type dropdown (`Ctrl+P`) filters by All Types, Text, Images, Files, Links or Colors.
+- `↵` pastes into the app you came from, `Ctrl+↵` copies, `Ctrl+O` opens a link or file, `Ctrl+Shift+P` pins, `Ctrl+D` deletes an entry and `Ctrl+Shift+D` deletes everything except pins.
+- Entries are kept for a week, as in Raycast. Pinned entries are always kept. Change it with `"clipboardHistoryDuration"` in `config.json` (`P1D`, `P1W`, `P1M`, `P3M`, `P6M`, `P1Y` or `unlimited`).
+- Copies from password managers are never recorded: anything marked sensitive, plus the apps in `"clipboardDisabledApplications"` (Wayland app ids; KeePassXC, Bitwarden, 1Password and Seahorse by default). `"clipboardHistory": false` stops recording.
+- The history is in `~/.local/share/omacast/db/clipboard.json`, and images and long text are in `~/.local/share/omacast/clipboard/`, both readable only by you.
+
+## Switch Theme
+
+**Switch Theme** lists your Omarchy themes, your own and Omarchy's, with the current one checked and a preview of the highlighted theme beside the list. `↵` applies it with `omarchy-theme-set`, and omacast changes with it. It replaces Omarchy's own theme picker in omacast's results. To open it from Omarchy's theme keys as well:
+
+```lua
+hl.unbind("SUPER + CTRL + T")
+o.bind("SUPER + CTRL + T", "omacast switch theme", hl.dsp.global("omacast:theme"))
+```
+
+Pressing the key again closes it.
+
+The All / Applications / Commands filter beside the root search is optional: set `"rootFilter": false` in
+`~/.config/omacast/config.json` to hide it and its shortcut.
+
+## Script Commands
+
+Executable scripts in `~/.config/omacast/script-commands/` become commands, using the same
+[Raycast Script Commands](https://github.com/raycast/script-commands) headers:
+
+```bash
+#!/bin/bash
+# @raycast.schemaVersion 1
+# @raycast.title Switch Display
+# @raycast.mode silent
+# @raycast.icon 🖥️
+# @raycast.argument1 { "type": "dropdown", "placeholder": "Input", "data": [{"title": "Mac mini", "value": "x0091"}, {"title": "MacBook Pro", "value": "x00d0"}] }
+
+monitor-input-cycle "$1" && echo "Switching display"
+```
+
+- Arguments (`text`, `password`, `dropdown`, up to three) appear as pills after the query: `Tab` moves into them,
+  and `←`/`→` pick a dropdown option.
+- The last line the script prints becomes the result: a HUD for `silent`, a toast for `compact`.
+- `fullOutput` and `inline` scripts run as `compact` for now.
+- `needsConfirmation` asks first, and `currentDirectoryPath` sets the folder the script runs in.
+- The folder is rescanned each time the launcher opens. Scripts need `chmod +x` and a shebang.
 
 ## CLI
 
@@ -151,8 +212,8 @@ omacast doctor
 omacast is early. Search, ranking, file search and the Omarchy integration are done. Coming next:
 
 - [ ] Settings window
-- [ ] Script Commands
-- [ ] Clipboard history, snippets, quicklinks, calculator
+- [x] Clipboard history, calculator
+- [ ] Snippets, quicklinks
 - [ ] Running Raycast extensions built from the open-source [`raycast/extensions`](https://github.com/raycast/extensions) repo
 - [ ] Window management
 - [ ] Importing your `.rayconfig` from macOS

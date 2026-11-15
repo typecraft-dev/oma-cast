@@ -32,6 +32,35 @@ var BUILTINS = [
     rootSearch: { when: "always" }
   },
   {
+    id: "builtin:clipboard-history",
+    title: "Clipboard History",
+    subtitle: "Clipboard History",
+    glyph: "\uf0ea",                     // nf-fa-clipboard
+    keywords: ["clipboard", "history", "paste", "copy", "pasteboard"],
+    run: { push: { kind: "clipboard", title: "Clipboard History" } },
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:switch-theme",
+    title: "Switch Theme",
+    subtitle: "Omarchy",
+    glyph: "\uf1fc",                     // nf-fa-paint_brush
+    keywords: ["theme", "themes", "appearance", "colors", "colours", "dark", "light", "omarchy"],
+    run: { push: { kind: "theme", title: "Switch Theme" } },
+    // Replaces Omarchy's theme picker in omacast's results. [D]
+    supersedes: ["omarchy:appearance.theme"],
+    rootSearch: { when: "always" }
+  },
+  {
+    id: "builtin:emoji-picker",
+    title: "Search Emoji & Symbols",
+    subtitle: "Emoji & Symbols",
+    glyph: "\uf118",                     // nf-fa-smile_o
+    keywords: ["emoji", "emoticon", "smiley", "symbols", "picker"],
+    run: { push: { kind: "emoji", title: "Search Emoji & Symbols" } },
+    rootSearch: { when: "always" }
+  },
+  {
     id: "builtin:calculator-history",
     title: "Calculator History",
     subtitle: "Calculator",
@@ -384,6 +413,7 @@ function actionsFor(candidate) {
     case "omarchy-menu":
     case "omarchy-link": primary = { id: "open", title: "Open Menu", icon: "" }; break
     case "fallback": primary = { id: "open", title: candidate.title, icon: "" }; break
+    case "script": primary = { id: "open", title: "Run Script", icon: "\uf120" }; break
     default: primary = { id: "open", title: "Open Command", icon: "" }
   }
   primary.shortcut = "↵"
@@ -494,6 +524,7 @@ function aboutFor(c, nowMs) {
   if (c.kind === "app") add("Desktop Entry", c.appId + ".desktop")
   if (c.kind === "omarchy-action") add("Command", c.action)
   if (c.kind === "omarchy-link") add("Opens", c.target)
+  if (c.kind === "script") { add("Script", c.script.path); add("Mode", c.script.mode) }
   add("URL", c.url || (c.run && c.run.url))
   add("Arguments", (c.arguments || []).map(function(a) { return a.name + (a.required ? "" : " (optional)") }).join(", "))
   add("Keywords", (c.keywords || []).join(", "))

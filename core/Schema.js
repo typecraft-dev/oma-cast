@@ -46,6 +46,33 @@ var calculatorMigrations = [
   }
 ]
 
+// Clipboard History (SPEC §8.2): ClipboardHistory.add entries, newest first.
+var clipboardMigrations = [
+  {
+    version: 1,
+    name: "clipboard-history",
+    up: function(doc) {
+      doc.entries = []          // {id, type, text?, path?, mime, hash, bytes, categories, source, copyCount, createdAt, updatedAt, pinned}
+      return doc
+    }
+  }
+]
+
+// Emoji & Symbols: frecency per base emoji (Frecency.recordVisit entries,
+// ref 02 §4.6 "emoji recents use the same formula"), pins and skin tone.
+var emojiMigrations = [
+  {
+    version: 1,
+    name: "emoji",
+    up: function(doc) {
+      doc.items = {}            // symbol -> frecency entry
+      doc.pinned = []           // symbols, in pin order
+      doc.skinTone = "none"     // Emoji.TONES id
+      return doc
+    }
+  }
+]
+
 var SEARCH_HISTORY_LIMIT = 20
 
 function pushSearchHistory(history, query) {
@@ -60,7 +87,9 @@ function pushSearchHistory(history, query) {
 var documents = {
   settings: { file: "settings.json", migrations: settingsMigrations },
   frecency: { file: "frecency.json", migrations: frecencyMigrations },
-  calculator: { file: "calculator.json", migrations: calculatorMigrations }
+  calculator: { file: "calculator.json", migrations: calculatorMigrations },
+  emoji: { file: "emoji.json", migrations: emojiMigrations },
+  clipboard: { file: "clipboard.json", migrations: clipboardMigrations }
 }
 
 var configDefaults = {
@@ -73,12 +102,22 @@ var configDefaults = {
   remToPxRate: 16,
   workHoursPerDay: 8,
   // "auto" follows the Qt locale; "12h" or "24h" forces a clock. [D]
-  clockFormat: "auto"
+  clockFormat: "auto",
+  // The All / Applications / Commands filter button (Ctrl+P) beside the root
+  // search; false hides it and leaves every result in one list. [D]
+  rootFilter: true,
+  // Clipboard History preferences named after Raycast's (ref 04 App. B) [O].
+  // clipboardHistory false stops recording; the history stays. [D]
+  clipboardHistory: true,
+  clipboardHistoryDuration: "P1W",
+  // Wayland app ids whose copies are never recorded (SPEC §5.3 defaults).
+  clipboardDisabledApplications: ["org.keepassxc.KeePassXC", "Bitwarden", "1Password", "seahorse", "org.gnome.seahorse.Application"]
 }
 
 // Values a config key or general setting may take, beyond its type.
 var configChoices = {
-  clockFormat: ["auto", "12h", "24h"]
+  clockFormat: ["auto", "12h", "24h"],
+  clipboardHistoryDuration: ["P1D", "P1W", "P1M", "P3M", "P6M", "P1Y", "unlimited"]
 }
 
 var generalChoices = {
@@ -90,6 +129,7 @@ var generalChoices = {
 
 function validConfigValue(key, value) {
   if (typeof value !== typeof configDefaults[key]) return false
+  if (Array.isArray(configDefaults[key])) return Array.isArray(value) && value.every(function(v) { return typeof v === "string" })
   if (configChoices[key]) return configChoices[key].indexOf(value) >= 0
   if (typeof value === "number") return isFinite(value) && value > 0
   return true
@@ -111,6 +151,8 @@ if (typeof module !== "undefined") {
     settingsMigrations: settingsMigrations,
     frecencyMigrations: frecencyMigrations,
     calculatorMigrations: calculatorMigrations,
+    clipboardMigrations: clipboardMigrations,
+    emojiMigrations: emojiMigrations,
     pushSearchHistory: pushSearchHistory,
     SEARCH_HISTORY_LIMIT: SEARCH_HISTORY_LIMIT,
     documents: documents,

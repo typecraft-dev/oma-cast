@@ -23,7 +23,7 @@ function harness(text) {
   const window = {
     query: "prefix ", actionPanelOpen: false, view: { kind: "root" }, historyIndex: 0, argFocus: -1, argDefs: [],
     rebuild: reset => changes.push(reset), isTyping: () => false,
-    isActionPanelKey: () => false, direction: () => 0
+    isActionPanelKey: () => false, direction: () => 0, superOnly: () => false
   }
   const actionPanel = { item: { filter: "" } }
   const clipboardInput = { text: "", clear() { this.text = "" }, paste() { this.text = text } }
@@ -33,6 +33,10 @@ function harness(text) {
     vm.runInContext(body("function setQuery(next)"), context)
   }
   window.pasteClipboard = () => vm.runInContext(body("function pasteClipboard()"), context)
+  window.insertText = text => {
+    context.text = text
+    vm.runInContext(body("function insertText(text)"), context)
+  }
   return {
     Qt, window, actionPanel, clipboardInput, changes,
     press(key, modifiers) {
@@ -111,4 +115,13 @@ test("unrelated V and Insert shortcuts never read the clipboard", () => {
     assert.equal(h.window.query, "prefix ")
     assert.deepEqual(h.changes, [])
   }
+})
+
+test("input-method text (fcitx5, dictation) inserts like a paste, without the clipboard", () => {
+  const h = harness("clipboard stays out of it")
+  h.window.insertText("Ask not what\nyour country can do.")
+  assert.equal(h.window.query, "prefix Ask not what your country can do.")
+  assert.deepEqual(h.changes, [true])
+  h.window.insertText("")
+  assert.deepEqual(h.changes, [true])
 })
