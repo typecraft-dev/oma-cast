@@ -17,6 +17,7 @@ import "core/ClipboardHistory.js" as ClipboardHistory
 import "core/Themes.js" as Themes
 import "core/Emoji.js" as Emoji
 import "core/ScriptCommands.js" as ScriptCommands
+import "core/FileSearch.js" as FileSearch
 import "services"
 
 Item {
@@ -148,6 +149,82 @@ Item {
   function decorated(id) {
     var c = backend.candidatesById[id]
     return c ? RootSearch.decorate(c, backend.searchContext(), backend.deps) : null
+  }
+
+  // ----------------------------------------------------------- file search
+
+  // Rows from the last search, by id, so actions can find their path.
+  property var fileRows: ({})
+  property var fileEntries: ({})
+  // Bumped when a new listing arrives, so an open search shows its files.
+  readonly property double filesRevision: fileIndex.refreshedAt
+
+  function fileCandidates(query, nowMs) {
+    var visits = frecencyStore.loaded ? frecencyStore.doc.items : ({})
+    var bonus = function(e) {
+      var v = visits["file:" + e.path]
+      return v ? FileSearch.visitBonus(Frecency.score(v.anchor, nowMs / 1000)) : 0
+    }
+    return backend.keepFileRows(FileSearch.search(fileIndex.entries, query, nowMs, FileSearch.DEFAULT_LIMIT, bonus), nowMs, false)
+  }
+
+  function keepFileRows(entries, nowMs, inFileView) {
+    var rows = [], byId = ({}), entryById = ({})
+    for (var i = 0; i < entries.length; i++) {
+      var c = FileSearch.candidate(entries[i], nowMs, RootSearch.relativeTime)
+      // The Search Files list is narrow: the detail pane shows the rest.
+      if (inFileView) { c.subtitle = ""; c.typeLabel = ""; c.inFileView = true }
+      rows.push(c)
+      byId[c.id] = c
+      entryById[c.id] = entries[i]
+    }
+    backend.fileRows = byId
+    backend.fileEntries = entryById
+    return rows
+  }
+
+  // Search Files: recently changed files before typing, then up to 50 matches.
+  function fileViewSections(query, nowMs) {
+    var q = String(query || "").trim()
+    if (q.length < FileSearch.MIN_QUERY_LENGTH) {
+      var recent = backend.keepFileRows(FileSearch.recent(fileIndex.entries, 30), nowMs, true)
+      return recent.length ? [{ id: "recent-files", title: "Recently Changed", rows: recent.map(function(c) { return { candidate: c } }) }] : []
+    }
+    var visits = frecencyStore.loaded ? frecencyStore.doc.items : ({})
+    var bonus = function(e) {
+      var v = visits["file:" + e.path]
+      return v ? FileSearch.visitBonus(Frecency.score(v.anchor, nowMs / 1000)) : 0
+    }
+    var rows = backend.keepFileRows(FileSearch.search(fileIndex.entries, q, nowMs, 50, bonus), nowMs, true)
+    return rows.length ? [{ id: "files", title: "Files", rows: rows.map(function(c) { return { candidate: c } }) }] : []
+  }
+
+  function fileAction(action, row, query) {
+    // Opening a file, or showing it, teaches the ranking (as for apps).
+    if (action === "open" || action === "show-in-files") backend.recordVisit(row.id, query)
+    switch (action) {
+      case "open":
+        // gio, not xdg-open: xdg-open runs a Terminal=true default (nvim)
+        // with no terminal, so it never shows. gio opens it in one, and it
+        // picks the same app as a double-click in Files.
+        Util.execArgv(["uwsm-app", "--", "gio", "open", row.path])
+        return { close: true }
+      case "show-in-files":
+        Util.execArgv(["uwsm-app", "--", "nautilus", "--select", row.path])
+        return { close: true }
+      case "copy-path":
+        clipboard.copy(row.path)
+        return { close: true, hud: "Copied to Clipboard" }
+      case "search-files":
+        return { push: { kind: "file-search", title: "Search Files", query: query } }
+    }
+    throw new Error("Unknown action " + action)
+  }
+
+  FileIndex {
+    id: fileIndex
+    home: Quickshell.env("HOME") || ""
+    onMessage: function(level, text, metadata) { backend.log(level, "files", text, metadata) }
   }
 
   // ------------------------------------------------------------ calculator
@@ -666,10 +743,17 @@ Item {
           sections = Themes.sections(themeSource.themes, themeSource.current, query)
         else if (view && view.kind === "clipboard") sections = ClipboardHistory.sections(backend.clipboardEntries(), query, String(data && data.filter || "all"), ctx.nowMs)
         else if (view && view.kind === "emoji") sections = Emoji.sections(backend.emoji.list, query, Object.assign(backend.emojiState(), { fleaHits: data.fleaHits || null }))
+        else if (view && view.kind === "file-search") {
+          fileIndex.refresh()
+          sections = backend.fileViewSections(query, ctx.nowMs)
+        }
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else {
           ctx.filter = String(data && data.filter || "all")
-          if (query.trim() && ctx.filter === "all") ctx.calculation = backend.calculate(query)
+          if (query.trim() && ctx.filter === "all") {
+            ctx.calculation = backend.calculate(query)
+            ctx.files = backend.fileCandidates(query, ctx.nowMs)
+          }
           sections = RootSearch.rootSections(backend.candidates, query, ctx, backend.deps)
         }
         if (view && view.kind === "emoji") return sections
@@ -693,6 +777,7 @@ Item {
           return ClipboardHistory.actionsFor(clip, app ? app.name : "")
         }
         if (rowId.indexOf("emoji:") === 0) return Emoji.actionsFor(backend.emojiCandidate(rowId).candidate, backend.emojiState().tone)
+        if (backend.fileRows[rowId]) return RootSearch.actionsFor(backend.fileRows[rowId])
         var candidate = backend.decorated(rowId)
         if (!candidate) {
           var fallback = RootSearch.FALLBACKS.filter(function(f) { return f.id === data.id })[0]
@@ -720,6 +805,7 @@ Item {
           var found = backend.emojiCandidate(rowId)
           return Emoji.aboutFor(found.candidate, found.entry)
         }
+        if (backend.fileRows[rowId]) return RootSearch.aboutFor(backend.fileRows[rowId], nowMs)
         var candidate = backend.decorated(rowId)
         if (!candidate) {
           var f = RootSearch.FALLBACKS.filter(function(x) { return x.id === rowId })[0]
@@ -763,9 +849,23 @@ Item {
           if (confirmClear) return { confirm: { title: "Clear Recently Used", message: "This forgets every emoji you have pasted or copied.", primary: "Clear", destructive: true } }
           return backend.emojiAction(String(data.action || "open"), data.id, String(data.query || ""))
         }
+        var fileRow = data && backend.fileRows[String(data.id)]
+        if (fileRow) return backend.fileAction(String(data.action || "open"), fileRow, String(data.query || ""))
         return backend.performAction(data)
       },
       getSearchHistory: function() { return frecencyStore.loaded ? frecencyStore.doc.searchHistory : [] }
+    })
+
+    Rpc.register(backend.registry, "files", {
+      // The Search Files detail pane, for a row of the last search.
+      details: function(data) {
+        var entry = backend.fileEntries[String(data && data.id || "")]
+        if (!entry) throw new Error("Unknown file " + (data && data.id))
+        return FileSearch.details(entry, Date.now(), RootSearch.relativeTime)
+      },
+      status: function() {
+        return { available: fileIndex.available, entries: fileIndex.entries.length, refreshedAt: fileIndex.refreshedAt || null, home: fileIndex.home }
+      }
     })
 
     // Names from Raycast's calculator namespace (ref 02 §2).
@@ -870,6 +970,7 @@ Item {
       scriptSource.refresh()
       calculatorData.refresh()
       backend.pruneClipboard()
+      fileIndex.refresh()
     }
   }
 

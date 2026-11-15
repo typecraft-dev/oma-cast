@@ -111,6 +111,9 @@ PanelWindow {
   property string query: ""
   property int selectedIndex: -1
   property var selectedRow: null
+  // The Search Files detail pane's data for the selected row, or null.
+  property var fileDetail: null
+  readonly property bool fileView: window.view.kind === "file-search"
   property int searchSerial: 0
   property bool searchPending: false
   property bool actionPanelOpen: false
@@ -161,6 +164,7 @@ PanelWindow {
     : window.clipboardView ? "Type to filter entries…"
     : window.view.kind === "theme" ? "Search themes…"
     : window.grid ? "Search Emoji & Symbols…"
+    : window.view.kind === "file-search" ? "Search files…"
     : "Search for apps and commands…"
 
   readonly property int cardWidth: Math.min(px(750), width - Style.gapsOut * 2)
@@ -289,7 +293,8 @@ PanelWindow {
     saved[saved.length - 1] = Object.assign({}, window.view, { query: window.query, selectedIndex: window.selectedIndex })
     window.stack = saved.concat([next])
     if (next.kind === "clipboard") window.clipboardFilter = "all"
-    window.query = next.kind === "alias" ? (next.value || "") : ""
+    // A pushed view can start with a query (Search All Files carries it over).
+    window.query = next.kind === "alias" ? (next.value || "") : (next.query || "")
     window.rebuild(true)
   }
 
@@ -428,6 +433,8 @@ PanelWindow {
       window.argFocus = -1
     }
     window.argDefs = window.selectedRow && window.selectedRow.argsJson ? JSON.parse(window.selectedRow.argsJson) : []
+    var detail = window.fileView && id.indexOf("file:") === 0 ? window.backend.callSync("files.details", { id: id }) : null
+    window.fileDetail = detail && detail.ok ? detail.data : null
     if (index >= 0) list.positionViewAtIndex(index, ListView.Contain)
     if (index === window.nextSelectable(-1, 1)) list.positionViewAtBeginning()
   }
@@ -834,7 +841,7 @@ PanelWindow {
       if (key === Qt.Key_PageUp) { window.move(-8); return true }
       if (key === Qt.Key_PageDown) { window.move(8); return true }
       if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-question-answer", "copy-name"]); return true }
+      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-path", "copy-question-answer", "copy-name"]); return true }
       if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries", "clear-recent"]); return true }
       if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry", "remove-recent"]); return true }
       if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }
@@ -860,9 +867,21 @@ PanelWindow {
 
   Connections {
     target: window.backend
-    function onCandidatesRevisionChanged() { if (window.shown && !window.actionPanelOpen && !window.alert) window.rebuild(false) }
+    // Commands can land after the first answer (right after a reload), when
+    // only the web fallbacks matched. In root search, follow them to the top
+    // row unless the user has moved off it; other views keep their selection.
+    function onCandidatesRevisionChanged() {
+      if (!window.shown || window.actionPanelOpen || window.alert) return
+      window.rebuild(window.atRoot && window.selectedIndex === window.nextSelectable(-1, 1))
+    }
     // Exchange rates or zone offsets arrived: re-evaluate a calculation on screen.
     function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
+    // Files arrive after the first answer, in root search and Search Files
+    // only; follow them unless the user has moved off the first row.
+    function onFilesRevisionChanged() {
+      if (!window.shown || window.actionPanelOpen || !(window.fileView || (window.atRoot && window.query))) return
+      window.rebuild(window.selectedIndex === window.nextSelectable(-1, 1))
+    }
     // A copy, pin or delete: refresh an open Clipboard History.
     function onNotification(method) {
       if (method !== "clipboard.stateChanged" && method !== "themes.changed") return
@@ -1117,8 +1136,10 @@ PanelWindow {
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        // Clipboard History is list on the left, detail on the right (ref 04 §2 master-detail).
-        width: window.splitView ? Math.round(parent.width * 0.4) : parent.width
+        // Clipboard History and Switch Theme are list on the left, detail on the right
+        // (ref 04 §2 master-detail). Search Files splits the same way, as Raycast's
+        // File Search does (37/63).
+        width: window.splitView || window.fileView ? Math.round(parent.width * 0.4) : parent.width
         anchors.topMargin: window.px(4)
         anchors.bottomMargin: window.px(4)
         visible: window.view.kind !== "alias"
@@ -1151,6 +1172,29 @@ PanelWindow {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         detail: window.clipboardDetail
+        look: window.look
+        zoom: window.zoom
+      }
+
+      Rectangle {
+        id: detailDivider
+        visible: window.fileView && rows.count > 0
+        anchors.left: list.right
+        anchors.leftMargin: window.px(6)
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 1
+        color: Util.alpha(window.look.foreground, 0.12)
+      }
+
+      FileDetail {
+        visible: window.fileView && rows.count > 0 && window.fileDetail !== null
+        anchors.left: detailDivider.right
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: window.px(6)
+        detail: window.fileDetail
         look: window.look
         zoom: window.zoom
       }
