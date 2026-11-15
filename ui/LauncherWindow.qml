@@ -231,7 +231,13 @@ PanelWindow {
   Binding {
     target: window.contentItem
     property: "opacity"
-    value: window.contentRevealed ? 1 : 0
+    value: window.revealProgress
+  }
+  // Fade in with ease-out (fast start, soft landing) so the first open doesn't
+  // read as a delayed ease-in. Hiding stays instant.
+  property real revealProgress: window.contentRevealed ? 1 : 0
+  Behavior on revealProgress {
+    NumberAnimation { duration: window.contentRevealed ? 140 : 0; easing.type: Easing.OutCubic }
   }
 
   // A reload or disable while shown would otherwise leave Hyprland in the submap.
