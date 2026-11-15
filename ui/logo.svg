@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30" role="img" aria-label="omacast">
+  <!-- Omarchy's square maze, drawn on a 30-unit grid in typecraft's stripe colours: an O, a C and a cursor. -->
+  <path d="M1 0H29V1H30V29H29V30H1V29H0V1H1Z" fill="#242936"/>
+  <path d="M3 3H27V27H18V24H24V6H6V24H16V27H3Z" fill="#1A9298"/>
+  <path d="M8 8H22V13H19V11H11V19H19V17H22V22H8Z" fill="#E08E1D"/>
+  <path d="M13 13H17V17H13Z" fill="#E74553"/>
+</svg>
