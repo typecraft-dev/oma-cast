@@ -60,7 +60,7 @@ bin/omacast              # bash CLI (works from a dev checkout or a marketplace 
 bin/omacast-search       # built flea-search helper (gitignored; bin/build-search builds it from search/)
 search/                  # Rust source of the optional helper; builds into ~/.cache/omacast/search-target
 SPEC.md, reference/      # the spec
-site/                    # the website (Cloudflare, wrangler.jsonc): static public/ plus launcher.js, which runs core/*.js in the browser.
+site/                    # the website (omacast.typecraft.dev, Cloudflare Pages, wrangler.jsonc): static public/ plus launcher.js, which runs core/*.js in the browser.
                          #   `node site/build.mjs` bundles core/ into public/demo/core.js (gitignored); see site/README.md. Cartridge fonts are gitignored
 tests/*.test.js          # node --test unit tests for core/ (ranker, frecency, Omarchy menu, root search, …)
 tests/smoke.sh           # live acceptance check against the running shell

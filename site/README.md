@@ -90,18 +90,23 @@ cd site/public && python3 -m http.server 8765   # then open http://127.0.0.1:876
 
 ## Deploy to Cloudflare
 
-`wrangler.jsonc` publishes `public/` as Workers static assets.
+The site is the Cloudflare Pages project `omacast`, served at <https://omacast.typecraft.dev> (and
+`omacast.pages.dev`). `wrangler.jsonc` points it at `public/`.
 
 ```sh
 cd site
-npx wrangler login     # once
-node build.mjs         # every time: public/demo/core.js is not in git
-npx wrangler deploy    # serves it at omacast-site.<your-subdomain>.workers.dev
+npx wrangler login                          # once
+node build.mjs                              # every time: public/demo/core.js is not in git
+npx wrangler pages deploy --branch main     # main is the production branch; any other name makes a preview
 ```
 
-To use your own domain, add it to Cloudflare, then add it under the Worker's Settings → Domains & Routes
-(or add a `"routes": [{ "pattern": "example.com", "custom_domain": true }]` entry to `wrangler.jsonc`).
-Then make `og:image` in `index.html` an absolute URL on that domain so link previews show the screenshot.
+Deploy from a machine that has the Cartridge fonts in `public/fonts/`, since they are not in git either.
+
+It is Pages and not a Worker because `typecraft.dev`'s DNS is at Squarespace: a Worker's custom domain needs
+the zone on Cloudflare, while Pages takes a subdomain from any DNS host. The domain is set under the project's
+Custom domains in the Cloudflare dashboard, and Squarespace has a `CNAME` from `omacast` to `omacast.pages.dev`.
+The project was created with `wrangler pages project create omacast --production-branch main --force`; without
+`--force`, wrangler 4.162 makes a Worker.
 
 ## Icon
 
