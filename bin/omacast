@@ -259,7 +259,16 @@ cmd_setup_hyprland() {
 -- Written by `omacast setup hyprland`. Safe to edit; rerunning setup keeps it.
 -- Alt+Space reaches the plugin's global shortcut directly, so no process
 -- starts per keypress. Omarchy's own menu stays on Super+Space.
-o.bind("ALT + SPACE", "omacast launcher", hl.dsp.global("omacast:toggle"))
+o.bind("ALT + SPACE", "omacast launcher", hl.dsp.global("omacast:toggle"), { submap_universal = true })
+-- While the launcher is open, the plugin puts Hyprland in this submap so Super+J/K
+-- (and every other Super key Hyprland would grab) reach omacast as arrow keys.
+-- omacast's own hotkeys are submap_universal so they still work there.
+hl.define_submap("omacast", function()
+  hl.bind("SUPER + F24", hl.dsp.no_op()) -- a submap needs one bind to exist
+end)
+-- Blur behind the launcher; it only shows under Omarchy's Glassy windows,
+-- where the card is see-through.
+hl.layer_rule({ match = { namespace = "^omacast$" }, blur = true, ignore_alpha = 0.3 })
 LUA
     echo "wrote $file"
   fi
@@ -272,6 +281,22 @@ LUA
     echo "added require(\"hypr.omacast\") to $main"
   fi
   hyprctl reload >/dev/null && echo "reloaded Hyprland; Alt+Space toggles omacast"
+}
+
+# QML errors the shell logged for the plugin dir as it's loaded now: everything
+# after the last "reloading: <name>" line. A missing import (ReferenceError)
+# leaves the window mapped but blank while IPC still answers, so the other
+# checks pass.
+plugin_errors() {
+  local dir=$1
+  qs log -p "${OMARCHY_PATH:-/usr/share/omarchy}/shell" 2>/dev/null \
+    | sed 's/\x1b\[[0-9;]*m//g' \
+    | awk -v dir="$dir/" -v reload="reloading: ${dir##*/}" '
+        substr($0, length($0) - length(reload) + 1) == reload { n = 0; delete seen; next }
+        index($0, dir) && /(Reference|Type|Syntax|Range)Error|unavailable|is not a type|is not defined|Cannot assign|Unable to assign/ {
+          if (!($0 in seen)) { seen[$0] = 1; errs[n++] = $0 }
+        }
+        END { for (i = 0; i < n; i++) print errs[i] }'
 }
 
 cmd_doctor() {
@@ -293,6 +318,21 @@ cmd_doctor() {
   check "plugin is enabled" bash -c "omarchy plugin list --json 2>/dev/null | jq -e --arg id '$PLUGIN_ID' 'any(.[]; .id == \$id and .enabled)'"
   check "plugin answers IPC" bash -c "[[ \$(omarchy-shell $IPC_TARGET ping) == ok ]]"
   check "backend answers system.healthPing" bash -c "omarchy-shell $IPC_TARGET call system.healthPing '{}' | grep -q '\"ok\":true'"
+  local loaded errors
+  if managed; then loaded="$plugins_dir/$PLUGIN_ID"; else loaded=$(current_link); fi
+  if ! command -v qs >/dev/null; then
+    printf '  info  qs is not installed; skipped the shell log check\n'
+  elif [[ -n $loaded ]]; then
+    errors=$(plugin_errors "$loaded")
+    if [[ -n $errors ]]; then
+      printf '  FAIL  the shell logged QML errors for the plugin:\n'
+      printf '%s\n' "$errors" | head -n 5 | sed 's/^ *[A-Z]* *[a-z.]*: /          /'
+      printf '        fix them, then run: omacast reload\n'
+      bad=1
+    else
+      printf '  ok    no QML errors in the shell log\n'
+    fi
+  fi
   if [[ -x $repo/bin/omacast-search ]]; then
     printf '  ok    flea-search helper is built\n'
   else

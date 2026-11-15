@@ -18,7 +18,7 @@ function body(signature) {
 
 function harness() {
   let next = 100
-  const Qt = new Proxy({ NoModifier: 0, ControlModifier: 1, ShiftModifier: 2, AltModifier: 4, MetaModifier: 8 }, {
+  const Qt = new Proxy({ NoModifier: 0, ControlModifier: 1, ShiftModifier: 2, AltModifier: 4, MetaModifier: 8, KeypadModifier: 16 }, {
     get(target, key) { if (!(key in target)) target[key] = next++; return target[key] }
   })
   const events = []
@@ -33,7 +33,7 @@ function harness() {
     backend: { callSync: () => ({ ok: true, data: ["firefox", "12+34"] }) }
   }
   const context = vm.createContext({ Qt, window, event: null })
-  for (const name of ["direction", "isActionPanelKey"]) {
+  for (const name of ["direction", "isActionPanelKey", "superOnly"]) {
     const start = source.indexOf("function " + name + "(")
     const end = source.indexOf("\n  }", start) + 4
     window[name] = vm.runInContext("(" + source.slice(start, end) + ")", context)
@@ -93,6 +93,15 @@ test("vim navigation keeps Alt+K for actions while query arrows remain native", 
   assert.deepEqual(h.events, [["move", 1], ["move", -1], "actions"])
 })
 
+test("Super navigation and query clearing keep their upstream bindings", () => {
+  const h = harness()
+  assert.equal(h.press("J", h.Qt.MetaModifier), true)
+  assert.equal(h.press("K", h.Qt.MetaModifier), true)
+  assert.equal(h.press("Backspace", h.Qt.MetaModifier), true)
+  assert.equal(h.window.query, "")
+  assert.deepEqual(h.events, [["move", 1], ["move", -1]])
+})
+
 test("popups and arguments transfer focus away from the query and back", () => {
   const calls = []
   const window = { argFocus: -1 }
@@ -150,17 +159,48 @@ test("aliases keep native editing while rejecting spaces", () => {
 test("hiding resets input composition and cancels pending search results", () => {
   const events = []
   const window = {
-    shown: false, searchSerial: 5, searchPending: true,
+    shown: false, mapped: true, searchSerial: 5, searchPending: true,
     backend: { cancelSearch: () => events.push("cancel") },
     closePopups: () => events.push("close-popups"),
     general: { popToRootTimeout: 90 }
   }
   const popTimer = { restart: () => events.push("timer") }
   const Qt = { inputMethod: { reset: () => events.push("reset-input") } }
-  vm.runInNewContext(body("onShownChanged:"), { window, Qt, popTimer })
+  const Hyprland = { dispatch: command => events.push(command) }
+  vm.runInNewContext(body("onShownChanged:"), { window, Qt, popTimer, Hyprland })
   assert.equal(window.searchSerial, 6)
   assert.equal(window.searchPending, false)
-  assert.deepEqual(events, ["reset-input", "cancel", "close-popups", "timer"])
+  assert.equal(window.mapped, true)
+  assert.deepEqual(events, ['hl.dsp.submap("reset")', "reset-input", "cancel", "close-popups", "timer"])
+})
+
+test("showing keeps the mapped-surface path without cancelling search or composition", () => {
+  const events = []
+  const screen = {}
+  const window = { shown: true, mapped: false, pinnedScreen: null, focusedScreen: () => screen }
+  const Hyprland = { dispatch: command => events.push(command) }
+  const glassToggle = { reload: () => events.push("glassy") }
+  vm.runInNewContext(body("onShownChanged:"), { window, Hyprland, glassToggle })
+  assert.equal(window.mapped, true)
+  assert.equal(window.pinnedScreen, screen)
+  assert.deepEqual(events, ['hl.dsp.submap("omacast")', "glassy"])
+})
+
+test("prepare reuses cached root results while restoring query input focus", () => {
+  for (const [payload, builtRootKey, rebuild] of [[{}, "cached", false], [{ query: "12+34" }, "cached", true], [{}, "old", true]]) {
+    const events = []
+    const window = {
+      builtRootKey, historyIndex: 0, rootKey: () => "cached",
+      closePopups() {}, rebuild: () => events.push("rebuild"),
+      nextSelectable: () => 1, select: () => events.push("restore"),
+      focusInput: () => events.push("focus")
+    }
+    const Qt = { callLater: callback => callback() }
+    const popTimer = { stop() {} }
+    vm.runInNewContext(body("function prepare(payload)"), { window, Qt, popTimer, payload })
+    assert.equal(window.historyIndex, -1)
+    assert.deepEqual(events, [rebuild ? "rebuild" : "restore", "focus"])
+  }
 })
 
 test("native query input regression tests", t => {
