@@ -281,7 +281,7 @@ var CURRENCIES = {
   HUF: { symbol: "", names: ["forint", "forints", "huf"], decimals: 0 },
   RON: { symbol: "", names: ["leu", "lei", "romanian leu", "ron"] },
   ISK: { symbol: "", names: ["icelandic krona", "isk"], decimals: 0 },
-  ILS: { symbol: "₪", names: ["shekel", "shekels", "ils"] },
+  ILS: { symbol: "₪", names: ["shekel", "shekels", "nis", "ils"] },
   ZAR: { symbol: "", names: ["rand", "south african rand", "zar"] },
   THB: { symbol: "", names: ["baht", "thai baht", "thb"] },
   MYR: { symbol: "", names: ["ringgit", "myr"] },

@@ -80,6 +80,7 @@ test("currencies use the rates and need them only to convert", () => {
   assert.equal(result("1000 yen to usd"), "$6.32")
   assert.equal(C.evaluate("10 usd to eur", Object.assign({}, env, { rates: null })), null)
   assert.equal(result("$30 + 20%", Object.assign({}, env, { rates: null })), "$36.00")
+  assert.equal(result("10 nis + 5 shekels", Object.assign({}, env, { rates: null })), "₪15.00")
 })
 
 test("dates and durations", () => {
