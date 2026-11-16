@@ -217,7 +217,9 @@ PanelWindow {
   }
   readonly property bool contentReady: window.shown && !!window.screen && !!window.targetMonitor
     && window.width === window.screen.width && window.height === window.screen.height
-    && Math.round(window.devicePixelRatio * 120) === Math.round(window.targetMonitor.scale * 120)
+    // Qt keeps devicePixelRatio at 1 on an output scaled below 1 (0.8 here), so
+    // the plain comparison never held there and the card stayed invisible.
+    && Math.round(window.devicePixelRatio * 120) === Math.round(Math.max(1, window.targetMonitor.scale) * 120)
   property bool contentRevealed: false
   onContentReadyChanged: {
     window.contentRevealed = false
