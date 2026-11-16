@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>omacast · a Raycast-style launcher for Omarchy</title>
+  <meta name="description" content="omacast is a fast, keyboard-first launcher for Omarchy. It learns what you use, searches your apps and every Omarchy action, and wears your theme.">
+  <meta name="theme-color" content="#1e1e2e">
+  <meta property="og:title" content="omacast">
+  <meta property="og:description" content="A Raycast-style launcher for Omarchy. Learns your habits, searches everything, wears your theme.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://omacast.typecraft.dev/">
+  <meta property="og:image" content="https://omacast.typecraft.dev/img/hero.webp">
+  <link rel="canonical" href="https://omacast.typecraft.dev/">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preload" href="/fonts/Cartridge-Black.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/launcher.css">
+</head>
+<body>
+
+<!-- The icon, inline so its cursor can blink. Same drawing as /icon.svg. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="logo" viewBox="0 0 30 30">
+      <path d="M1 0H29V1H30V29H29V30H1V29H0V1H1Z" fill="#242936"/>
+      <path d="M3 3H27V27H18V24H24V6H6V24H16V27H3Z" fill="#1A9298"/>
+      <path d="M8 8H22V13H19V11H11V19H19V17H22V22H8Z" fill="#E08E1D"/>
+    </symbol>
+  </defs>
+</svg>
+
+<nav>
+  <div class="wrap">
+    <a class="brand display" href="#top" aria-label="omacast home">
+      <svg viewBox="0 0 30 30" aria-hidden="true"><use href="#logo"/><path class="cursor" d="M13 13H17V17H13Z" fill="#E74553"/></svg>omacast
+    </a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#commands">Commands</a>
+      <a href="#calculator">Calculator</a>
+      <a href="#keys">Keys</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#install">Install</a>
+    </div>
+    <a class="btn small" href="https://github.com/typecraft-dev/oma-cast">GitHub</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <h1 class="display"><span>Launch</span><span>Anything.</span><span class="accent">Instantly.</span></h1>
+        <p class="lead">omacast is a Raycast-style launcher that runs inside Omarchy. It learns what you use, searches your apps and every Omarchy action, does the math, keeps your clipboard, and wears your theme.</p>
+        <div class="cta">
+          <a class="btn primary" href="#install">Install omacast</a>
+          <button class="btn" type="button" data-try hidden>Try it in your browser <kbd>/</kbd></button>
+          <noscript><a class="btn" href="https://github.com/typecraft-dev/oma-cast">View on GitHub</a></noscript>
+        </div>
+        <p class="hint">Then press <kbd>Alt</kbd> + <kbd>Space</kbd>. <kbd>Super</kbd> + <kbd>Space</kbd> stays the Omarchy menu.</p>
+      </div>
+      <div class="stage">
+        <div class="desk">
+          <!-- launcher.js replaces this with omacast itself, running on a sample desktop -->
+          <div class="oc" role="img" aria-label="omacast searching by itself. Click to try it."><img src="/img/search.webp" alt="" width="1712" height="1158"></div>
+        </div>
+        <div class="presses" aria-hidden="true"></div>
+        <p class="takeover" data-try-show hidden>This is omacast itself, running in your browser. <button type="button" data-try>Try it yourself</button></p>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat reveal"><b data-on="count" data-to="400" data-prefix="~">~400</b><span>Omarchy actions, searchable</span></div>
+      <div class="stat reveal"><b data-on="count" data-to="250" data-prefix="~">~250</b><span>calculator units</span></div>
+      <div class="stat reveal"><b data-on="count" data-to="0">0</b><span>packages to install</span></div>
+      <div class="stat reveal"><b data-on="count" data-to="1">1</b><span>frame to open</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="stripes reveal" aria-hidden="true"></div>
+
+<div class="connector" style="--c: var(--teal)" aria-hidden="true">
+  <div class="track"><div class="fill"></div><div class="head"></div></div>
+</div>
+<section id="features">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2 class="display">Not a port. A plugin.</h2>
+      <p>omacast runs inside <code>omarchy-shell</code>, the shell that draws Omarchy's own bar and menus. No Electron, no Node, no daemons, no extra packages.</p>
+    </div>
+    <div class="grid">
+      <div class="card reveal">
+        <h3 class="label">Learns your habits</h3>
+        <p>Results are ranked by a faithful port of Raycast's root-search algorithm, plus frecency and learned search terms. Type <code>ff</code>, pick Firefox, and <code>ff</code> keeps meaning Firefox.</p>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">One search for everything</h3>
+        <p>Your apps, all ~400 Omarchy menu actions with breadcrumbs and live ✓ state, the calculator, and web-search fallbacks, in one ranked list.</p>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">Opens in one frame</h3>
+        <p>The hotkey goes straight to the plugin with no process to start, and the window stays ready while hidden, so opening it is a single redraw.</p>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">Wears your theme</h3>
+        <p>There's no theme config. omacast uses Omarchy's own colours and changes the moment you run <code>omarchy theme set</code>. Under Glassy Windows it turns see-through and blurred, like the rest of Omarchy.</p>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">Finds your open window</h3>
+        <p><kbd>↵</kbd> on an app jumps to its open window, switching workspace and restoring it from the dock. It even recognises web apps. <kbd>Shift</kbd> <kbd>↵</kbd> opens a new one.</p>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">Private by default</h3>
+        <p>No account, no telemetry, never contacts Raycast. Histories live in owner-only files, and nothing you type ends up on a command line. The one network request, exchange rates, can be turned off.</p>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">Forgives typos</h3>
+        <p>An optional search helper, built on your machine from source, matches titles, alternate names and keywords even with transposed or missing letters.</p>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">Keyboard-first</h3>
+        <p>A <kbd>Ctrl</kbd> <kbd>K</kbd> action panel on every result, quick picks, section jumps, search history, and emacs or vim-style movement. The mouse is optional.</p>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">Make it yours</h3>
+        <p>Give anything an alias, pin and reorder favorites, hide commands you never use, and switch to a compact window that shows only the search bar until you type.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="commands">
+  <div class="connector" style="--c: var(--orange)" aria-hidden="true">
+    <div class="track"><div class="fill"></div><div class="head"></div></div>
+  </div>
+  <div class="wrap">
+    <div class="head reveal">
+      <h2 class="display">The stuff you reach for daily.</h2>
+      <p>Each one is a search away, and the big ones get their own hotkey through a Hyprland global shortcut.</p>
+    </div>
+    <div class="grid">
+      <div class="card reveal">
+        <h3 class="label">Clipboard History</h3>
+        <p>Everything you copy (text, links, colours, files and images), with the app it came from and how often you copied it.</p>
+        <ul>
+          <li>List and preview side by side, filtered by type on <kbd>Ctrl</kbd> <kbd>P</kbd></li>
+          <li>Paste back into any app, terminals included</li>
+          <li>Pin entries, pick how long to keep the rest</li>
+          <li>Password managers and anything marked sensitive are never recorded</li>
+        </ul>
+        <div class="chips"><span class="chip">omacast:clipboard</span></div>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">Emoji &amp; Symbols</h3>
+        <p>An 8-column grid of every Unicode 17 emoji, searchable by name and by Omarchy's emoji keywords.</p>
+        <ul>
+          <li>Pinned and Recently Used up top</li>
+          <li>Skin tones from the action panel</li>
+          <li><kbd>↵</kbd> pastes, <kbd>Ctrl</kbd> <kbd>↵</kbd> copies, arrows move around the grid</li>
+        </ul>
+        <div class="chips"><span class="chip">omacast:emoji</span></div>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">Switch Theme</h3>
+        <p>All your Omarchy themes with a preview of each beside the list. <kbd>↵</kbd> applies it, and omacast changes with it.</p>
+        <ul>
+          <li>Opens on your current theme</li>
+          <li>Replaces Omarchy's theme picker in the results</li>
+        </ul>
+        <div class="chips"><span class="chip">omacast:theme</span></div>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">Calculator &amp; History</h3>
+        <p>Type math, units, currencies, dates or time zones straight into the search bar. Every answer you copy or paste is saved to a searchable history.</p>
+        <div class="chips"><a class="chip" href="#calculator">See what it does →</a></div>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">The whole Omarchy menu</h3>
+        <p>Every Omarchy menu action is searchable from the root, with breadcrumbs like <em>Appearance › Windows</em>. Submenus open in place, live state shows as ✓, and hidden items stay hidden.</p>
+      </div>
+      <div class="card reveal">
+        <h3 class="label">Web search fallbacks</h3>
+        <p>No match? Send the query to Google or DuckDuckGo. Both also take a query in an argument pill: <kbd>Tab</kbd> into it and type.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="calculator">
+  <div class="connector" style="--c: var(--brand-red)" aria-hidden="true">
+    <div class="track"><div class="fill"></div><div class="head"></div></div>
+  </div>
+  <div class="wrap calcwrap">
+    <div>
+      <div class="head reveal" style="margin-bottom:28px">
+        <h2 class="display">Just type the question.</h2>
+        <p>A calculator built into the search bar, with its own engine and no extra dependencies. Answers show above the results as you type.</p>
+      </div>
+      <ul class="calc-list">
+        <li class="reveal"><span><b>Math</b>: arithmetic, powers, roots, trig and more</span></li>
+        <li class="reveal"><span><b>Percentages</b>: <code>$30 + 20%</code>, <code>20% off 50</code>, <code>50 as a % of 200</code></span></li>
+        <li class="reveal"><span><b>Units</b>: about 250 of them, mixed units like <code>5 ft 3 in</code>, and CSS <code>px</code> / <code>rem</code></span></li>
+        <li class="reveal"><span><b>Currencies</b>: daily ECB rates, cached for the day</span></li>
+        <li class="reveal"><span><b>Dates and time zones</b>: <code>3 days from now</code>, <code>days until christmas</code>, <code>3pm london to nyc</code></span></li>
+        <li class="reveal"><span><b>Number bases, work time and Unix time</b></span></li>
+      </ul>
+      <p class="note"><kbd>↵</kbd> copies the answer, <kbd>Ctrl</kbd> <kbd>↵</kbd> pastes it, <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>C</kbd> copies “question = answer”.</p>
+    </div>
+    <div class="window reveal">
+      <div class="window-bar"><span class="dots"><i></i><i></i><i></i></span>calculator</div>
+      <!-- Answers computed with omacast's own engine (core/Calculator.js). -->
+      <div class="rows" data-on="calc">
+        <div class="crow"><span class="q" data-q="$30 + 20%" data-c="Percentage"></span><span class="arrow">→</span><span class="a">$36.00<small>US Dollar (USD)</small></span></div>
+        <div class="crow"><span class="q" data-q="5 ft 3 in to cm" data-c="Feet"></span><span class="arrow">→</span><span class="a">160.02 cm<small>Centimeters</small></span></div>
+        <div class="crow"><span class="q" data-q="60 mph * 2 h" data-c="Expression"></span><span class="arrow">→</span><span class="a">120 mi<small>Miles</small></span></div>
+        <div class="crow"><span class="q" data-q="1 h 30 min + 45 min" data-c="Expression"></span><span class="arrow">→</span><span class="a">2.25 hours<small>Hours</small></span></div>
+        <div class="crow"><span class="q" data-q="40 hours in work days" data-c="Hours"></span><span class="arrow">→</span><span class="a">5 work days<small>Work Days</small></span></div>
+        <div class="crow"><span class="q" data-q="50 as a % of 200" data-c="Percentage"></span><span class="arrow">→</span><span class="a">25%<small>Percent</small></span></div>
+        <div class="crow"><span class="q" data-q="16px to rem" data-c="Pixels"></span><span class="arrow">→</span><span class="a">1 rem<small>Rem</small></span></div>
+        <div class="crow"><span class="q" data-q="255 to hex" data-c="Number"></span><span class="arrow">→</span><span class="a">0xFF<small>Hexadecimal</small></span></div>
+        <div class="crow"><span class="q" data-q="2^10" data-c="Expression"></span><span class="arrow">→</span><span class="a">1,024<small>One Thousand Twenty-four</small></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="screens">
+  <div class="connector" style="--c: var(--mauve)" aria-hidden="true">
+    <div class="track"><div class="fill"></div><div class="head"></div></div>
+  </div>
+  <div class="wrap">
+    <div class="head reveal">
+      <h2 class="display">Looks like it shipped with Omarchy.</h2>
+    </div>
+    <div class="shots">
+      <figure class="reveal"><div class="window"><img src="/img/search.webp" width="1712" height="1158" loading="lazy" alt="Searching 'screen' lists Omarchy actions with breadcrumbs"></div><figcaption>Every Omarchy action, with breadcrumbs</figcaption></figure>
+      <figure class="reveal"><div class="window"><img src="/img/actions.webp" width="1712" height="1158" loading="lazy" alt="The Ctrl+K action panel open on a result"></div><figcaption><kbd>Ctrl</kbd> <kbd>K</kbd>: actions for any result</figcaption></figure>
+      <figure class="reveal"><div class="window"><img src="/img/fallbacks.webp" width="1712" height="1158" loading="lazy" alt="Web-search fallbacks under the results"></div><figcaption>No match? Search the web</figcaption></figure>
+      <figure class="full reveal"><div class="window"><img src="/img/themes.webp" width="2200" height="1126" loading="lazy" alt="omacast in Tokyo Night, Gruvbox, Rose Pine, Flexoki Light, Everforest and Osaka Jade"></div><figcaption>Follows your Omarchy theme, live</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="keys">
+  <div class="connector" style="--c: var(--lavender)" aria-hidden="true">
+    <div class="track"><div class="fill"></div><div class="head"></div></div>
+  </div>
+  <div class="wrap">
+    <div class="head reveal">
+      <h2 class="display">Hands stay on the keys.</h2>
+      <p>Every action has a shortcut, and <kbd>Ctrl</kbd> <kbd>K</kbd> lists the ones for the selected result.</p>
+    </div>
+    <div class="keys">
+      <div class="key reveal"><span>Open or close omacast</span><span><kbd>Alt</kbd><kbd>Space</kbd></span></div>
+      <div class="key reveal"><span>First, second, third action</span><span><kbd>↵</kbd><kbd>Ctrl ↵</kbd><kbd>Ctrl Shift ↵</kbd></span></div>
+      <div class="key reveal"><span>Action panel</span><span><kbd>Ctrl</kbd><kbd>K</kbd></span></div>
+      <div class="key reveal"><span>Open a new window of an app</span><span><kbd>Shift</kbd><kbd>↵</kbd></span></div>
+      <div class="key reveal"><span>Pick result 1–9</span><span><kbd>Ctrl</kbd><kbd>1–9</kbd></span></div>
+      <div class="key reveal"><span>Move through results</span><span><kbd>↑</kbd><kbd>↓</kbd><kbd>Super J/K</kbd></span></div>
+      <div class="key reveal"><span>Jump between sections</span><span><kbd>Ctrl</kbd><kbd>↑↓</kbd></span></div>
+      <div class="key reveal"><span>Page through results</span><span><kbd>PgUp</kbd><kbd>PgDn</kbd></span></div>
+      <div class="key reveal"><span>Search history (empty search)</span><span><kbd>↑</kbd></span></div>
+      <div class="key reveal"><span>Filter: All, Apps, Commands</span><span><kbd>Ctrl</kbd><kbd>P</kbd></span></div>
+      <div class="key reveal"><span>Into an argument pill</span><span><kbd>Tab</kbd></span></div>
+      <div class="key reveal"><span>Add to favorites · reorder</span><span><kbd>Ctrl Shift F</kbd><kbd>Ctrl Alt ↑↓</kbd></span></div>
+      <div class="key reveal"><span>Copy</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd></span></div>
+      <div class="key reveal"><span>Disable a command</span><span><kbd>Alt</kbd><kbd>Shift</kbd><kbd>D</kbd></span></div>
+      <div class="key reveal"><span>Toast actions (Undo, Copy Error)</span><span><kbd>Ctrl</kbd><kbd>T</kbd></span></div>
+      <div class="key reveal"><span>About the selected result</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>K</kbd></span></div>
+      <div class="key reveal"><span>Paste into the search · clear it</span><span><kbd>Super V</kbd><kbd>Super ⌫</kbd></span></div>
+      <div class="key reveal"><span>Back · back to the start</span><span><kbd>Esc</kbd><kbd>Shift Esc</kbd></span></div>
+      <div class="key reveal"><span>Zoom</span><span><kbd>Ctrl +</kbd><kbd>Ctrl −</kbd><kbd>Ctrl 0</kbd></span></div>
+    </div>
+    <p class="note">Emacs-style <kbd>Ctrl</kbd> <kbd>N</kbd> / <kbd>Ctrl</kbd> <kbd>P</kbd> by default, or switch to vim motions (<kbd>Ctrl</kbd> <kbd>J</kbd> / <kbd>Ctrl</kbd> <kbd>K</kbd>, with the action panel on <kbd>Alt</kbd> <kbd>K</kbd>).</p>
+  </div>
+</section>
+
+<section class="alt" id="configure">
+  <div class="connector" style="--c: var(--green)" aria-hidden="true">
+    <div class="track"><div class="fill"></div><div class="head"></div></div>
+  </div>
+  <div class="wrap">
+    <div class="head reveal">
+      <h2 class="display">Plain files. A real CLI.</h2>
+      <p>Preferences live in a JSON file that applies the moment you save it, and the <code>omacast</code> CLI does the rest, including a doctor that tells you what's wrong.</p>
+    </div>
+    <div class="two">
+      <div class="window code reveal">
+        <div class="window-bar"><span class="dots"><i></i><i></i><i></i></span>~/.config/omacast/config.json</div>
+<pre>{
+  <span class="k">"currencyRates"</span>: <span class="s">true</span>,          <span class="c">// the only network request</span>
+  <span class="k">"clockFormat"</span>: <span class="s">"auto"</span>,          <span class="c">// or "12h" / "24h"</span>
+  <span class="k">"remToPxRate"</span>: <span class="s">16</span>,
+  <span class="k">"workHoursPerDay"</span>: <span class="s">8</span>,
+  <span class="k">"rootFilter"</span>: <span class="s">true</span>,
+  <span class="k">"keepVisibleOnFocusLoss"</span>: <span class="s">false</span>,
+  <span class="k">"clipboardHistory"</span>: <span class="s">true</span>,
+  <span class="k">"clipboardHistoryDuration"</span>: <span class="s">"P1W"</span>
+}</pre>
+      </div>
+      <div class="window code reveal">
+        <div class="window-bar"><span class="dots"><i></i><i></i><i></i></span>terminal</div>
+<pre><span class="c">$</span> omacast call settings.updateGeneralSettings \
+    <span class="s">'{"navigationBindings":"vim-motions"}'</span>
+<span class="c">$</span> omacast run builtin:emoji-picker
+<span class="c">$</span> omacast doctor
+omacast doctor
+  <span class="ok">ok</span>    omarchy-shell is running
+  <span class="ok">ok</span>    plugin answers IPC
+  <span class="ok">ok</span>    backend answers system.healthPing
+  <span class="ok">ok</span>    no QML errors in the shell log
+  <span class="ok">ok</span>    hotkey file ~/.config/hypr/omacast.lua</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <div class="connector" style="--c: var(--peach)" aria-hidden="true">
+    <div class="track"><div class="fill"></div><div class="head"></div></div>
+  </div>
+  <div class="wrap">
+    <div class="head reveal">
+      <h2 class="display">Early, and moving fast.</h2>
+      <p>omacast is built in phases. Search, ranking and the Omarchy integration are done; here's what's next.</p>
+    </div>
+    <div class="road">
+      <div class="done">
+        <h3 class="label"><i style="background:var(--green)"></i>Shipped</h3>
+        <ul>
+          <li class="reveal">Root search &amp; ranking<small>Raycast's ranker, frecency, aliases, favorites</small></li>
+          <li class="reveal">The whole Omarchy menu<small>Breadcrumbs, submenus, live ✓ state</small></li>
+          <li class="reveal">Calculator &amp; Calculator History</li>
+          <li class="reveal">Clipboard History</li>
+          <li class="reveal">Emoji &amp; Symbols</li>
+          <li class="reveal">Switch Theme</li>
+          <li class="reveal">Window-aware app launching</li>
+          <li class="reveal">CLI, doctor and Hyprland setup</li>
+        </ul>
+      </div>
+      <div class="next">
+        <h3 class="label"><i style="background:var(--peach)"></i>Next</h3>
+        <ul>
+          <li class="reveal">Settings view<small>General, Commands, Calculator and Scripts</small></li>
+          <li class="reveal">Script Commands<small>Arguments, inline refresh, confirmation</small></li>
+          <li class="reveal">Deep links<small><code>omacast://</code> URLs</small></li>
+        </ul>
+      </div>
+      <div class="later">
+        <h3 class="label"><i style="background:var(--overlay0)"></i>On the roadmap</h3>
+        <ul>
+          <li class="reveal">Quicklinks</li>
+          <li class="reveal">Snippets &amp; text expansion</li>
+          <li class="reveal">Raycast extensions<small>Built from the open-source raycast/extensions repo</small></li>
+          <li class="reveal">Window management &amp; window switcher</li>
+          <li class="reveal">File search</li>
+          <li class="reveal">Import your <code>.rayconfig</code> from macOS</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="install">
+  <div class="connector" style="--c: var(--sky)" aria-hidden="true">
+    <div class="track"><div class="fill"></div><div class="head"></div></div>
+  </div>
+  <div class="wrap">
+    <div class="head reveal">
+      <h2 class="display">Four commands. That's it.</h2>
+      <p>Needs Omarchy 4 (Hyprland 0.56+). omacast uses only what Omarchy already ships: no new packages, no background services. It's also on the <a href="https://omarchyplugins.com/plugin.html?id=typecraft.omacast">Omarchy plugin marketplace</a>.</p>
+    </div>
+    <div class="steps">
+      <div class="step reveal"><div>
+        <h3 class="label">Add the plugin</h3>
+        <div class="window code"><pre data-on="type" data-text="omarchy plugin add https://github.com/typecraft-dev/oma-cast --enable">omarchy plugin add https://github.com/typecraft-dev/oma-cast --enable</pre><button class="copy" type="button">Copy</button></div>
+      </div></div>
+      <div class="step reveal"><div>
+        <h3 class="label">Link the CLI</h3>
+        <div class="window code"><pre data-on="type" data-text="~/.config/omarchy/plugins/typecraft.omacast/bin/omacast install">~/.config/omarchy/plugins/typecraft.omacast/bin/omacast install</pre><button class="copy" type="button">Copy</button></div>
+      </div></div>
+      <div class="step reveal"><div>
+        <h3 class="label">Bind the hotkey</h3>
+        <p>Shows what it will change and asks first. It never edits Omarchy's own files.</p>
+        <div class="window code"><pre data-on="type" data-text="omacast setup hyprland">omacast setup hyprland</pre><button class="copy" type="button">Copy</button></div>
+      </div></div>
+      <div class="step reveal"><div>
+        <h3 class="label">Check everything is wired up</h3>
+        <div class="window code"><pre data-on="type" data-text="omacast doctor">omacast doctor</pre><button class="copy" type="button">Copy</button></div>
+      </div></div>
+    </div>
+    <p class="note">Update with <code>omarchy plugin update typecraft.omacast</code>. Remove with <code>omacast uninstall</code>; your data stays until you delete it.</p>
+  </div>
+</section>
+
+<div class="stripes reveal" aria-hidden="true"></div>
+
+<section class="closing">
+  <div class="wrap">
+    <svg class="big-icon" viewBox="0 0 30 30" aria-hidden="true"><use href="#logo"/><path class="cursor" d="M13 13H17V17H13Z" fill="#E74553"/></svg>
+    <h2 class="display reveal">Ready to launch?</h2>
+    <p class="reveal">Install it, press <kbd>Alt</kbd> <kbd>Space</kbd>, and start typing.</p>
+    <div class="cta reveal">
+      <a class="btn primary" href="#install">Install omacast</a>
+      <button class="btn" type="button" data-try hidden>Try it in your browser <kbd>/</kbd></button>
+      <a class="btn" href="https://github.com/typecraft-dev/oma-cast">Star it on GitHub</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a class="brand display" href="#top" aria-label="omacast home">
+      <svg viewBox="0 0 30 30" aria-hidden="true"><use href="#logo"/><path class="cursor" d="M13 13H17V17H13Z" fill="#E74553"/></svg>omacast
+    </a>
+    <p>made with ❤️ by <a href="https://typecraft.dev">typecraft</a></p>
+  </div>
+</footer>
+
+<!-- /demo/core.js is omacast's own core/*.js, bundled by site/build.mjs -->
+<script src="/demo/core.js" defer></script>
+<script src="/launcher.js" defer></script>
+<script src="/app.js" defer></script>
+</body>
+</html>
