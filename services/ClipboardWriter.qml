@@ -26,12 +26,14 @@ Item {
   }
 
   // Constant scripts: no caller text ever reaches the command line. $1 is a
-  // MIME type, $2 a file to copy instead of stdin.
-  readonly property string copyScript: 'if [[ $2 ]]; then exec wl-copy ${1:+--type "$1"} <"$2"; else exec wl-copy ${1:+--type "$1"}; fi'
+  // MIME type, $2 a file to copy instead of stdin. Text with no type is
+  // text/plain: bare wl-copy sniffs stdin, and a value like "4" or "%PDF-1"
+  // would then be offered only as a non-text type.
+  readonly property string copyScript: 'if [[ $2 ]]; then exec wl-copy --type "${1:-text/plain}" <"$2"; else exec wl-copy --type "${1:-text/plain}"; fi'
   // Wait for the launcher to unmap, as omarchy-clipboard-paste-text does.
   // Terminals take Ctrl+Shift+V (SPEC §5.3): most map Shift+Insert to the
   // primary selection, and Herdr passes it to the pane's program.
-  readonly property string pasteScript: 'if [[ $2 ]]; then wl-copy ${1:+--type "$1"} <"$2"; else wl-copy ${1:+--type "$1"}; fi || exit; sleep 0.15
+  readonly property string pasteScript: 'if [[ $2 ]]; then wl-copy --type "${1:-text/plain}" <"$2"; else wl-copy --type "${1:-text/plain}"; fi || exit; sleep 0.15
 class=$(hyprctl activewindow -j 2>/dev/null | jq -r ".class // empty" 2>/dev/null)
 case ${class,,} in
   *alacritty*|*kitty*|foot|footclient|*wezterm*|*ghostty*|*konsole*|*gnome-terminal*|*gnome.terminal*|*ptyxis*|*herdr*)

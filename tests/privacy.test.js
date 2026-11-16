@@ -131,7 +131,9 @@ function runClipboardScript(t, kind, windowClass) {
 
 for (const kind of ["copy", "paste"]) {
   test(`calculator ${kind} keeps the text out of every command line`, (t) => {
-    runClipboardScript(t, kind, "")
+    const cmdlines = runClipboardScript(t, kind, "")
+    // No MIME type means text: bare wl-copy would sniff "4" as a non-text type.
+    assert.match(cmdlines, /wl-copy --type text\/plain/, "offer the text as text, not a sniffed type")
     // $1 is a MIME type and $2 a file in our clipboard dir (ClipboardWriter.send);
     // $@, $*, $3… would mean more of the caller's data on the command line.
     assert.doesNotMatch(clipboardScripts()[kind], /\$\{?([03-9@*#])/, "the script reads only $1 and $2")
