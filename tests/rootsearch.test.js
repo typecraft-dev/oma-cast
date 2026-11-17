@@ -153,6 +153,11 @@ test("the root filter narrows by type and drops calculator and fallbacks", () =>
   assert.deepEqual(RS.FILTERS.map((f) => f.id), ["all", "applications", "commands"])
 })
 
+test("isFilter accepts only the root filter ids", () => {
+  for (const f of RS.FILTERS) assert.equal(RS.isFilter(f.id), true)
+  for (const bad of ["", "apps", "All", undefined, null, 1]) assert.equal(RS.isFilter(bad), false)
+})
+
 test("power commands and delete-all ask for confirmation", () => {
   assert.equal(RS.confirmationFor("omarchy:system.shutdown", "open").primary, "Shut Down")
   assert.equal(RS.confirmationFor("omarchy:system.shutdown", "copy-command"), null)

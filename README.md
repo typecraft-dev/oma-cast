@@ -285,6 +285,7 @@ disabled command, use Undo on the toast (`Ctrl+T`), or remove its `"enabled": fa
 
 ```sh
 omacast toggle | show | hide
+omacast toggle applications     # open on one root filter: all, applications or commands
 omacast run <commandId>         # e.g. builtin:emoji-picker, app:com.mitchellh.ghostty, omarchy:appearance.theme
 omacast call <method> [json]    # call any backend method; omacast call system.info lists them
 omacast doctor                  # checks the shell, IPC, the backend, QML errors in the shell log, and the hotkey
@@ -293,8 +294,18 @@ omacast build-search            # build the optional search helper (needs cargo)
 omacast install | uninstall
 ```
 
-Global shortcuts for Hyprland binds: `omacast:toggle`, `omacast:clipboard`, `omacast:emoji`, `omacast:theme`.
+Global shortcuts for Hyprland binds: `omacast:toggle`, `omacast:toggle-all`, `omacast:toggle-applications`,
+`omacast:toggle-commands`, `omacast:clipboard`, `omacast:emoji`, `omacast:theme`.
 Bind them with `submap_universal = true` so they still work while omacast is open.
+
+The `toggle-<filter>` shortcuts open the launcher on that root filter, the way Omarchy splits
+Super+Space (menu) and Super+Alt+Space (apps). Pressed while omacast shows another filter or view,
+they switch to it; pressed again, they close it. Plain `omacast:toggle` keeps the filter you left.
+
+```lua
+o.bind("ALT + SPACE", "omacast", hl.dsp.global("omacast:toggle-all"), { submap_universal = true })
+o.bind("SUPER + ALT + SPACE", "omacast apps", hl.dsp.global("omacast:toggle-applications"), { submap_universal = true })
+```
 
 ### Dependencies and network access
 
