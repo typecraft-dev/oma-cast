@@ -160,7 +160,7 @@ PanelWindow {
   // input instead of searching; a form edits its focused field there.
   readonly property bool editor: ["alias", "quicklink-form", "quicklink-import"].indexOf(window.view.kind) >= 0
   readonly property bool formActive: window.view.kind === "quicklink-form"
-  readonly property var focusedField: window.formActive ? window.view.fields[window.view.focus] : null
+  readonly property var focusedField: window.view.kind === "quicklink-form" ? window.view.fields[window.view.focus] : null
   // The Open With field filters installed apps instead of taking text.
   readonly property bool pickingApp: !!(window.focusedField && window.focusedField.picker)
   readonly property bool pickedSelected: window.pickingApp && !!window.selectedRow && window.selectedRow.itemId === (window.focusedField.value || "")
@@ -1562,7 +1562,7 @@ PanelWindow {
           window.backend.storeRevision
           if (window.view.kind === "alias") return { title: "Save Alias", shortcut: "↵" }
           if (window.pickingApp) return { title: window.pickedSelected ? "Save Quicklink" : "Select App", shortcut: "↵" }
-          if (window.formActive) return { title: window.view.focus >= window.view.fields.length - 1 ? "Save Quicklink" : "Next Field", shortcut: "↵" }
+          if (window.view.kind === "quicklink-form") return { title: window.view.focus >= window.view.fields.length - 1 ? "Save Quicklink" : "Next Field", shortcut: "↵" }
           if (window.view.kind === "quicklink-import") return { title: window.query ? "Import File" : "Import Clipboard", shortcut: "↵" }
           var list = window.actionsForSelected()
           return list.length ? list[0] : null
