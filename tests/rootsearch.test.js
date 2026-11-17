@@ -1,9 +1,9 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const Ranker = require("../plugin/core/Ranker.js")
-const Frecency = require("../plugin/core/Frecency.js")
-const OmarchyMenu = require("../plugin/core/OmarchyMenu.js")
-const RS = require("../plugin/core/RootSearch.js")
+const Ranker = require("../core/Ranker.js")
+const Frecency = require("../core/Frecency.js")
+const OmarchyMenu = require("../core/OmarchyMenu.js")
+const RS = require("../core/RootSearch.js")
 
 const deps = { Ranker, Frecency, OmarchyMenu }
 const NOW = Date.UTC(2026, 9, 19, 12)
@@ -51,18 +51,7 @@ test("a query always ends with the fallback section", () => {
   assert.equal(sections.length, 1)
   assert.equal(sections[0].id, "fallback-commands")
   assert.equal(sections[0].title, "Use “zzzz-nothing” with…")
-  assert.deepEqual(titles(sections[0]), ["Search Google", "Search DuckDuckGo", "Ask default agent"])
-})
-
-test("agent hand-off is explicit, stays after apps/web search, and only appears at root with a query", () => {
-  const sections = results("firefox")
-  assert.equal(sections[0].rows[0].candidate.id, "app:firefox")
-  const row = sections.at(-1).rows.at(-1).candidate
-  assert.equal(row.id, "fallback:agent")
-  assert.match(row.subtitle, /Ctrl\+Alt\+Enter/)
-  assert.deepEqual(RS.actionsFor(row).map(a => a.id), ["open"])
-  assert.ok(!results("").flatMap(s => s.rows).some(r => r.candidate.id === row.id))
-  assert.ok(!RS.submenuSections(candidates(), "trigger", "question?", ctx(), deps).flatMap(s => s.rows).some(r => r.candidate.id === row.id))
+  assert.deepEqual(titles(sections[0]), ["Search Google", "Search DuckDuckGo"])
 })
 
 test("an exact alias puts its command on top (Phase 1 accept)", () => {
@@ -146,7 +135,7 @@ test("fallback URLs encode the query", () => {
 })
 
 test("a web address offers Open in Browser and Create Quicklink before the fallbacks", () => {
-  const Quicklinks = require("../plugin/core/Quicklinks.js")
+  const Quicklinks = require("../core/Quicklinks.js")
   const sections = RS.rootSections(candidates(), "github.com/x", ctx(), Object.assign({ Quicklinks }, deps))
   const link = sections.find((s) => s.id === "url")
   assert.deepEqual(titles(link), ["Open in Browser", "Create Quicklink"])
@@ -156,7 +145,7 @@ test("a web address offers Open in Browser and Create Quicklink before the fallb
 })
 
 test("quicklinks are searched from the root and listed by name in Search Quicklinks", () => {
-  const Quicklinks = require("../plugin/core/Quicklinks.js")
+  const Quicklinks = require("../core/Quicklinks.js")
   const links = [{ id: "a", name: "Maps", link: "x.com" }, { id: "b", name: "GitHub", link: "github.com" }].map(Quicklinks.toCandidate)
   const all = candidates().concat(links)
   assert.equal(RS.rootSections(all, "", ctx(), deps).some((s) => s.rows.some((r) => r.candidate.type === "quicklink")), false)

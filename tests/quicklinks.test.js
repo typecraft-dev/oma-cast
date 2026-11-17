@@ -1,8 +1,8 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const Q = require("../plugin/core/Quicklinks.js")
-const Migrate = require("../plugin/core/Migrate.js")
-const Schema = require("../plugin/core/Schema.js")
+const Q = require("../core/Quicklinks.js")
+const Migrate = require("../core/Migrate.js")
+const Schema = require("../core/Schema.js")
 
 const NOW = new Date(2026, 9, 20, 9, 5, 7).getTime()   // Tue 20 Oct 2026 09:05:07, local time
 const apps = Q.installedApps([
@@ -182,7 +182,7 @@ test("Create Quicklink suggests a name and link from a URL or path, nothing else
 })
 
 test("quicklink arguments use the argument-pill shape", () => {
-  const RS = require("../plugin/core/RootSearch.js")
+  const RS = require("../core/RootSearch.js")
   const c = Q.toCandidate({ id: "a", name: "Repo", link: "https://github.com/{argument name=owner}/{argument name=repo default=oma-cast}?tab={argument name=tab options=\"Code,Issues\"}" })
   assert.deepEqual(c.arguments.map((a) => [a.name, a.required, a.placeholder]), [["owner", true, "owner"], ["repo", false, "oma-cast"], ["tab", true, "tab ▾"]])
   assert.equal(RS.missingArgument(c.arguments, { repo: "x" }), 0)

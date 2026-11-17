@@ -1,6 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const F = require("../plugin/core/Frecency.js")
+const F = require("../core/Frecency.js")
 
 const T = 1_800_000_000
 const DAY = 86400

@@ -1,6 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const Log = require("../plugin/core/Log.js")
+const Log = require("../core/Log.js")
 
 test("levels filter by threshold, unknown levels count as info", () => {
   assert.ok(Log.shouldLog("error", "info"))
@@ -10,6 +10,6 @@ test("levels filter by threshold, unknown levels count as info", () => {
 })
 
 test("lines carry level, category and one-line metadata", () => {
-  assert.equal(Log.format("warning", "store", "slow", { ms: 3 }), '[oma-cast] [warning] [store] slow {"ms":3}')
-  assert.equal(Log.format("info", "", "hi"), "[oma-cast] [info] hi")
+  assert.equal(Log.format("warning", "store", "slow", { ms: 3 }), '[omacast] [warning] [store] slow {"ms":3}')
+  assert.equal(Log.format("info", "", "hi"), "[omacast] [info] hi")
 })

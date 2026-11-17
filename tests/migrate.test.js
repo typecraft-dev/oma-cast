@@ -1,7 +1,7 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const Migrate = require("../plugin/core/Migrate.js")
-const Schema = require("../plugin/core/Schema.js")
+const Migrate = require("../core/Migrate.js")
+const Schema = require("../core/Schema.js")
 
 const migrations = [
   { version: 1, name: "init", up: (d) => { d.items = []; return d } },
@@ -93,5 +93,11 @@ test("config rejects out-of-range calculator values and unknown choices", () => 
   assert.equal(c.workHoursPerDay, 8, "zero hours falls back to the default")
   assert.equal(c.clockFormat, "24h")
   assert.equal(Schema.withConfigDefaults({ clockFormat: "36h" }).clockFormat, "auto")
+  assert.equal(Schema.withConfigDefaults({ clipboardHistoryDuration: "P2W" }).clipboardHistoryDuration, "P1W")
+  assert.deepEqual(Schema.withConfigDefaults({ clipboardDisabledApplications: ["a"] }).clipboardDisabledApplications, ["a"])
+  assert.equal(Schema.withConfigDefaults({ clipboardDisabledApplications: "a" }).clipboardDisabledApplications.length, 5)
+  assert.equal(Schema.withConfigDefaults({}).rootFilter, true)
+  assert.equal(Schema.withConfigDefaults({ rootFilter: false }).rootFilter, false)
+  assert.equal(Schema.withConfigDefaults({ rootFilter: "no" }).rootFilter, true)
   assert.deepEqual(Schema.generalChoices.navigationBindings, ["emacs", "vim-motions"])
 })

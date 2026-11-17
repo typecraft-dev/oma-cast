@@ -1,13 +1,13 @@
 import QtQuick
 import Quickshell
-import "plugin/services"
+import "services"
 
 ShellRoot {
   id: root
-  property bool expectFallback: Quickshell.env("OMA_CAST_EXPECT_FALLBACK") === "1"
+  property bool expectFallback: Quickshell.env("OMACAST_EXPECT_FALLBACK") === "1"
   property int at: 0
   property string failureMessage: ""
-  property string expectedFailure: Quickshell.env("OMA_CAST_EXPECT_FAILURE") || ""
+  property string expectedFailure: Quickshell.env("OMACAST_EXPECT_FAILURE") || ""
   property var queries: ["chormium", "cafe", "lcok"]
   property var expected: ["chrome", "cafe", "lock"]
 
@@ -34,7 +34,7 @@ ShellRoot {
   }
 
   Component.onCompleted: {
-    var override = Quickshell.env("OMA_CAST_TEST_HELPER")
+    var override = Quickshell.env("OMACAST_TEST_HELPER")
     if (override) search.executable = override
     Qt.callLater(root.next)
   }

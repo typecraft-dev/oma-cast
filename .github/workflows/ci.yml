@@ -32,9 +32,9 @@ jobs:
 
       - name: Shell syntax
         run: |
-          for script in bin/oma-cast bin/build-search tests/smoke.sh tests/native-transport.sh; do
+          for script in bin/omacast bin/build-search tests/smoke.sh tests/native-transport.sh; do
             bash -n "$script"
           done
 
       - name: Plugin manifest is valid JSON
-        run: node -e 'JSON.parse(require("fs").readFileSync("plugin/manifest.json", "utf8"))'
+        run: node -e 'JSON.parse(require("fs").readFileSync("manifest.json", "utf8"))'

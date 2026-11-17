@@ -1,0 +1,7 @@
+{
+  // Static site on Cloudflare Pages, served at omacast.typecraft.dev.
+  // Deploy from this directory: npx wrangler pages deploy --branch main
+  "name": "omacast",
+  "compatibility_date": "2026-11-01",
+  "pages_build_output_dir": "./public"
+}

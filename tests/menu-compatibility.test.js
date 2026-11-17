@@ -5,13 +5,13 @@ const os = require("node:os")
 const path = require("node:path")
 const vm = require("node:vm")
 const { execFileSync } = require("node:child_process")
-const OmarchyMenu = require("../plugin/core/OmarchyMenu.js")
-const RootSearch = require("../plugin/core/RootSearch.js")
-const Ranker = require("../plugin/core/Ranker.js")
-const Frecency = require("../plugin/core/Frecency.js")
+const OmarchyMenu = require("../core/OmarchyMenu.js")
+const RootSearch = require("../core/RootSearch.js")
+const Ranker = require("../core/Ranker.js")
+const Frecency = require("../core/Frecency.js")
 
 const deps = { OmarchyMenu, Ranker, Frecency }
-const backendSource = fs.readFileSync(path.join(__dirname, "../plugin/Backend.qml"), "utf8")
+const backendSource = fs.readFileSync(path.join(__dirname, "../Backend.qml"), "utf8")
 
 function backendFunction(name, params, context) {
   const signature = "function " + name + "(" + params + ")"
@@ -97,7 +97,7 @@ test("kernel rows obey the menu visibility guard and remain searchable when visi
 })
 
 test("kernel enumeration reads list/get and set receives the selected value literally", t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oma-cast-kernels-"))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omacast-kernels-"))
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
   fs.writeFileSync(path.join(dir, "omarchy-kernel"), '#!/bin/bash\ncase "$1" in\nget) echo linux-lts ;;\nlist) printf "linux\\nlinux-lts\\n" ;;\nset) printf "%s\\0" "$@" ;;\n*) exit 1 ;;\nesac\n', { mode: 0o755 })
   const env = { ...process.env, PATH: dir + ":" + process.env.PATH }

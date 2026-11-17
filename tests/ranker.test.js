@@ -1,6 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const R = require("../plugin/core/Ranker.js")
+const R = require("../core/Ranker.js")
 
 const NOW = 1_800_000_000_000
 const DAY_MS = 86_400_000
