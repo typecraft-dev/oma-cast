@@ -24,6 +24,16 @@ var BUILTINS = [
   webSearch(FALLBACKS[0], []),
   webSearch(FALLBACKS[1], ["ddg"]),
   {
+    id: "builtin:browser-bookmarks",
+    title: "Search Browser Bookmarks",
+    subtitle: "Type “b <query>” to search",
+    glyph: "",
+    keywords: ["b", "bookmark", "bookmarks", "browser", "brave", "chrome", "history"],
+    alias: "b",
+    run: { setQuery: "b " },
+    rootSearch: { when: "searching" }
+  },
+  {
     id: "builtin:omarchy-menu",
     title: "Omarchy Menu",
     subtitle: "Open the original Omarchy menu",
@@ -306,17 +316,43 @@ function passesFilter(candidate, filter) {
 }
 
 function rootSections(candidates, query, ctx, deps) {
-  var q = String(query || "").trim()
+  var rawQ = String(query || "")
+  var q = rawQ.trim()
   var filtered = ctx.filter && ctx.filter !== "all"
-  var decorated = []
-  for (var i = 0; i < candidates.length; i++) {
-    if (!isEnabled(candidates[i], ctx) || !passesFilter(candidates[i], ctx.filter)) continue
-    decorated.push(decorate(candidates[i], ctx, deps))
-  }
   var opts = rankOptions(ctx)
 
+  // Handle "b " or "B " prefix for Browser Bookmarks search
+  if (/^[bB]\s+/.test(rawQ)) {
+    var bQuery = rawQ.replace(/^[bB]\s+/, "").trim()
+    var rawBookmarks = (ctx && ctx.bookmarks) ? ctx.bookmarks : candidates.filter(function(c) { return c.kind === "bookmark" })
+    var bResults = []
+    if (bQuery) {
+      bResults = deps.Ranker.rank(rawBookmarks, bQuery, opts)
+    } else {
+      bResults = rawBookmarks.slice(0, 50).map(function(c) { return { candidate: c, record: null } })
+    }
+    var bSections = []
+    if (bResults.length > 0) {
+      bSections.push({
+        id: "bookmarks",
+        title: "Browser Bookmarks" + (bQuery ? " · “" + bQuery + "”" : ""),
+        rows: bResults
+      })
+    }
+    if (bQuery) {
+      bSections.push({ id: "fallback-commands", title: "Search web for “" + bQuery + "”…", rows: fallbackRows(bQuery) })
+    }
+    return bSections
+  }
+
+  var decorated = []
+  for (var i = 0; i < candidates.length; i++) {
+    if (!isEnabled(candidates[i], ctx) || !passesFilter(candidates[i], ctx.filter) || candidates[i].kind === "bookmark") continue
+    decorated.push(decorate(candidates[i], ctx, deps))
+  }
+
   if (q) {
-    var searchable = decorated.filter(function(c) { return c.rootSearch.when !== "empty" })
+    var searchable = decorated.filter(function(c) { return c.rootSearch.when !== "empty" && c.kind !== "bookmark" })
     var results = deps.Ranker.rank(searchable, q, opts)
     var sections = []
     if (ctx.calculation && !filtered) sections.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
@@ -389,11 +425,14 @@ function actionsFor(candidate) {
     case "omarchy-link": primary = { id: "open", title: "Open Menu", icon: "" }; break
     case "fallback": primary = { id: "open", title: candidate.title, icon: "" }; break
     case "script": primary = { id: "open", title: "Run Script", icon: "\uf120" }; break
+    case "bookmark": primary = { id: "open", title: "Open in Browser", icon: "" }; break
     default: primary = { id: "open", title: "Open Command", icon: "" }
   }
   primary.shortcut = "↵"
   primary.section = "primary"
   list.push(primary)
+
+  if (candidate.kind === "bookmark") list.push({ id: "copy-url", title: "Copy URL", shortcut: "Ctrl Shift C", section: "copy", icon: "" })
 
   if (candidate.kind && candidate.kind.indexOf("omarchy-") === 0)
     list.push({ id: "open-in-omarchy-menu", title: "Open in Omarchy Menu", shortcut: "Ctrl ↵", section: "primary", icon: "" })

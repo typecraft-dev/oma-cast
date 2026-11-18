@@ -500,6 +500,7 @@ PanelWindow {
     var r = window.backend.callSync("rootSearch.performAction", payload)
     if (!r.ok) { window.showToast("failure", r.error); return }
     var outcome = r.data || {}
+    if (outcome.setQuery !== undefined) { window.setQuery(outcome.setQuery); return }
     if (outcome.confirm) { window.alert = { spec: outcome.confirm, payload: payload }; return }
     if (outcome.push) { window.push(outcome.push); return }
     if (outcome.close) {
