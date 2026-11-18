@@ -241,6 +241,9 @@ PanelWindow {
     Hyprland.dispatch('hl.dsp.submap("' + (window.shown ? "omacast" : "reset") + '")')
     if (window.shown) {
       var target = window.focusedScreen()
+      // An output that goes away (lid, suspend, dock) takes the layer surface
+      // with it, while `visible` stays true: unmap first, or nothing maps again.
+      if (window.mapped && !window.backingWindowVisible) window.mapped = false
       if (target !== window.pinnedScreen) window.pinnedScreen = target
       window.mapped = true
       glassToggle.reload()
