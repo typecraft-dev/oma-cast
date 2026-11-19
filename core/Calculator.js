@@ -5,7 +5,7 @@
 //   arithmetic      2+2, 3(4+5), 2^10, 5!, 10 mod 3, sqrt 16, sin(30°), 2pi
 //   percentages     20% of 50, 20% off 50, 20% on 50, $30 + 20%, 50 as a % of 200
 //   units           5 ft to cm, 60 mph in km/h, 1 GiB to MB, 100 °F to °C, 16px to rem
-//   currencies      10 usd to eur, €30 in £, $5k + 10%   (env.rates, ECB via frankfurter)
+//   currencies      10 usd to eur, €30 in £, $5k + 10%   (env.rates, central banks via frankfurter)
 //   dates           3 days from now, christmas - today, days until dec 25, 2 weeks ago
 //   time zones      time in tokyo, tokyo time, 3pm london to new york   (env.zones)
 //   bases           255 to hex, 0xff + 1, 10 in binary
@@ -254,8 +254,8 @@ def(["pt"], ["point", "points"], { P: 1 }, 4 / 3)
 var REM = def(["rem"], ["rem", "rems"], { P: 1 }, 16)
 var EM = def(["em"], ["em", "ems"], { P: 1 }, 16)
 
-// Currencies: ECB reference rates (frankfurter.app). factor is resolved per
-// call from env.rates, so it is 0 here.
+// Currencies: central-bank reference rates (frankfurter.dev). factor is
+// resolved per call from env.rates, so it is 0 here.
 var CURRENCIES = {
   USD: { symbol: "$", names: ["dollar", "dollars", "us dollar", "us dollars", "buck", "bucks", "usd"] },
   EUR: { symbol: "€", names: ["euro", "euros", "eur"] },
@@ -288,12 +288,153 @@ var CURRENCIES = {
   PHP: { symbol: "", names: ["philippine peso", "philippine pesos", "php"] },
   IDR: { symbol: "", names: ["rupiah", "indonesian rupiah", "idr"], decimals: 0 }
 }
+// The other currencies frankfurter.dev v2 publishes, from central banks
+// beyond the ECB. They have no symbol ("12.34 AED") and are named in full
+// only, so a name here never takes over a unit or a currency above. label
+// is the caption; names are what the parser accepts.
+var MORE_CURRENCIES = {
+  AED: { label: "United Arab Emirates Dirham", names: ["united arab emirates dirham", "united arab emirates dirhams"] },
+  AFN: { label: "Afghan Afghani", names: ["afghan afghani", "afghan afghanis"] },
+  ALL: { label: "Albanian Lek", names: ["albanian lek", "albanian leks"] },
+  AMD: { label: "Armenian Dram", names: ["armenian dram", "armenian drams"] },
+  ANG: { label: "Netherlands Antillean Guilder", names: ["netherlands antillean guilder", "netherlands antillean guilders"] },
+  AOA: { label: "Angolan Kwanza", names: ["angolan kwanza", "angolan kwanzas"] },
+  ARS: { label: "Argentine Peso", names: ["argentine peso", "argentine pesos"] },
+  AWG: { label: "Aruban Florin", names: ["aruban florin", "aruban florins"] },
+  AZN: { label: "Azerbaijani Manat", names: ["azerbaijani manat", "azerbaijani manats"] },
+  BAM: { label: "Bosnia and Herzegovina Convertible Mark", names: ["bosnia and herzegovina convertible mark", "bosnia and herzegovina convertible marks"] },
+  BBD: { label: "Barbadian Dollar", names: ["barbadian dollar", "barbadian dollars"] },
+  BDT: { label: "Bangladeshi Taka", names: ["bangladeshi taka", "bangladeshi takas"] },
+  BHD: { label: "Bahraini Dinar", names: ["bahraini dinar", "bahraini dinars"], decimals: 3 },
+  BIF: { label: "Burundian Franc", names: ["burundian franc", "burundian francs"], decimals: 0 },
+  BMD: { label: "Bermudian Dollar", names: ["bermudian dollar", "bermudian dollars"] },
+  BND: { label: "Brunei Dollar", names: ["brunei dollar", "brunei dollars"] },
+  BOB: { label: "Bolivian Boliviano", names: ["bolivian boliviano", "bolivian bolivianos"] },
+  BSD: { label: "Bahamian Dollar", names: ["bahamian dollar", "bahamian dollars"] },
+  BTN: { label: "Bhutanese Ngultrum", names: ["bhutanese ngultrum", "bhutanese ngultrums"] },
+  BWP: { label: "Botswana Pula", names: ["botswana pula", "botswana pulas"] },
+  BYN: { label: "Belarusian Ruble", names: ["belarusian ruble", "belarusian rubles"] },
+  BZD: { label: "Belize Dollar", names: ["belize dollar", "belize dollars"] },
+  CDF: { label: "Congolese Franc", names: ["congolese franc", "congolese francs"] },
+  CLP: { label: "Chilean Peso", names: ["chilean peso", "chilean pesos"], decimals: 0 },
+  CMD: { label: "COMESA Dollar", names: ["comesa dollar", "comesa dollars"] },
+  CNH: { label: "Chinese Renminbi Yuan Offshore", names: ["chinese renminbi yuan offshore", "chinese renminbi yuan offshores"] },
+  COP: { label: "Colombian Peso", names: ["colombian peso", "colombian pesos"] },
+  CRC: { label: "Costa Rican Colón", names: ["costa rican colón", "costa rican colóns", "costa rican colon", "costa rican colons"] },
+  CUP: { label: "Cuban Peso", names: ["cuban peso", "cuban pesos"] },
+  CVE: { label: "Cape Verdean Escudo", names: ["cape verdean escudo", "cape verdean escudos"] },
+  DJF: { label: "Djiboutian Franc", names: ["djiboutian franc", "djiboutian francs"], decimals: 0 },
+  DOP: { label: "Dominican Peso", names: ["dominican peso", "dominican pesos"] },
+  DZD: { label: "Algerian Dinar", names: ["algerian dinar", "algerian dinars"] },
+  EGP: { label: "Egyptian Pound", names: ["egyptian pound", "egyptian pounds"] },
+  ERN: { label: "Eritrean Nakfa", names: ["eritrean nakfa", "eritrean nakfas"] },
+  ETB: { label: "Ethiopian Birr", names: ["ethiopian birr", "ethiopian birrs"] },
+  FJD: { label: "Fijian Dollar", names: ["fijian dollar", "fijian dollars"] },
+  FKP: { label: "Falkland Pound", names: ["falkland pound", "falkland pounds"] },
+  GEL: { label: "Georgian Lari", names: ["georgian lari", "georgian laris"] },
+  GGP: { label: "Guernsey Pound", names: ["guernsey pound", "guernsey pounds"] },
+  GHS: { label: "Ghanaian Cedi", names: ["ghanaian cedi", "ghanaian cedis"] },
+  GIP: { label: "Gibraltar Pound", names: ["gibraltar pound", "gibraltar pounds"] },
+  GMD: { label: "Gambian Dalasi", names: ["gambian dalasi", "gambian dalasis"] },
+  GNF: { label: "Guinean Franc", names: ["guinean franc", "guinean francs"], decimals: 0 },
+  GTQ: { label: "Guatemalan Quetzal", names: ["guatemalan quetzal", "guatemalan quetzals"] },
+  GYD: { label: "Guyanese Dollar", names: ["guyanese dollar", "guyanese dollars"] },
+  HNL: { label: "Honduran Lempira", names: ["honduran lempira", "honduran lempiras"] },
+  HTG: { label: "Haitian Gourde", names: ["haitian gourde", "haitian gourdes"] },
+  IMP: { label: "Isle of Man Pound", names: ["isle of man pound", "isle of man pounds"] },
+  IQD: { label: "Iraqi Dinar", names: ["iraqi dinar", "iraqi dinars"], decimals: 3 },
+  IRR: { label: "Iranian Rial", names: ["iranian rial", "iranian rials"] },
+  JEP: { label: "Jersey Pound", names: ["jersey pound", "jersey pounds"] },
+  JMD: { label: "Jamaican Dollar", names: ["jamaican dollar", "jamaican dollars"] },
+  JOD: { label: "Jordanian Dinar", names: ["jordanian dinar", "jordanian dinars"], decimals: 3 },
+  KES: { label: "Kenyan Shilling", names: ["kenyan shilling", "kenyan shillings"] },
+  KGS: { label: "Kyrgyzstani Som", names: ["kyrgyzstani som", "kyrgyzstani soms"] },
+  KHR: { label: "Cambodian Riel", names: ["cambodian riel", "cambodian riels"] },
+  KMF: { label: "Comorian Franc", names: ["comorian franc", "comorian francs"], decimals: 0 },
+  KPW: { label: "North Korean Won", names: ["north korean won", "north korean wons"] },
+  KWD: { label: "Kuwaiti Dinar", names: ["kuwaiti dinar", "kuwaiti dinars"], decimals: 3 },
+  KYD: { label: "Cayman Islands Dollar", names: ["cayman islands dollar", "cayman islands dollars"] },
+  KZT: { label: "Kazakhstani Tenge", names: ["kazakhstani tenge", "kazakhstani tenges"] },
+  LAK: { label: "Lao Kip", names: ["lao kip", "lao kips"] },
+  LBP: { label: "Lebanese Pound", names: ["lebanese pound", "lebanese pounds"] },
+  LKR: { label: "Sri Lankan Rupee", names: ["sri lankan rupee", "sri lankan rupees"] },
+  LRD: { label: "Liberian Dollar", names: ["liberian dollar", "liberian dollars"] },
+  LSL: { label: "Lesotho Loti", names: ["lesotho loti", "lesotho lotis"] },
+  LYD: { label: "Libyan Dinar", names: ["libyan dinar", "libyan dinars"], decimals: 3 },
+  MAD: { label: "Moroccan Dirham", names: ["moroccan dirham", "moroccan dirhams"] },
+  MDL: { label: "Moldovan Leu", names: ["moldovan leu", "moldovan leus"] },
+  MGA: { label: "Malagasy Ariary", names: ["malagasy ariary", "malagasy ariarys"] },
+  MKD: { label: "Macedonian Denar", names: ["macedonian denar", "macedonian denars"] },
+  MMK: { label: "Myanmar Kyat", names: ["myanmar kyat", "myanmar kyats"] },
+  MNT: { label: "Mongolian Tögrög", names: ["mongolian tögrög", "mongolian tögrögs", "mongolian togrog", "mongolian togrogs"] },
+  MOP: { label: "Macanese Pataca", names: ["macanese pataca", "macanese patacas"] },
+  MRU: { label: "Mauritanian Ouguiya", names: ["mauritanian ouguiya", "mauritanian ouguiyas"] },
+  MUR: { label: "Mauritian Rupee", names: ["mauritian rupee", "mauritian rupees"] },
+  MVR: { label: "Maldivian Rufiyaa", names: ["maldivian rufiyaa", "maldivian rufiyaas"] },
+  MWK: { label: "Malawian Kwacha", names: ["malawian kwacha", "malawian kwachas"] },
+  MZN: { label: "Mozambican Metical", names: ["mozambican metical", "mozambican meticals"] },
+  NAD: { label: "Namibian Dollar", names: ["namibian dollar", "namibian dollars"] },
+  NGN: { label: "Nigerian Naira", names: ["nigerian naira", "nigerian nairas"] },
+  NIO: { label: "Nicaraguan Córdoba", names: ["nicaraguan córdoba", "nicaraguan córdobas", "nicaraguan cordoba", "nicaraguan cordobas"] },
+  NPR: { label: "Nepalese Rupee", names: ["nepalese rupee", "nepalese rupees"] },
+  OMR: { label: "Omani Rial", names: ["omani rial", "omani rials"], decimals: 3 },
+  PAB: { label: "Panamanian Balboa", names: ["panamanian balboa", "panamanian balboas"] },
+  PEN: { label: "Peruvian Sol", names: ["peruvian sol", "peruvian sols"] },
+  PGK: { label: "Papua New Guinean Kina", names: ["papua new guinean kina", "papua new guinean kinas"] },
+  PKR: { label: "Pakistani Rupee", names: ["pakistani rupee", "pakistani rupees"] },
+  PYG: { label: "Paraguayan Guaraní", names: ["paraguayan guaraní", "paraguayan guaranís", "paraguayan guarani", "paraguayan guaranis"], decimals: 0 },
+  QAR: { label: "Qatari Riyal", names: ["qatari riyal", "qatari riyals"] },
+  RSD: { label: "Serbian Dinar", names: ["serbian dinar", "serbian dinars"] },
+  RUB: { label: "Russian Ruble", names: ["russian ruble", "russian rubles"] },
+  RWF: { label: "Rwandan Franc", names: ["rwandan franc", "rwandan francs"], decimals: 0 },
+  SAR: { label: "Saudi Riyal", names: ["saudi riyal", "saudi riyals"] },
+  SBD: { label: "Solomon Islands Dollar", names: ["solomon islands dollar", "solomon islands dollars"] },
+  SCR: { label: "Seychellois Rupee", names: ["seychellois rupee", "seychellois rupees"] },
+  SDG: { label: "Sudanese Pound", names: ["sudanese pound", "sudanese pounds"] },
+  SHP: { label: "Saint Helenian Pound", names: ["saint helenian pound", "saint helenian pounds"] },
+  SLE: { label: "New Leone", names: ["new leone", "new leones"] },
+  SOS: { label: "Somali Shilling", names: ["somali shilling", "somali shillings"] },
+  SRD: { label: "Surinamese Dollar", names: ["surinamese dollar", "surinamese dollars"] },
+  SSP: { label: "South Sudanese Pound", names: ["south sudanese pound", "south sudanese pounds"] },
+  STN: { label: "São Tomé and Príncipe Second Dobra", names: ["são tomé and príncipe second dobra", "são tomé and príncipe second dobras", "sao tome and principe second dobra", "sao tome and principe second dobras"] },
+  SVC: { label: "Salvadoran Colón", names: ["salvadoran colón", "salvadoran colóns", "salvadoran colon", "salvadoran colons"] },
+  SYP: { label: "Syrian Pound", names: ["syrian pound", "syrian pounds"] },
+  SZL: { label: "Swazi Lilangeni", names: ["swazi lilangeni", "swazi lilangenis"] },
+  TJS: { label: "Tajikistani Somoni", names: ["tajikistani somoni", "tajikistani somonis"] },
+  TMT: { label: "Turkmenistani Manat", names: ["turkmenistani manat", "turkmenistani manats"] },
+  TND: { label: "Tunisian Dinar", names: ["tunisian dinar", "tunisian dinars"], decimals: 3 },
+  TOP: { label: "Tongan Paʻanga", names: ["tongan paʻanga", "tongan paʻangas", "tongan paanga", "tongan paangas"] },
+  TTD: { label: "Trinidad and Tobago Dollar", names: ["trinidad and tobago dollar", "trinidad and tobago dollars"] },
+  TWD: { label: "New Taiwan Dollar", names: ["new taiwan dollar", "new taiwan dollars"] },
+  TZS: { label: "Tanzanian Shilling", names: ["tanzanian shilling", "tanzanian shillings"] },
+  UAH: { label: "Ukrainian Hryvnia", names: ["ukrainian hryvnia", "ukrainian hryvnias"] },
+  UGX: { label: "Ugandan Shilling", names: ["ugandan shilling", "ugandan shillings"], decimals: 0 },
+  UYU: { label: "Uruguayan Peso", names: ["uruguayan peso", "uruguayan pesos"] },
+  UZS: { label: "Uzbekistan Som", names: ["uzbekistan som", "uzbekistan soms"] },
+  VES: { label: "Venezuelan Bolívar Soberano", names: ["venezuelan bolívar soberano", "venezuelan bolívar soberanos", "venezuelan bolivar soberano", "venezuelan bolivar soberanos"] },
+  VND: { label: "Vietnamese Đồng", names: ["vietnamese đồng", "vietnamese đồngs", "vietnamese dong", "vietnamese dongs"], decimals: 0 },
+  VUV: { label: "Vanuatu Vatu", names: ["vanuatu vatu", "vanuatu vatus"], decimals: 0 },
+  WST: { label: "Samoan Tala", names: ["samoan tala", "samoan talas"] },
+  XAF: { label: "Central African CFA Franc", names: ["central african cfa franc", "central african cfa francs"], decimals: 0 },
+  XCD: { label: "East Caribbean Dollar", names: ["east caribbean dollar", "east caribbean dollars"] },
+  XCG: { label: "Caribbean Guilder", names: ["caribbean guilder", "caribbean guilders"] },
+  XDR: { label: "Special Drawing Rights", names: ["special drawing rights"] },
+  XOF: { label: "West African CFA Franc", names: ["west african cfa franc", "west african cfa francs"], decimals: 0 },
+  XPF: { label: "CFP Franc", names: ["cfp franc", "cfp francs"], decimals: 0 },
+  YER: { label: "Yemeni Rial", names: ["yemeni rial", "yemeni rials"] },
+  ZMW: { label: "Zambian Kwacha", names: ["zambian kwacha", "zambian kwachas"] },
+  ZWG: { label: "Zimbabwe Gold", names: ["zimbabwe gold", "zimbabwe golds"] }
+}
+for (var _more in MORE_CURRENCIES) {
+  var _m = MORE_CURRENCIES[_more]
+  if (!CURRENCIES[_more]) CURRENCIES[_more] = { symbol: "", label: _m.label, names: _m.names, decimals: _m.decimals }
+}
 var CURRENCY_SYMBOLS = { "$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY", "₹": "INR", "₩": "KRW", "₺": "TRY", "₪": "ILS" }
 for (var _code in CURRENCIES) {
   var _c = CURRENCIES[_code]
   var _cu = def([_code], [], { C: 1 }, 0, { currency: _code })
   _cu.name = _code; _cu.plural = _code
-  for (var _n = 0; _n < _c.names.length; _n++) UNIT_NAMES[_c.names[_n]] = _cu
+  for (var _n = 0; _n < _c.names.length; _n++) if (!_c.label || !UNIT_NAMES[_c.names[_n]]) UNIT_NAMES[_c.names[_n]] = _cu
 }
 
 // Words that read as units only right after a number ("5 in", "3 d").
@@ -1250,8 +1391,39 @@ function present(v, state) {
   return { display: group(n), copy: n, caption: numberWords(v.n) }
 }
 
+// Exchange rates as env.rates wants them, or null. Takes frankfurter's v2
+// answer ([{date, base, quote, rate}], one row per currency, each with the
+// date its central bank last published) and the cached {base, date, rates}.
+// date is the newest one. Rows that aren't a 3-letter code with a positive
+// finite rate are dropped.
+function parseRates(doc) {
+  var base = "", date = "", pairs = []
+  if (Array.isArray(doc)) {
+    for (var i = 0; i < doc.length; i++) {
+      var row = doc[i]
+      if (!row || typeof row.base !== "string" || typeof row.quote !== "string") continue
+      if (!base) base = row.base
+      if (row.base !== base) continue
+      pairs.push([row.quote, row.rate])
+      if (typeof row.date === "string" && row.date > date) date = row.date
+    }
+  } else if (doc && typeof doc.base === "string" && doc.rates && typeof doc.rates === "object") {
+    base = doc.base
+    date = String(doc.date || "")
+    for (var code in doc.rates) pairs.push([code, doc.rates[code]])
+  }
+  var rates = {}, count = 0
+  for (var p = 0; p < pairs.length; p++) {
+    if (!/^[A-Z]{3}$/.test(pairs[p][0]) || typeof pairs[p][1] !== "number" || !isFinite(pairs[p][1]) || pairs[p][1] <= 0) continue
+    rates[pairs[p][0]] = pairs[p][1]
+    count++
+  }
+  return /^[A-Z]{3}$/.test(base) && count ? { base: base, date: date, rates: rates } : null
+}
+
 function currencyName(code) {
   var c = CURRENCIES[code]
+  if (c.label) return c.label + " (" + code + ")"
   var name = c.names.filter(function(n) { return n.indexOf(" ") > 0 })[0] || c.names[0]
   return titleCase(name).replace(/^Us /, "US ") + " (" + code + ")"
 }
@@ -1396,6 +1568,7 @@ function filterHistory(history, query) {
 if (typeof module !== "undefined") {
   module.exports = {
     evaluate: evaluate,
+    parseRates: parseRates,
     lex: lex,
     words: numberWords,
     zoneList: zoneList,

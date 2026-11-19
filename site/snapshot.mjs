@@ -3,7 +3,7 @@
 //   node site/snapshot.mjs
 // Writes, under site/public/demo/ (all committed):
 //   snapshot.json        Omarchy's menu (default/omarchy/omarchy-menu.jsonc), which rows are hidden or
-//                        checked, and the day's ECB exchange rates
+//                        checked, and the day's exchange rates
 //   emoji-keywords.json  Omarchy's emoji search keywords (shell/plugins/emojis/emojis.json)
 //   symbols.woff2        the icon glyphs the launcher draws, subset from JetBrainsMono Nerd Font
 //                        (needs `uvx`, which fetches fonttools)

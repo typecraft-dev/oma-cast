@@ -95,7 +95,7 @@ var documents = {
 var configDefaults = {
   logLevel: "info",
   keepVisibleOnFocusLoss: false,
-  // Daily ECB reference rates from frankfurter.dev for currency conversion
+  // Daily central-bank reference rates from frankfurter.dev for currency conversion
   // (SPEC §8 Calculator). The only network request omacast makes. [D]
   currencyRates: true,
   // Calculator preferences named after Raycast's (ref 04 App. B) [O].

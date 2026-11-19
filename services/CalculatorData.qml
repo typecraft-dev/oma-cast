@@ -2,8 +2,8 @@ import QtQuick
 import Quickshell.Io
 import "../core/Calculator.js" as Calculator
 
-// Live inputs for core/Calculator.js: ECB exchange rates (SPEC §8: cached
-// daily, frankfurter.dev) and the current UTC offset of every time zone the
+// Live inputs for core/Calculator.js: central-bank exchange rates (SPEC §8:
+// cached daily, frankfurter.dev) and the current UTC offset of every time zone the
 // calculator knows. QML's JS engine has no Intl, so one bash process asks
 // strftime for all of them (~40 ms).
 Item {
@@ -22,8 +22,8 @@ Item {
   property bool cacheRead: false
   property var request: null
 
-  readonly property string ratesUrl: "https://api.frankfurter.dev/v1/latest"
-  readonly property double ratesMaxAgeMs: 12 * 3600 * 1000     // ECB publishes once a working day
+  readonly property string ratesUrl: "https://api.frankfurter.dev/v2/rates"
+  readonly property double ratesMaxAgeMs: 12 * 3600 * 1000     // central banks publish once a working day
   readonly property double retryAfterMs: 30 * 60 * 1000
   readonly property double zonesMaxAgeMs: 10 * 60 * 1000       // catches DST switches
 
@@ -39,10 +39,7 @@ Item {
   }
 
   function validRates(doc) {
-    if (!doc || typeof doc.base !== "string" || !doc.rates || typeof doc.rates !== "object") return null
-    var out = {}
-    for (var code in doc.rates) if (/^[A-Z]{3}$/.test(code) && typeof doc.rates[code] === "number" && doc.rates[code] > 0) out[code] = doc.rates[code]
-    return { base: doc.base, date: String(doc.date || ""), rates: out }
+    return Calculator.parseRates(doc)
   }
 
   function fetchRates() {

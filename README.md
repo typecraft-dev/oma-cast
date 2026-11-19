@@ -129,7 +129,7 @@ has its own engine, so there's nothing to install.
 | Arithmetic and functions | `2^10`, `sqrt(2) * 10`, `sin(30°)` |
 | Percentages | `$30 + 20%`, `20% off 50`, `50 as a % of 200` |
 | ~250 units, including mixed units | `5 ft to cm`, `5 ft 3 in to cm`, `60 mph * 2 h`, `16px to rem` |
-| Currencies | `100 usd in eur` |
+| ~160 currencies | `100 usd in eur`, `100 aed to inr` |
 | Dates | `3 days from now`, `days until christmas` |
 | Time zones | `time in tokyo`, `3pm london to nyc` |
 | Number bases | `255 to hex` |
@@ -140,7 +140,7 @@ has its own engine, so there's nothing to install.
 "question = answer". Each one is saved to **Calculator History** (searchable, kept for 90 days; `Ctrl+D`
 deletes an entry, `Ctrl+Shift+D` deletes all). Trig takes radians unless you add `°` or `deg`.
 
-Currency rates are ECB reference rates (see [network access](#dependencies-and-network-access)).
+Currency rates are central-bank reference rates (see [network access](#dependencies-and-network-access)).
 `config.json` sets `remToPxRate` (16), `workHoursPerDay` (8) and `clockFormat` (`auto` follows your locale,
 or `12h` / `24h`).
 
@@ -307,7 +307,7 @@ It adds no packages and no background services.
   (`com.superwhisper.ShellOverlay`), so Superwhisper's recording glow or pill draws on the launcher instead
   of the window under it. It makes no network requests, and does nothing without Superwhisper.
 - **Currency rates.** When you open the launcher and its rates are over 12 hours old, the calculator downloads
-  ECB exchange rates from `api.frankfurter.dev` (retrying 30 minutes after a failure) and caches them in
+  central-bank exchange rates from `api.frankfurter.dev` (retrying 30 minutes after a failure) and caches them in
   `~/.cache/omacast/currencies.json`. This is the only network request omacast makes. Turn it off with
   `"currencyRates": false` in `~/.config/omacast/config.json`.
 - **Optional search helper.** With Rust (`cargo`) installed, `omacast install` (or `omacast build-search`)

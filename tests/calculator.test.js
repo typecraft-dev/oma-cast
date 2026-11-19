@@ -82,6 +82,40 @@ test("currencies use the rates and need them only to convert", () => {
   assert.equal(result("$30 + 20%", Object.assign({}, env, { rates: null })), "$36.00")
 })
 
+test("currencies beyond the ECB set convert by code or full name", () => {
+  const more = Object.assign({}, env, { rates: { base: "EUR", date: "2026-10-19", rates: { USD: 2, AED: 4, DOP: 100, KWD: 0.5, VND: 30000 } } })
+  assert.equal(result("100 aed to usd", more), "$50.00")
+  assert.equal(result("10 usd in aed", more), "20.00 AED")
+  assert.equal(result("10 usd to dominican pesos", more), "500.00 DOP")
+  assert.equal(result("1 eur to kwd", more), "0.500 KWD", "three decimals")
+  assert.equal(result("1 eur to vnd", more), "30,000 VND", "no decimals")
+  assert.equal(result("1 eur to vietnamese dong", more), "30,000 VND", "accents are optional")
+  assert.equal(C.evaluate("10 usd in aed", more).resultCaption, "United Arab Emirates Dirham (AED)")
+  assert.equal(C.evaluate("10 usd in xof", Object.assign({}, more, { rates: Object.assign({}, more.rates, { rates: { USD: 2, XOF: 600 } }) })).resultCaption, "West African CFA Franc (XOF)")
+  assert.equal(result("10 usd in aed", env), null, "a known code still needs its rate")
+  assert.equal(result("5 cup to ml", more), "1,182.9412 mL", "CUP the currency leaves the cup alone")
+  assert.equal(result("2 ton to kg", more), "1,814.3695 kg")
+  assert.ok(Object.keys(C.CURRENCIES).length > 150)
+})
+
+test("exchange rates parse from the v2 answer and from the cache", () => {
+  const v2 = [
+    { date: "2026-11-19", base: "EUR", quote: "USD", rate: 1.1 },
+    { date: "2026-11-18", base: "EUR", quote: "AED", rate: 4.03 },
+    { date: "2026-11-19", base: "EUR", quote: "USDT", rate: 1.1 },
+    { date: "2026-11-19", base: "EUR", quote: "BAD", rate: 0 },
+    { date: "2026-11-19", base: "EUR", quote: "NAN", rate: "1" },
+    { date: "2026-11-19", base: "USD", quote: "GBP", rate: 0.8 },
+    null
+  ]
+  assert.deepEqual(C.parseRates(v2), { base: "EUR", date: "2026-11-19", rates: { USD: 1.1, AED: 4.03 } })
+  assert.deepEqual(C.parseRates({ fetchedAt: 1, base: "EUR", date: "2026-10-19", rates: { USD: 1.1, usd: 2, JPY: -1 } }), { base: "EUR", date: "2026-10-19", rates: { USD: 1.1 } })
+  assert.equal(C.parseRates([]), null)
+  assert.equal(C.parseRates({ base: "EUR", rates: {} }), null)
+  assert.equal(C.parseRates(null), null)
+  assert.equal(C.parseRates("nope"), null)
+})
+
 test("dates and durations", () => {
   assert.equal(result("3 days from now"), "Thursday, 22 October 2026 at 4:06 PM")
   assert.equal(result("2 weeks ago"), "Monday, 5 October 2026 at 4:06 PM")
