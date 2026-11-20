@@ -300,6 +300,10 @@ var FILTERS = [
   { id: "commands", title: "Commands" }
 ]
 
+function isFilter(id) {
+  return FILTERS.some(function(f) { return f.id === id })
+}
+
 function passesFilter(candidate, filter) {
   if (!filter || filter === "all") return true
   return (candidate.type === "application") === (filter === "applications")
@@ -510,6 +514,7 @@ if (typeof module !== "undefined") {
     FALLBACKS: FALLBACKS,
     BUILTINS: BUILTINS,
     FILTERS: FILTERS,
+    isFilter: isFilter,
     fillArguments: fillArguments,
     missingArgument: missingArgument,
     confirmationFor: confirmationFor,

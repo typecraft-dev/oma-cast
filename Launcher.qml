@@ -4,6 +4,7 @@ import Quickshell.Io
 import Quickshell.Hyprland
 import qs.Commons
 import "ui"
+import "core/RootSearch.js" as RootSearch
 
 Item {
   id: root
@@ -35,10 +36,16 @@ Item {
   }
 
 
-  function show() {
-    if (root.opened) return
-    if (root.shell && root.shell.summon(root.pluginId, "{}")) return
-    root.open("{}")
+  // filter: a RootSearch.FILTERS id to open on (omacast:toggle-<filter>);
+  // "" keeps whatever the launcher was left on.
+  function show(filter) {
+    if (root.opened) {
+      if (filter) launcher.prepare({ filter: filter })
+      return
+    }
+    var payload = JSON.stringify(filter ? { filter: filter } : {})
+    if (root.shell && root.shell.summon(root.pluginId, payload)) return
+    root.open(payload)
   }
 
   function hide() {
@@ -50,9 +57,11 @@ Item {
     root.close()
   }
 
-  function toggle() {
-    if (root.opened) root.hide()
-    else root.show()
+  // A filtered toggle closes only when that filter's root is on screen;
+  // otherwise it switches the open launcher to it.
+  function toggle(filter) {
+    if (root.opened && (!filter || (launcher.atRoot && launcher.rootFilter === filter))) root.hide()
+    else root.show(filter)
   }
 
   // A command's own hotkey toggles it: a second press while its view is on
@@ -110,6 +119,29 @@ Item {
     onPressed: root.toggle()
   }
 
+  // Open on one root filter: hl.dsp.global("omacast:toggle-applications"),
+  // "omacast:toggle-commands" or "omacast:toggle-all".
+  GlobalShortcut {
+    appid: "omacast"
+    name: "toggle-all"
+    description: "Toggle omacast on All"
+    onPressed: root.toggle("all")
+  }
+
+  GlobalShortcut {
+    appid: "omacast"
+    name: "toggle-applications"
+    description: "Toggle omacast on Applications"
+    onPressed: root.toggle("applications")
+  }
+
+  GlobalShortcut {
+    appid: "omacast"
+    name: "toggle-commands"
+    description: "Toggle omacast on Commands"
+    onPressed: root.toggle("commands")
+  }
+
   // Toggles Switch Theme directly: hl.dsp.global("omacast:theme").
   GlobalShortcut {
     appid: "omacast"
@@ -144,6 +176,18 @@ Item {
 
     function show(): string {
       root.show()
+      return "shown"
+    }
+
+    function toggleFilter(filter: string): string {
+      if (!RootSearch.isFilter(filter)) return "unknown-filter"
+      root.toggle(filter)
+      return root.opened ? "shown" : "hidden"
+    }
+
+    function showFilter(filter: string): string {
+      if (!RootSearch.isFilter(filter)) return "unknown-filter"
+      root.show(filter)
       return "shown"
     }
 

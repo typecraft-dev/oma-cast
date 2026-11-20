@@ -194,12 +194,18 @@ PanelWindow {
 
   function prepare(payload) {
     popTimer.stop()
-    if (typeof payload.query === "string") window.query = payload.query
+    // A filtered hotkey (omacast:toggle-<filter>) lands on an empty root with
+    // that filter, wherever the launcher was left.
+    var filter = RootSearch.isFilter(payload.filter) ? payload.filter : ""
+    var reset = filter !== "" && !(window.atRoot && window.query === "" && window.rootFilter === filter)
+    if (reset) window.popToRoot(filter)
+    else if (typeof payload.query === "string") window.query = payload.query
     window.closePopups()
     window.historyIndex = -1
     // Hiding pops to root and rebuilds, so an unchanged root list is reused
     // and the card shows on the next frame instead of after a search.
-    if (typeof payload.query === "string" || window.rootKey() !== window.builtRootKey) window.rebuild(true)
+    if (reset) {}  // popToRoot already rebuilt
+    else if (typeof payload.query === "string" || window.rootKey() !== window.builtRootKey) window.rebuild(true)
     else window.select(window.nextSelectable(-1, 1), 0)
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -280,10 +286,11 @@ PanelWindow {
     onTriggered: window.popToRoot()
   }
 
-  function popToRoot() {
+  // filter: a RootSearch.FILTERS id to land on; "all" when omitted.
+  function popToRoot(filter) {
     window.stack = [{ kind: "root", title: "omacast", query: "" }]
     window.query = ""
-    window.rootFilter = "all"
+    window.rootFilter = filter || "all"
     window.clipboardFilter = "all"
     window.rebuild(true)
   }

@@ -33,8 +33,9 @@ usage() {
 Usage: omacast <command> [args]
 
 Launcher
-  toggle                 Show or hide the launcher
-  show | hide            Show or hide it
+  toggle [filter]        Show or hide the launcher; filter opens it on
+                         all, applications or commands
+  show [filter] | hide   Show or hide it
   run <commandId>        Open a command directly
   call <method> [json]   Call a backend method, e.g. omacast call system.info
 
@@ -355,7 +356,15 @@ cmd_doctor() {
 }
 
 case "${1:-}" in
-  toggle|show|hide) need_shell; ipc "$1" >/dev/null ;;
+  hide) need_shell; ipc hide >/dev/null ;;
+  toggle|show)
+    need_shell
+    if [[ -n ${2:-} ]]; then
+      [[ $(ipc "${1}Filter" "$2") != unknown-filter ]] || die "unknown filter: $2 (all, applications or commands)"
+    else
+      ipc "$1" >/dev/null
+    fi
+    ;;
   run) need_shell; [[ -n ${2:-} ]] || die "usage: omacast run <commandId>"; ipc run "$2" ;;
   call) need_shell; [[ -n ${2:-} ]] || die "usage: omacast call <method> [json]"; ipc call "$2" "${3:-}" ;;
   ping) need_shell; ipc ping ;;
