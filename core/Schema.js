@@ -46,6 +46,19 @@ var calculatorMigrations = [
   }
 ]
 
+// Saved quicklinks (SPEC §8.4), in the shape Quicklinks.js reads:
+// items [{id, name, link, iconName, openWith, createdAt, updatedAt}].
+var quicklinksMigrations = [
+  {
+    version: 1,
+    name: "quicklinks",
+    up: function(doc) {
+      doc.items = Array.isArray(doc.items) ? doc.items : []
+      return doc
+    }
+  }
+]
+
 // Clipboard History (SPEC §8.2): ClipboardHistory.add entries, newest first.
 var clipboardMigrations = [
   {
@@ -88,6 +101,7 @@ var documents = {
   settings: { file: "settings.json", migrations: settingsMigrations },
   frecency: { file: "frecency.json", migrations: frecencyMigrations },
   calculator: { file: "calculator.json", migrations: calculatorMigrations },
+  quicklinks: { file: "quicklinks.json", migrations: quicklinksMigrations },
   emoji: { file: "emoji.json", migrations: emojiMigrations },
   clipboard: { file: "clipboard.json", migrations: clipboardMigrations }
 }
@@ -150,6 +164,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     settingsMigrations: settingsMigrations,
     frecencyMigrations: frecencyMigrations,
+    quicklinksMigrations: quicklinksMigrations,
     calculatorMigrations: calculatorMigrations,
     clipboardMigrations: clipboardMigrations,
     emojiMigrations: emojiMigrations,

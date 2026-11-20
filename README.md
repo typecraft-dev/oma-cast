@@ -226,9 +226,10 @@ monitor-input-cycle "$1" && echo "Switching display"
 | `Ctrl+↑` / `Ctrl+↓` | Jump between sections |
 | `↑` on an empty search | Search history |
 | `Ctrl+P` | Filter dropdown (All / Applications / Commands; types in Clipboard History) |
-| `Tab` / `Shift+Tab` | Into and out of an argument pill |
+| `Tab` / `Shift+Tab` | Into and out of an argument pill, and between a quicklink's arguments |
 | `Ctrl+Shift+F` | Add to or remove from favorites (`Ctrl+Alt+↑↓` to reorder) |
 | `Ctrl+Shift+C` | Copy (the command, desktop id, answer or name) |
+| `Ctrl+E` / `Ctrl+D` | Edit / delete a quicklink |
 | `Alt+Shift+D` | Disable a command |
 | `Ctrl+T` | Actions for the current toast (Undo, Copy Error Message) |
 | `Ctrl+Shift+K` | About the selected result |
@@ -349,6 +350,7 @@ Done:
 - [x] Emoji & Symbols
 - [x] Switch Theme
 - [x] Script Commands (arguments, confirmation)
+- [x] Quicklinks
 
 Next:
 
@@ -358,7 +360,6 @@ Next:
 
 Later:
 
-- [ ] Quicklinks
 - [ ] Snippets and text expansion
 - [ ] Running Raycast extensions built from the open-source [`raycast/extensions`](https://github.com/raycast/extensions) repo
 - [ ] Window management and a window switcher
