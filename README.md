@@ -220,6 +220,7 @@ monitor-input-cycle "$1" && echo "Switching display"
 | `Shift+↵` | Open a new window of an app (`↵` switches to the one already open) |
 | `Ctrl+K` | Open the action panel (type to filter it; each action shows its shortcut) |
 | `Ctrl+1`…`9` | Pick a result |
+| `←` / `→`, `Home` / `End` | Move the query cursor (`Shift` to select text) |
 | `↑` / `↓`, `Super+J` / `Super+K` | Move through results |
 | `Ctrl+N` / `Ctrl+P` | Next / previous (emacs bindings; `Ctrl+P` moves up only inside popups) |
 | `PageUp` / `PageDown` | Move eight results at a time |
@@ -377,6 +378,9 @@ node --test tests/*.test.js # unit tests, no npm install needed
 tests/smoke.sh              # live checks against the running shell
 omacast dev                 # reload on every save
 ```
+
+Query editing tests also run headlessly when Qt 6's `qmltestrunner` is installed
+at `/usr/lib/qt6/bin/qmltestrunner`. Set `QMLTESTRUNNER` to use another path.
 
 Remove a marketplace install first (`omarchy plugin remove typecraft.omacast`); both use the same plugin id.
 Quickshell caches QML for the life of the process, so run `omacast reload` after editing a checkout. See [`CLAUDE.md`](CLAUDE.md) for the layout and conventions.
