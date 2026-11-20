@@ -31,7 +31,7 @@ What it runs on:
 | File in `public/demo/` | What | In git |
 |---|---|---|
 | `core.js`, `emoji.json` | `core/*.js` bundled, and a copy of `data/emoji.json`. Written by `node build.mjs` | no |
-| `snapshot.json` | Omarchy's menu, which rows are hidden or checked, and ECB exchange rates. Written by `node snapshot.mjs` | yes |
+| `snapshot.json` | Omarchy's menu, which rows are hidden or checked, and exchange rates. Written by `node snapshot.mjs` | yes |
 | `emoji-keywords.json` | Omarchy's emoji search keywords. Written by `node snapshot.mjs` | yes |
 | `symbols.woff2` | the icon glyphs, subset from JetBrainsMono Nerd Font. Written by `node snapshot.mjs` (needs `uvx`) | yes |
 | `NOTICE.md`, `OFL.txt` | licences for the three above | yes |

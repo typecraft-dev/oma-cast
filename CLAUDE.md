@@ -143,7 +143,7 @@ Works:
   - arithmetic and functions
   - Soulver-style percentages (`$30 + 20%`, `20% off 50`, `50 as a % of 200`)
   - ~250 units (`5 ft to cm`, `60 mph * 2 h`, `16px to rem`)
-  - currencies (ECB rates from frankfurter.dev, cached daily in `~/.cache/omacast/currencies.json`; turn off with `"currencyRates": false` in config.json)
+  - currencies (~160, central-bank rates from frankfurter.dev's v2 API, cached daily in `~/.cache/omacast/currencies.json`; turn off with `"currencyRates": false` in config.json)
   - dates (`3 days from now`, `days until christmas`)
   - time zones (`time in tokyo`, `3pm london to nyc`; offsets come from one bash `printf %(%z)T` pass because QML has no Intl)
   - bases (`255 to hex`)
