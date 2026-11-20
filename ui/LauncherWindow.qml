@@ -54,6 +54,18 @@ PanelWindow {
     }
     return window.pinnedScreen || (screens.length ? screens[0] : null)
   }
+  // A monitor hotplug or layout change can destroy the output the kept-mapped
+  // surface lives on, while `mapped` stays true: the next show then never
+  // remaps and the launcher stays invisible. Drop the surface so the next
+  // show maps a fresh one on the focused screen.
+  Connections {
+    target: Quickshell
+    function onScreensChanged() {
+      if (window.shown) return
+      window.mapped = false
+      window.pinnedScreen = null
+    }
+  }
   mask: window.shown ? null : noInput
   Region { id: noInput }
   anchors { top: true; bottom: true; left: true; right: true }
