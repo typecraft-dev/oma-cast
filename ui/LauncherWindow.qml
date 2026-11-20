@@ -41,7 +41,8 @@ PanelWindow {
   // The surface stays mapped once opened: hidden, it is fully transparent,
   // takes no input and no keyboard. Mapping a new surface costs ~130 ms (the
   // output's size and scale arrive a few frames late); flipping these is one
-  // commit. It is remapped only to move to another monitor.
+  // commit. It is remapped to move to another monitor, or after its monitor
+  // goes away.
   property bool mapped: false
   visible: window.mapped
   screen: window.pinnedScreen
@@ -258,6 +259,18 @@ PanelWindow {
     var seconds = Number(window.general.popToRootTimeout)
     if (!(seconds > 0)) window.popToRoot()
     else { popTimer.interval = seconds * 1000; popTimer.restart() }
+  }
+
+  // A lost monitor takes the surface but not `shown`, so the "omacast" submap
+  // would keep every global bind dead. Unmap so the next open maps a fresh
+  // surface, and close rather than follow focus to another monitor [D].
+  Connections {
+    target: Quickshell
+    function onScreensChanged() {
+      if (Quickshell.screens.indexOf(window.pinnedScreen) >= 0) return
+      window.mapped = false
+      if (window.shown) window.dismissRequested()
+    }
   }
 
   // Where the card is while open, for Superwhisper: its recording glow (or
