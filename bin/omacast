@@ -219,10 +219,25 @@ cmd_setup_hyprland() {
   local main="$hypr_dir/hyprland.lua" file="$hypr_dir/omacast.lua" legacy="$hypr_dir/$LEGACY_NAME.lua"
   [[ -f $main ]] || die "no $main; this setup targets Lua-configured Hyprland (hyprctl version: $(hyprctl version 2>/dev/null | head -1))"
 
-  local conflicts
-  conflicts=$(grep -rnE '"ALT \+ SPACE"|ALT, ?SPACE' "$hypr_dir" "${OMARCHY_PATH:-/usr/share/omarchy}/default/hypr" 2>/dev/null |
-    grep -vF -e "$file:" -e "$legacy:" | grep -vE '^\S+:[0-9]+:\s*(--|#)')
-  if [[ -n $conflicts ]]; then
+  # Read the loaded bindings: config files also contain disabled defaults,
+  # unbind calls and backups, none of which reserve a shortcut.
+  local bindings conflicts own=false old=false
+  [[ -f $file ]] && own=true
+  [[ -f $legacy ]] && old=true
+  bindings=$(hyprctl -j binds 2>/dev/null) || die "could not read active Hyprland bindings; run setup inside a running Hyprland session"
+  conflicts=$(jq -ce --argjson own "$own" --argjson old "$old" '
+    if type != "array" then error("expected a binding array") else
+      map(select(.modmask == 8 and
+        (((.key // "") | ascii_downcase) == "space" or .keycode == 65) and
+        ((.submap // "") == "" or .submap_universal == true or .submap_universal == "true")) |
+        select((
+          (.dispatcher == "__lua" or .dispatcher == "global") and
+          (($own and .description == "omacast launcher") or
+           ($old and .description == "oma-cast launcher"))
+        ) | not))
+    end
+  ' <<<"$bindings" 2>/dev/null) || die "could not read active Hyprland bindings; expected JSON from hyprctl -j binds"
+  if [[ $conflicts != '[]' ]]; then
     echo "Alt+Space is already bound:" >&2
     echo "$conflicts" >&2
     die "unbind it first, or write $file yourself with another key"
