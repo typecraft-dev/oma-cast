@@ -69,6 +69,53 @@ test("provider output becomes action rows with quoted commands", () => {
   assert.equal(rows[1].parent, "style.font")
 })
 
+test("an extension can declare its own provider object", () => {
+  const { items } = M.parse(`{
+    "tabs": {"label":"Tabs","provider":{"command":"list-tabs","action":"focus-tab {value}","icon":"T","volatile":true,"extra":1}},
+    "a": {"provider":{"action":"run {value}"}},
+    "b": {"provider":{"command":"ls","action":"run"}},
+    "c": {"provider":7},
+    "d": {"provider":{"command":"ls","action":"run {value}","volatile":"yes"}}
+  }`)
+  const byId = Object.fromEntries(items.map((i) => [i.id, i]))
+  assert.deepEqual(byId["tabs"].provider, { command: "list-tabs", action: "focus-tab {value}", icon: "T", volatile: true })
+  assert.equal(byId["tabs"].kind, "menu")
+  assert.equal(byId["a"].provider, "", "a provider without a command is dropped")
+  assert.equal(byId["b"].provider, "", "a provider whose action ignores the value is dropped")
+  assert.equal(byId["c"].provider, "", "a provider that is neither a name nor an object is dropped")
+  assert.equal(byId["d"].provider.volatile, false, "only true is volatile")
+  assert.equal(M.providerSpec("fonts"), M.PROVIDERS.fonts)
+  assert.equal(M.providerSpec("nope"), null)
+})
+
+test("an extension provider object survives the merge with the default menu", () => {
+  const user = M.parse(`{"style.font": {"provider":{"command":"ls","action":"set {value}"}}}`).items
+  const tree = M.buildTree(M.parse(sample).items, user)
+  assert.equal(tree.items["style.font"].provider.command, "ls")
+  assert.equal(tree.items["style.font"].label, "Font")
+})
+
+test("extension provider rows run the chosen value as one literal word", () => {
+  const provider = { command: "list-tabs", action: "printf '%s' {value}", icon: "T" }
+  const hostile = "it's $(touch /tmp/oma-cast-pwned) `id` \\ \"q\""
+  const rows = M.providerItems("tabs", provider, `Inbox\ttab-1\ttab-2\tWork · mail.example\nHostile\t${hostile}\n\nCurrent\ttab-2\ttab-2\n`)
+  assert.deepEqual(rows.map((r) => r.label), ["Inbox", "Hostile", "Current"])
+  assert.equal(rows[0].description, "Work · mail.example")
+  assert.equal(rows[1].description, "")
+  assert.equal(rows[0].icon, "T")
+  assert.equal(rows[2].isCurrent, true)
+  assert.equal(rows[0].parent, "tabs")
+  for (const [row, value] of [[rows[0], "tab-1"], [rows[1], hostile]]) {
+    assert.equal(execFileSync("bash", ["-c", row.action], { encoding: "utf8" }), value)
+  }
+})
+
+test("an extension provider's command runs and feeds its rows", () => {
+  const spec = M.providerSpec({ command: "printf 'A\\ta\\n'", action: "echo {value}" })
+  const out = execFileSync("bash", ["-c", spec.script], { encoding: "utf8" })
+  assert.deepEqual(M.providerItems("x", { command: spec.script, action: "echo {value}" }, out).map((r) => r.action), ["echo 'a'"])
+})
+
 test("only a bare summon is run in-process", () => {
   assert.deepEqual(M.summonAction("omarchy-shell shell summon omarchy.clipboard"), { id: "omarchy.clipboard", payload: "{}" })
   assert.deepEqual(M.summonAction(`omarchy-shell shell summon omarchy.image-picker '{"source":"themes"}'`), { id: "omarchy.image-picker", payload: '{"source":"themes"}' })
