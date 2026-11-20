@@ -114,6 +114,9 @@ web searches at the end. `Ctrl+P` filters the root to All, Applications or Comma
   **Omarchy Menu** opens the whole menu.
 - **Web search.** **Search Google** and **Search DuckDuckGo** (alias `ddg`) take a query in an argument pill:
   `Tab` into it, type, `↵`.
+- **Browser bookmarks.** Type `b ` (or `b <query>`) to search and open your browser bookmarks (Brave, Chrome,
+  Chromium, Vivaldi, Edge). Bookmarks update automatically as you add or edit them in your browser. `↵` opens
+  the bookmark in your browser, and `Ctrl+Shift+C` copies the URL.
 - **Confirmations.** Shut Down, Restart, Log Out and Delete All Entries ask first (`↵` confirms, `Esc`
   cancels).
 - **Feedback.** Results show toasts in the footer (`Ctrl+T` opens their actions, such as Undo after disabling a

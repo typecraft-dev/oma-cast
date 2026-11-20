@@ -54,12 +54,17 @@ Item {
 
   function searchAsync(data, callback) {
     nativeSearch.cancel()
-    var query = String(data && data.query || "").trim()
+    var rawQuery = String(data && data.query || "")
+    var query = rawQuery.trim()
     var view = data && data.view
     if (query && view && view.kind === "emoji") {
       emojiSearch.search(Ranker.transliterate(query.toLowerCase()), "medium", function(matches) {
         callback(backend.callSync("rootSearch.search", Object.assign({}, data, { fleaHits: matches })))
       })
+      return
+    }
+    if (/^[bB]\s+/.test(rawQuery)) {
+      callback(backend.callSync("rootSearch.search", data))
       return
     }
     if (!query || (view && view.kind !== "root")) {
@@ -146,7 +151,7 @@ Item {
   }
 
   function decorated(id) {
-    var c = backend.candidatesById[id]
+    var c = backend.candidatesById[id] || (id && id.indexOf("bookmark:") === 0 && bookmarkSource.candidatesById ? bookmarkSource.candidatesById[id] : null)
     return c ? RootSearch.decorate(c, backend.searchContext(), backend.deps) : null
   }
 
@@ -512,12 +517,17 @@ Item {
             return { close: true }
           }
           backend.recordVisit(id, query)
+          if (candidate.run.setQuery) return { setQuery: candidate.run.setQuery }
           if (candidate.run.push && candidate.run.push.kind === "theme") themeSource.refresh()
           if (candidate.run.push) return { push: candidate.run.push }
           if (candidate.run.summon) backend.summonPlugin(candidate.run.summon, candidate.run.payload || "{}")
           return { close: true }
         case "fallback":
           Util.execArgv(["omarchy-launch-browser", RootSearch.fallbackUrl(candidate, query)])
+          return { close: true }
+        case "bookmark":
+          backend.recordVisit(id, query)
+          Util.execArgv(["omarchy-launch-browser", candidate.url])
           return { close: true }
         case "script":
           var script = candidate.script
@@ -548,6 +558,9 @@ Item {
       case "copy-id":
         clipboard.copy(action === "copy-id" ? candidate.appId + ".desktop" : candidate.action)
         return { close: true, hud: "Copied to Clipboard" }
+      case "copy-url":
+        clipboard.copy(candidate.url)
+        return { close: true, hud: "Copied URL to Clipboard" }
       case "favorite-add":
       case "favorite-remove":
       case "favorite-up":
@@ -669,7 +682,11 @@ Item {
         else if (view && view.kind === "calculator-history") sections = RootSearch.historySections(calculatorStore.doc.history, query, ctx.nowMs, Calculator.filterHistory)
         else {
           ctx.filter = String(data && data.filter || "all")
-          if (query.trim() && ctx.filter === "all") ctx.calculation = backend.calculate(query)
+          if (/^[bB]\s+/.test(query)) {
+            ctx.bookmarks = bookmarkSource.candidates
+          } else if (query.trim() && ctx.filter === "all") {
+            ctx.calculation = backend.calculate(query)
+          }
           sections = RootSearch.rootSections(backend.candidates, query, ctx, backend.deps)
         }
         if (view && view.kind === "emoji") return sections
@@ -899,6 +916,10 @@ Item {
     onDirectoryChanged: refresh()
     onRevisionChanged: rebuildTimer.restart()
     onMessage: function(level, text, metadata) { backend.log(level, "script-commands", text, metadata) }
+  }
+
+  BookmarkSource {
+    id: bookmarkSource
   }
 
   // Launcher.qml shows the result as a toast while the window is open, else a HUD.
