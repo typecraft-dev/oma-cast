@@ -254,6 +254,7 @@ as soon as you save; an unreadable file falls back to the defaults and logs a wa
 | `remToPxRate` | `16` | Pixels per rem |
 | `workHoursPerDay` | `8` | Hours in a work day |
 | `clockFormat` | `"auto"` | `"auto"`, `"12h"` or `"24h"` |
+| `logo` | `"omacast"` | `"omarchy"` shows Omarchy's logo in your theme's accent colour instead |
 | `rootFilter` | `true` | `false` hides the All / Applications / Commands dropdown and its shortcut |
 | `keepVisibleOnFocusLoss` | `false` | `true` keeps the launcher open when you click outside it |
 | `clipboardHistory` | `true` | `false` stops recording (the history stays) |

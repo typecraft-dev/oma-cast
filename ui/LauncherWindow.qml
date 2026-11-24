@@ -70,10 +70,12 @@ PanelWindow {
   }
   readonly property real zoom: window.general.uiZoom > 0 ? window.general.uiZoom : 1
   function px(value) { return Math.round(Style.space(value) * window.zoom) }
-  // The logo is pixel art on a 30-unit grid: at other sizes its edges straddle
-  // device pixels and blur. Snap the size to the nearest multiple of 15 device
-  // pixels, so every edge lands on a whole or half pixel. The result can be a
-  // fraction of a logical pixel (22.5 at 2x scale).
+  readonly property bool omarchyLogo: window.backend.config.logo === "omarchy"
+  // Both logos sit on a grid: omacast's is pixel art on 30 units, Omarchy's
+  // glyph is drawn on 15 px. At other sizes their edges straddle device pixels
+  // and blur. Snap the size to the nearest multiple of 15 device pixels, so
+  // every edge lands on a whole or half pixel. The result can be a fraction of
+  // a logical pixel (22.5 at 2x scale); the glyph rounds it to a font size.
   function crispLogoSize(size) {
     var ratio = window.devicePixelRatio || 1
     return Math.max(1, Math.round(size * ratio / 15)) * 15 / ratio
@@ -931,7 +933,9 @@ PanelWindow {
         Logo {
           anchors.centerIn: parent
           visible: window.atRoot
-          size: window.crispLogoSize(window.px(22))
+          size: window.crispLogoSize(window.px(window.omarchyLogo ? 18 : 22))
+          omarchy: window.omarchyLogo
+          color: window.look.accent
         }
 
         Text {
@@ -1174,7 +1178,9 @@ PanelWindow {
         Logo {
           anchors.horizontalCenter: parent.horizontalCenter
           visible: window.view.kind !== "alias"
-          size: window.crispLogoSize(window.px(30))
+          size: window.omarchyLogo ? window.px(28) : window.crispLogoSize(window.px(30))
+          omarchy: window.omarchyLogo
+          color: window.look.accent
         }
         Text {
           anchors.horizontalCenter: parent.horizontalCenter
@@ -1241,7 +1247,9 @@ PanelWindow {
         Logo {
           anchors.verticalCenter: parent.verticalCenter
           visible: !window.toast
-          size: window.crispLogoSize(window.px(14))
+          size: window.crispLogoSize(window.px(window.omarchyLogo ? 11 : 14))
+          omarchy: window.omarchyLogo
+          color: window.look.accent
         }
         Text {
           anchors.verticalCenter: parent.verticalCenter

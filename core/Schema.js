@@ -106,6 +106,9 @@ var configDefaults = {
   // The All / Applications / Commands filter button (Ctrl+P) beside the root
   // search; false hides it and leaves every result in one list. [D]
   rootFilter: true,
+  // The logo in the header, footer and empty state: "omacast" is omacast's
+  // own icon, "omarchy" is Omarchy's logo glyph in the theme's accent. [D]
+  logo: "omacast",
   // Clipboard History preferences named after Raycast's (ref 04 App. B) [O].
   // clipboardHistory false stops recording; the history stays. [D]
   clipboardHistory: true,
@@ -117,6 +120,7 @@ var configDefaults = {
 // Values a config key or general setting may take, beyond its type.
 var configChoices = {
   clockFormat: ["auto", "12h", "24h"],
+  logo: ["omacast", "omarchy"],
   clipboardHistoryDuration: ["P1D", "P1W", "P1M", "P3M", "P6M", "P1Y", "unlimited"]
 }
 
