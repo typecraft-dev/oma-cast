@@ -244,6 +244,15 @@ PanelWindow {
 
   // A reload or disable while shown would otherwise leave Hyprland in the submap.
   Component.onDestruction: if (window.shown) Hyprland.dispatch('hl.dsp.submap("reset")')
+  // A lost or reordered reset strands Hyprland in the submap with every bind dead; undo it while hidden.
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (window.shown || !event || String(event.name) !== "submap" || String(event.data) !== "omacast") return
+      window.backend.log("warn", "launcher", "submap left on while hidden; resetting")
+      Hyprland.dispatch('hl.dsp.submap("reset")')
+    }
+  }
   onShownChanged: {
     // The "omacast" submap (omacast.lua) lets Super+H/J/K/L past Hyprland's binds.
     Hyprland.dispatch('hl.dsp.submap("' + (window.shown ? "omacast" : "reset") + '")')
