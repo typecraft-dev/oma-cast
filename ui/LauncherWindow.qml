@@ -381,6 +381,7 @@ PanelWindow {
       iconName: String(c.iconName || ""),
       typeLabel: String(c.typeLabel || ""),
       alias: String(c.alias || ""),
+      hotkey: String(c.hotkey || ""),
       checked: !!c.checked,
       disabled: !!c.disabled,
       favorite: typeof c.favoriteOrder === "number" || !!c.pinned,

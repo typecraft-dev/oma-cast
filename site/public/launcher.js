@@ -8,6 +8,7 @@
   if (!Core) return
   var Ranker = Core.Ranker, Frecency = Core.Frecency, OmarchyMenu = Core.OmarchyMenu, RootSearch = Core.RootSearch
   var Calculator = Core.Calculator, Emoji = Core.Emoji, Themes = Core.Themes, ClipboardHistory = Core.ClipboardHistory, Schema = Core.Schema
+  var Keybindings = Core.Keybindings
   var deps = { Ranker: Ranker, Frecency: Frecency, OmarchyMenu: OmarchyMenu }
 
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -43,32 +44,50 @@
     { id: "firefox", name: "Firefox", generic: "Web Browser", keywords: ["Internet", "WWW"], glyph: "\uf269" },
     { id: "chromium", name: "Chromium", generic: "Web Browser", keywords: ["Internet", "Chrome"], glyph: "\uf268" },
     { id: "com.mitchellh.ghostty", name: "Ghostty", generic: "Terminal", keywords: ["shell", "prompt", "console"], glyph: "\uf120" },
-    { id: "nvim", name: "Neovim", generic: "Text Editor", keywords: ["vim", "editor", "code"], glyph: "\uf121" },
-    { id: "org.gnome.Nautilus", name: "Files", generic: "File Manager", keywords: ["folder", "nautilus", "explorer"], glyph: "\uf07b" },
-    { id: "obsidian", name: "Obsidian", generic: "Notes", keywords: ["markdown", "notes", "knowledge"], glyph: "\uf02d" },
-    { id: "signal-desktop", name: "Signal", generic: "Messenger", keywords: ["chat", "messages"], glyph: "\uf086" },
-    { id: "spotify", name: "Spotify", generic: "Music Player", keywords: ["music", "audio", "podcasts"], glyph: "\uf1bc" },
+    { id: "nvim", name: "Neovim", generic: "Text Editor", keywords: ["vim", "editor", "code"], glyph: "\uf121", execString: "nvim %F" },
+    { id: "org.gnome.Nautilus", name: "Files", generic: "File Manager", keywords: ["folder", "nautilus", "explorer"], glyph: "\uf07b", execString: "nautilus --new-window %U" },
+    { id: "obsidian", name: "Obsidian", generic: "Notes", keywords: ["markdown", "notes", "knowledge"], glyph: "\uf02d", execString: "/usr/bin/obsidian %U" },
+    { id: "signal-desktop", name: "Signal", generic: "Messenger", keywords: ["chat", "messages"], glyph: "\uf086", execString: "signal-desktop -- %u" },
+    { id: "spotify", name: "Spotify", generic: "Music Player", keywords: ["music", "audio", "podcasts"], glyph: "\uf1bc", execString: "spotify %U" },
     { id: "com.obsproject.Studio", name: "OBS Studio", generic: "Streaming and Recording", keywords: ["record", "stream", "screencast"], glyph: "\uf03d" },
     { id: "org.kde.kdenlive", name: "Kdenlive", generic: "Video Editor", keywords: ["video", "edit", "film"], glyph: "\uf008" },
     { id: "pinta", name: "Pinta", generic: "Image Editor", keywords: ["paint", "draw", "picture"], glyph: "\uf1fc" },
     { id: "libreoffice-writer", name: "LibreOffice Writer", generic: "Word Processor", keywords: ["document", "word", "office"], glyph: "\uf0f6" },
     { id: "libreoffice-calc", name: "LibreOffice Calc", generic: "Spreadsheet", keywords: ["sheet", "excel", "office"], glyph: "\uf0ce" },
-    { id: "1password", name: "1Password", generic: "Password Manager", keywords: ["passwords", "secrets", "vault"], glyph: "\uf084" },
+    { id: "1password", name: "1Password", generic: "Password Manager", keywords: ["passwords", "secrets", "vault"], glyph: "\uf084", execString: "/opt/1Password/1password %U" },
     { id: "typora", name: "Typora", generic: "Markdown Editor", keywords: ["markdown", "writing"], glyph: "\uf040" },
     { id: "imv", name: "Image Viewer", generic: "Image Viewer", keywords: ["picture", "photo", "imv"], glyph: "\uf03e" },
     { id: "mpv", name: "Media Player", generic: "Multimedia Player", keywords: ["video", "movie", "mpv"], glyph: "\uf04b" },
     { id: "org.gnome.Evince", name: "Document Viewer", generic: "PDF Viewer", keywords: ["pdf", "evince", "reader"], glyph: "\uf1c1" },
     { id: "btop", name: "Activity", generic: "System Monitor", keywords: ["btop", "processes", "cpu", "memory"], glyph: "\uf080" },
-    { id: "lazydocker", name: "Docker", generic: "Container Manager", keywords: ["lazydocker", "containers"], glyph: "\uf1b3" },
+    { id: "lazydocker", name: "Docker", generic: "Container Manager", keywords: ["lazydocker", "containers"], glyph: "\uf1b3", execString: "omarchy-launch-tui lazydocker" },
     { id: "org.gnome.Calculator", name: "Calculator", generic: "Calculator", keywords: ["math", "arithmetic"], glyph: "\uf1ec" },
     { id: "localsend", name: "LocalSend", generic: "File Sharing", keywords: ["share", "send", "airdrop"], glyph: "\uf1d8" },
     { id: "steam", name: "Steam", generic: "Game Store", keywords: ["games", "gaming"], glyph: "\uf1b6" },
     { id: "GitHub", name: "GitHub", generic: "Web App", keywords: ["git", "code", "repositories"], glyph: "\uf09b" },
-    { id: "YouTube", name: "YouTube", generic: "Web App", keywords: ["video", "watch"], glyph: "\uf16a" },
-    { id: "WhatsApp", name: "WhatsApp", generic: "Web App", keywords: ["chat", "messages"], glyph: "\uf232" },
-    { id: "HEY", name: "HEY", generic: "Web App", keywords: ["email", "mail", "calendar"], glyph: "\uf0e0" },
+    { id: "YouTube", name: "YouTube", generic: "Web App", keywords: ["video", "watch"], glyph: "\uf16a", execString: "omarchy-launch-webapp https://youtube.com/" },
+    { id: "WhatsApp", name: "WhatsApp", generic: "Web App", keywords: ["chat", "messages"], glyph: "\uf232", execString: "omarchy-launch-webapp https://web.whatsapp.com/" },
+    { id: "HEY", name: "HEY", generic: "Web App", keywords: ["email", "mail", "calendar"], glyph: "\uf0e0", execString: "omarchy-launch-webapp https://app.hey.com" },
     { id: "Basecamp", name: "Basecamp", generic: "Web App", keywords: ["projects", "team"], glyph: "\uf0c0" }
   ]
+
+  // Omarchy's default app binds, as its keybindings menu caches them, and the
+  // defaults its terminal and browser launchers resolve to on this pretend machine.
+  var BIND_RECORDS = [
+    "SUPER + RETURN → Terminal\texec\tomarchy-launch-terminal",
+    "SUPER SHIFT + RETURN → Browser\texec\tomarchy-launch-browser",
+    "SUPER SHIFT + F → File manager\texec\tomarchy-launch-nautilus",
+    "SUPER SHIFT + N → Editor\texec\tomarchy-launch-editor",
+    "SUPER SHIFT + M → Music\texec\tomarchy-launch-spotify",
+    "SUPER SHIFT + G → Signal\texec\tomarchy-launch-signal",
+    "SUPER SHIFT + O → Obsidian\texec\tomarchy-launch-or-focus '^obsidian$' 'uwsm-app -- obsidian'",
+    "SUPER SHIFT + SLASH → Passwords\texec\tomarchy-launch-1password",
+    "SUPER SHIFT + D → Docker\texec\tomarchy-launch-tui 'lazydocker'",
+    "SUPER SHIFT + E → Email\texec\tomarchy-launch-webapp 'https://app.hey.com'",
+    "SUPER SHIFT + Y → YouTube\texec\tomarchy-launch-webapp 'https://youtube.com/'",
+    "SUPER SHIFT ALT + G → WhatsApp\texec\tomarchy-launch-or-focus-webapp 'WhatsApp' 'https://web.whatsapp.com/'"
+  ].join("\n")
+  var BIND_DEFAULTS = { terminal: "com.mitchellh.ghostty.desktop", browser: "firefox.desktop", editor: "nvim" }
 
   // What Omarchy's menu providers would print on a machine: "label\tvalue\tcurrent" per line.
   var PROVIDER_OUTPUT = {
@@ -172,9 +191,11 @@
   }
 
   Backend.prototype.rebuildCandidates = function () {
+    var hotkeys = Keybindings.appHotkeys(Keybindings.parseRecords(BIND_RECORDS), APPS, BIND_DEFAULTS)
     var next = APPS.map(function (app) {
       var c = RootSearch.appCandidate({ id: app.id, name: app.name, genericName: app.generic, keywords: app.keywords })
       c.glyph = app.glyph
+      if (hotkeys[app.id]) c.hotkey = Keybindings.formatChord(hotkeys[app.id])
       return c
     })
     next = next.concat(RootSearch.menuCandidates(this.data.tree, this.data.guards, this.data.providerItems, deps))
@@ -716,7 +737,7 @@
   Launcher.prototype.rowData = function (c) {
     return {
       rowKind: c.kind === "calculator" ? "calculator" : "item", itemId: String(c.id || ""), title: String(c.title || ""), subtitle: String(c.subtitle || ""),
-      glyph: String(c.glyph || ""), typeLabel: String(c.typeLabel || ""), alias: String(c.alias || ""),
+      glyph: String(c.glyph || ""), typeLabel: String(c.typeLabel || ""), alias: String(c.alias || ""), hotkey: String(c.hotkey || ""),
       checked: !!c.checked, disabled: !!c.disabled, favorite: typeof c.favoriteOrder === "number" || !!c.pinned,
       calcInput: String(c.calcInput || ""), calcResult: String(c.calcResult || ""),
       calcInputCaption: String(c.calcInputCaption || ""), calcResultCaption: String(c.calcResultCaption || ""),
@@ -743,6 +764,7 @@
         (r.iconless ? "" : '<span class="oc-ic">' + esc(r.glyph) + "</span>") +
         '<span class="oc-t"><b>' + esc(r.title) + "</b>" + (r.subtitle ? "<span>" + esc(r.subtitle) + "</span>" : "") + "</span>" +
         '<span class="oc-acc">' + (r.alias ? '<span class="oc-alias">' + esc(r.alias) + "</span>" : "") +
+        (r.hotkey ? '<span class="oc-hotkey">' + r.hotkey.split(" ").map(function (k) { return "<kbd>" + esc(k) + "</kbd>" }).join("") + "</span>" : "") +
         (r.favorite ? '<span class="oc-fav">' + GLYPH.star + "</span>" : "") + (r.checked ? '<span class="oc-check">✓</span>' : "") +
         '<span class="oc-ty">' + esc(r.typeLabel) + "</span></span></div>"
     })

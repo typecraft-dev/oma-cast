@@ -15,6 +15,7 @@ Item {
   required property string iconName
   required property string typeLabel
   required property string alias
+  required property string hotkey
   required property bool checked
   required property bool iconless
   required property bool disabled
@@ -246,6 +247,18 @@ Item {
           font.family: row.look.fontFamily
           font.pixelSize: Math.round(Style.font.caption * row.zoom)
         }
+      }
+
+      // The Hyprland bind that opens this app, as keycaps (Raycast's hotkey
+      // accessory).
+      KeyHint {
+        visible: row.hotkey.length > 0
+        anchors.verticalCenter: parent.verticalCenter
+        keys: row.hotkey
+        color: row.look.foreground
+        fontFamily: row.look.fontFamily
+        pixelSize: Math.round(Style.font.caption * row.zoom)
+        zoom: row.zoom
       }
 
       Text {

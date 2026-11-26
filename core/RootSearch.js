@@ -491,6 +491,7 @@ function aboutFor(c, nowMs) {
   if (c.kind !== "fallback") add("Location", c.subtitle)
   add("ID", c.id)
   if (c.kind === "app") add("Desktop Entry", c.appId + ".desktop")
+  add("Hotkey", c.hotkey)
   if (c.kind === "omarchy-action") add("Command", c.action)
   if (c.kind === "omarchy-link") add("Opens", c.target)
   if (c.kind === "script") { add("Script", c.script.path); add("Mode", c.script.mode) }

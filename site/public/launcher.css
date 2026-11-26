@@ -75,6 +75,8 @@ span.oc-pill:empty::before { content: attr(data-placeholder); opacity: 0.5; }
 .oc-t span { opacity: 0.5; font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; flex-shrink: 3; }
 .oc-acc { display: flex; align-items: center; gap: 0.7em; flex-shrink: 0; }
 .oc-alias { border: 1px solid color-mix(in srgb, var(--m-fg) 30%, transparent); border-radius: 0.3em; padding: 0 0.4em; font-size: 0.8em; opacity: 0.7; }
+.oc-hotkey { display: inline-flex; gap: 0.25em; font-size: 0.8em; opacity: 0.75; }
+.oc-hotkey kbd { margin-left: 0; min-width: 1.6em; text-align: center; }
 .oc-fav { color: var(--m-accent); font-size: 0.8em; opacity: 0.8; }
 .oc-check { color: var(--m-accent); }
 .oc-ty { opacity: 0.45; font-size: 0.86em; }

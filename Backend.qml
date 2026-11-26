@@ -17,6 +17,7 @@ import "core/ClipboardHistory.js" as ClipboardHistory
 import "core/Themes.js" as Themes
 import "core/Emoji.js" as Emoji
 import "core/ScriptCommands.js" as ScriptCommands
+import "core/Keybindings.js" as Keybindings
 import "services"
 
 Item {
@@ -111,7 +112,15 @@ Item {
   function rebuildCandidates() {
     var next = []
     var apps = backend.appEntries()
-    for (var i = 0; i < apps.length; i++) if (apps[i] && apps[i].id) next.push(RootSearch.appCandidate(apps[i]))
+    // The Hyprland bind that opens each app, shown as keycaps on its row.
+    var hotkeys = Keybindings.appHotkeys(keybindingSource.records, apps, keybindingSource.defaults)
+    for (var i = 0; i < apps.length; i++) {
+      if (!apps[i] || !apps[i].id) continue
+      var app = RootSearch.appCandidate(apps[i])
+      var chord = hotkeys[String(apps[i].id)]
+      if (chord) app.hotkey = Keybindings.formatChord(chord)
+      next.push(app)
+    }
     next = next.concat(RootSearch.menuCandidates(menuSource.tree, menuSource.guards, menuSource.providerItems, backend.deps))
     for (var b = 0; b < RootSearch.BUILTINS.length; b++) next.push(RootSearch.builtinCandidate(RootSearch.BUILTINS[b]))
     // A built-in that replaces an Omarchy command hides that command.
@@ -868,6 +877,7 @@ Item {
     if (method === "window.visibilityChanged" && data && data.visible) {
       menuSource.refresh()
       scriptSource.refresh()
+      keybindingSource.refreshIfStale()
       calculatorData.refresh()
       backend.pruneClipboard()
     }
@@ -899,6 +909,11 @@ Item {
     onDirectoryChanged: refresh()
     onRevisionChanged: rebuildTimer.restart()
     onMessage: function(level, text, metadata) { backend.log(level, "script-commands", text, metadata) }
+  }
+
+  KeybindingSource {
+    id: keybindingSource
+    onRevisionChanged: rebuildTimer.restart()
   }
 
   // Launcher.qml shows the result as a toast while the window is open, else a HUD.
