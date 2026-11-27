@@ -221,6 +221,12 @@ function decorate(candidate, ctx, deps) {
   out.frecency = visits ? deps.Frecency.score(visits.anchor, ctx.nowMs / 1000) : 1
   out.openedAt = visits ? visits.openedAt : null
   out.searchTerms = visits && visits.searchTerms ? visits.searchTerms : []
+  // A hotkey set in omacast wins over the outside bind found for the row
+  // (Keybindings.appHotkeys); removedBinds are outside binds taken away.
+  out.ownHotkey = settings.hotkey ? String(settings.hotkey) : ""
+  out.externalHotkey = candidate.hotkey || ""
+  out.hotkey = out.ownHotkey && deps.Keybindings ? deps.Keybindings.formatChord(out.ownHotkey) : out.externalHotkey
+  out.removedBinds = settings.removedBinds || []
   return out
 }
 
@@ -412,6 +418,10 @@ function actionsFor(candidate) {
   }
   list.push({ id: "set-alias", title: candidate.alias ? "Change Alias" : "Set Alias", shortcut: "", section: "configure", icon: "" })
   if (candidate.alias) list.push({ id: "remove-alias", title: "Remove Alias", shortcut: "", section: "configure", icon: "" })
+  // Raycast's per-command hotkey (ref 04 §3 Extensions table), bound in Hyprland. [D]
+  list.push({ id: "set-hotkey", title: candidate.ownHotkey ? "Change Hotkey" : "Record Hotkey", shortcut: "", section: "configure", icon: "\uf11c" })
+  if (candidate.hotkey) list.push({ id: "remove-hotkey", title: "Remove Hotkey", shortcut: "", section: "configure", icon: "\uf11c" })
+  if (candidate.removedBinds && candidate.removedBinds.length) list.push({ id: "restore-hotkey", title: "Restore Default Hotkey", shortcut: "", section: "configure", icon: "\uf11c" })
   if (candidate.frecency > 1) list.push({ id: "reset-ranking", title: "Reset Ranking", shortcut: "", section: "configure", icon: "" })
   list.push({ id: "disable", title: "Disable Command", shortcut: "Alt Shift D", section: "delete", icon: "" })
   return list
@@ -492,6 +502,7 @@ function aboutFor(c, nowMs) {
   add("ID", c.id)
   if (c.kind === "app") add("Desktop Entry", c.appId + ".desktop")
   add("Hotkey", c.hotkey)
+  if (c.ownHotkey && c.externalHotkey && c.externalHotkey !== c.hotkey) add("Hyprland Bind", c.externalHotkey)
   if (c.kind === "omarchy-action") add("Command", c.action)
   if (c.kind === "omarchy-link") add("Opens", c.target)
   if (c.kind === "script") { add("Script", c.script.path); add("Mode", c.script.mode) }

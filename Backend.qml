@@ -36,7 +36,7 @@ Item {
 
   readonly property var registry: Rpc.createRegistry()
   readonly property double startedAt: Date.now()
-  readonly property var deps: ({ Ranker: Ranker, Frecency: Frecency, OmarchyMenu: OmarchyMenu })
+  readonly property var deps: ({ Ranker: Ranker, Frecency: Frecency, OmarchyMenu: OmarchyMenu, Keybindings: Keybindings })
 
   property var candidates: []
   property var candidatesById: ({})
@@ -118,7 +118,7 @@ Item {
       if (!apps[i] || !apps[i].id) continue
       var app = RootSearch.appCandidate(apps[i])
       var chord = hotkeys[String(apps[i].id)]
-      if (chord) app.hotkey = Keybindings.formatChord(chord)
+      if (chord) { app.hotkey = Keybindings.formatChord(chord); app.hotkeyBind = Keybindings.bindString(chord) }
       next.push(app)
     }
     next = next.concat(RootSearch.menuCandidates(menuSource.tree, menuSource.guards, menuSource.providerItems, backend.deps))
@@ -485,6 +485,36 @@ Item {
     else Util.execArgv(["uwsm-app", "--", "gtk-launch", candidate.appId + ".desktop"])
   }
 
+  // Command hotkeys (settings.json commands[id].hotkey), applied to Hyprland
+  // by HotkeyBinder and fired through the GlobalShortcuts in Launcher.qml.
+  // settingsStore.doc changes in place; storeRevision is what moves.
+  readonly property var hotkeyPlan: {
+    backend.storeRevision
+    return settingsStore.loaded ? Keybindings.hotkeyPlan(settingsStore.doc.commands) : ({ binds: [], unbinds: [] })
+  }
+
+  function commandTitles() {
+    var titles = ({})
+    for (var id in backend.candidatesById) titles[id] = backend.candidatesById[id].title
+    return titles
+  }
+
+  function hotkeyConflict(commandId, bind) {
+    return Keybindings.hotkeyConflict(bind, commandId, settingsStore.doc.commands, keybindingSource.records, backend.commandTitles())
+  }
+
+  // "" removes the hotkey. A hotkey another command had moves here, as in
+  // Raycast's recorder; an outside bind on the same keys is replaced while
+  // this hotkey exists (HotkeyBinder).
+  function setHotkey(id, value) {
+    var bind = value ? Keybindings.bindString(value) : ""
+    if (value && (!bind || !Keybindings.formatChord(bind) || !/^[A-Za-z0-9_:+ ]+$/.test(bind))) throw new Error("Not a hotkey: " + value)
+    var conflict = bind ? backend.hotkeyConflict(id, bind) : null
+    if (conflict && conflict.kind === "omacast") backend.updateCommand(conflict.commandId, function(s) { delete s.hotkey; return s })
+    backend.updateCommand(id, function(s) { if (bind) s.hotkey = bind; else delete s.hotkey; return s })
+    return conflict
+  }
+
   function performAction(data) {
     var id = String(data && data.id || "")
     var action = String(data && data.action || "open")
@@ -575,6 +605,21 @@ Item {
         return { toast: { style: "success", title: titles[action] } }
       case "set-alias":
         return { push: { kind: "alias", commandId: id, title: "Alias for " + candidate.title, value: candidate.alias } }
+      case "set-hotkey":
+        return { push: { kind: "hotkey", commandId: id, title: "Hotkey for " + candidate.title, value: candidate.ownHotkey } }
+      case "remove-hotkey":
+        if (candidate.ownHotkey) backend.setHotkey(id, "")
+        else if (candidate.hotkeyBind) backend.updateCommand(id, function(s) {
+          var removed = (s.removedBinds || []).slice()
+          if (removed.indexOf(candidate.hotkeyBind) < 0) removed.push(candidate.hotkeyBind)
+          s.removedBinds = removed
+          return s
+        })
+        else throw new Error(candidate.title + " has no hotkey")
+        return { toast: { style: "success", title: "Hotkey removed" } }
+      case "restore-hotkey":
+        backend.updateCommand(id, function(s) { delete s.removedBinds; return s })
+        return { toast: { style: "success", title: "Default hotkey restored" } }
       case "remove-alias":
         backend.updateCommand(id, function(s) { delete s.alias; return s })
         return { toast: { style: "success", title: "Alias removed" } }
@@ -659,8 +704,20 @@ Item {
           if (data.enabled !== undefined) { if (data.enabled === false) s.enabled = false; else delete s.enabled }
           return s
         })
+        if (data.hotkey !== undefined && data.hotkey !== null) backend.setHotkey(id, String(data.hotkey))
         return settingsStore.doc.commands[id] || {}
+      },
+      // The recorder's check before saving: what else has these keys.
+      getCommandHotkeyConflict: function(data) {
+        var id = String(data && data.commandId || "")
+        var bind = Keybindings.bindString(String(data && data.hotkey || ""))
+        if (!bind) throw new Error("Not a hotkey")
+        return { hotkey: bind, display: Keybindings.formatChord(bind), conflict: backend.hotkeyConflict(id, bind) }
       }
+    })
+
+    Rpc.register(backend.registry, "hotkey", {
+      getAll: function() { return backend.hotkeyPlan.binds.map(function(h) { return { commandId: h.commandId, hotkey: h.bind, display: Keybindings.formatChord(h.bind) } }) }
     })
 
     Rpc.register(backend.registry, "rootSearch", {
@@ -914,6 +971,18 @@ Item {
   KeybindingSource {
     id: keybindingSource
     onRevisionChanged: rebuildTimer.restart()
+  }
+
+  HotkeyBinder {
+    id: hotkeyBinder
+    // After the first candidates, so each bind's description has its title.
+    enabled: settingsStore.loaded && backend.candidatesRevision > 0 && backend.desktop === "hyprland"
+    plan: backend.hotkeyPlan
+    titles: backend.candidatesRevision > 0 ? backend.commandTitles() : ({})
+    // Omarchy's record cache follows hyprctl binds; rescan so removed and
+    // replaced binds leave their rows.
+    onChangedBinds: keybindingSource.refresh()
+    onMessage: function(level, text) { backend.log(level, "hotkeys", text, null) }
   }
 
   // Launcher.qml shows the result as a toast while the window is open, else a HUD.

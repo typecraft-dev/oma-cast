@@ -110,3 +110,76 @@ test("parseScan splits the defaults from the records", () => {
   assert.equal(scan.records.length, 17)
   assert.deepEqual(K.parseScan("").records, [])
 })
+
+const Q = K.QT
+
+test("a recorded key press becomes a Hyprland bind", () => {
+  assert.deepEqual(K.hotkeyFromKey(0x5a, Q.MetaModifier | Q.ShiftModifier, 52), { bind: "SUPER + SHIFT + Z" })
+  assert.deepEqual(K.hotkeyFromKey(0x5a, Q.ShiftModifier | Q.ControlModifier | Q.AltModifier | Q.MetaModifier, 52), { bind: "SUPER + CTRL + ALT + SHIFT + Z" })
+  assert.deepEqual(K.hotkeyFromKey(Q.Key_Return, Q.MetaModifier, 36), { bind: "SUPER + RETURN" })
+  assert.deepEqual(K.hotkeyFromKey(Q.Key_Backtab, Q.AltModifier | Q.ShiftModifier, 23), { bind: "ALT + SHIFT + TAB" })
+  // Shift+1 reports "!"; digits and punctuation bind by keycode.
+  assert.deepEqual(K.hotkeyFromKey(0x21, Q.MetaModifier | Q.ShiftModifier, 10), { bind: "SUPER + SHIFT + code:10" })
+  assert.deepEqual(K.hotkeyFromKey(0x2f, Q.ControlModifier, 61), { bind: "CTRL + code:61" })
+  assert.deepEqual(K.hotkeyFromKey(Q.Key_F1 + 4, 0, 71), { bind: "F5" })
+  assert.deepEqual(K.hotkeyFromKey(0x01000022, Q.MetaModifier, 133), { pending: true }, "Super alone waits for a key")
+  assert.ok(K.hotkeyFromKey(0x5a, 0, 52).error, "a bare letter would eat typing")
+  assert.ok(K.hotkeyFromKey(0x5a, Q.ShiftModifier, 52).error, "Shift alone isn't enough")
+  assert.ok(K.hotkeyFromKey(0x01234567, Q.MetaModifier, 0).error)
+})
+
+test("both chord spellings format and compare the same", () => {
+  assert.equal(K.formatChord("SUPER + SHIFT + RETURN"), "Super Shift ↵")
+  assert.equal(K.formatChord("SUPER + SHIFT + code:10"), "Super Shift 1")
+  assert.equal(K.formatChord("SUPER + code:200"), "", "an unknown keycode shows nothing")
+  assert.equal(K.bindString("SUPER SHIFT + RETURN"), "SUPER + SHIFT + RETURN")
+  assert.equal(K.bindString("SHIFT CONTROL + 4"), "CTRL + SHIFT + 4")
+  assert.equal(K.bindString("HYPER + X"), "")
+  assert.ok(K.sameChord("SUPER SHIFT + RETURN", "SHIFT + SUPER + RETURN"))
+  assert.ok(K.sameChord("SHIFT CTRL + 4", "CTRL + SHIFT + code:13"), "Omarchy shows code binds by their label")
+  assert.ok(!K.sameChord("SUPER + A", "SUPER + B"))
+})
+
+test("settings become a plan of binds and unbinds", () => {
+  const plan = K.hotkeyPlan({
+    "app:zen": { hotkey: "SUPER + SHIFT + Z", alias: "z" },
+    "app:files": { removedBinds: ["SUPER SHIFT + F"] },
+    "app:evil": { hotkey: 'SUPER + ") os.exit(' },
+    "builtin:x": { favoriteOrder: 0 }
+  })
+  assert.deepEqual(plan, {
+    binds: [{ commandId: "app:zen", bind: "SUPER + SHIFT + Z", name: K.shortcutName("app:zen") }],
+    unbinds: ["SUPER + SHIFT + F"]
+  })
+  assert.match(K.shortcutName("app:zen"), /^hk-[0-9a-f]{8}$/)
+  assert.notEqual(K.shortcutName("app:zen"), K.shortcutName("app:zed"))
+})
+
+test("the Lua for a plan unbinds first and escapes titles", () => {
+  const plan = { binds: [{ commandId: "a", bind: "SUPER + Z", name: "hk-1" }], unbinds: ["SUPER + SHIFT + F"] }
+  assert.equal(K.hotkeyLua(plan, { a: 'Say "hi"\\\n' }), [
+    'pcall(hl.unbind, "SUPER + SHIFT + F")',
+    'pcall(hl.unbind, "SUPER + Z")',
+    'hl.bind("SUPER + Z", hl.dsp.global("omacast:hk-1"), { description = "Say \\"hi\\"\\\\  (omacast)" })'
+  ].join("\n"))
+  assert.equal(K.hotkeyLua({ binds: [], unbinds: [] }, {}), "")
+})
+
+test("taking a bind away needs a config reload, adding one doesn't", () => {
+  const a = { binds: [{ commandId: "a", bind: "SUPER + Z", name: "hk-1" }], unbinds: [] }
+  assert.equal(K.needsReload(null, a), false)
+  assert.equal(K.needsReload({ binds: [], unbinds: [] }, a), false)
+  assert.equal(K.needsReload(a, { binds: [], unbinds: [] }), true)
+  assert.equal(K.needsReload(a, { binds: [{ commandId: "a", bind: "SUPER + X", name: "hk-1" }], unbinds: [] }), true)
+  assert.equal(K.needsReload({ binds: [], unbinds: ["SUPER + F"] }, { binds: [], unbinds: [] }), true)
+  assert.equal(K.needsReload({ binds: [], unbinds: [] }, { binds: [], unbinds: ["SUPER + F"] }), false)
+})
+
+test("conflicts name another command's hotkey or a Hyprland bind", () => {
+  const records = K.parseRecords(RECORDS + "\nSUPER + Z                → Zen (omacast)\t__lua\t")
+  const commands = { "app:zen": { hotkey: "SUPER + Z" } }
+  assert.deepEqual(K.hotkeyConflict("SUPER + Z", "app:files", commands, records, { "app:zen": "Zen" }), { kind: "omacast", commandId: "app:zen", title: "Zen" })
+  assert.equal(K.hotkeyConflict("SUPER + Z", "app:zen", commands, records, {}), null, "its own hotkey and bind")
+  assert.deepEqual(K.hotkeyConflict("SHIFT + SUPER + RETURN", "app:files", commands, records, {}), { kind: "hyprland", title: "Browser" })
+  assert.equal(K.hotkeyConflict("SUPER + CTRL + F12", "app:files", commands, records, {}), null)
+})
