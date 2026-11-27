@@ -9,7 +9,7 @@
   var Ranker = Core.Ranker, Frecency = Core.Frecency, OmarchyMenu = Core.OmarchyMenu, RootSearch = Core.RootSearch
   var Calculator = Core.Calculator, Emoji = Core.Emoji, Themes = Core.Themes, ClipboardHistory = Core.ClipboardHistory, Schema = Core.Schema
   var Keybindings = Core.Keybindings
-  var deps = { Ranker: Ranker, Frecency: Frecency, OmarchyMenu: OmarchyMenu }
+  var deps = { Ranker: Ranker, Frecency: Frecency, OmarchyMenu: OmarchyMenu, Keybindings: Core.Keybindings }
 
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms) }) }
@@ -17,7 +17,7 @@
   function $(sel, root) { return (root || document).querySelector(sel) }
 
   // Icons are Nerd Font glyphs, as in the launcher (site/public/demo/symbols.woff2 holds the ones used).
-  var GLYPH = { back: "\uf060", tag: "\uf02b", warn: "\uf071", ok: "\uf00c", star: "\uf005", generic: "\uf1b2" }
+  var GLYPH = { keyboard: "\uf11c", back: "\uf060", tag: "\uf02b", warn: "\uf071", ok: "\uf00c", star: "\uf005", generic: "\uf1b2" }
   var LOGO = '<svg viewBox="0 0 30 30" aria-hidden="true"><path d="M1 0H29V1H30V29H29V30H1V29H0V1H1Z" fill="#242936"/>' +
     '<path d="M3 3H27V27H18V24H24V6H6V24H16V27H3Z" fill="#1A9298"/><path d="M8 8H22V13H19V11H11V19H19V17H22V22H8Z" fill="#E08E1D"/>' +
     '<path d="M13 13H17V17H13Z" fill="#E74553"/></svg>'
@@ -191,11 +191,12 @@
   }
 
   Backend.prototype.rebuildCandidates = function () {
-    var hotkeys = Keybindings.appHotkeys(Keybindings.parseRecords(BIND_RECORDS), APPS, BIND_DEFAULTS)
+    var records = this.stores && this.stores.settings.doc ? this.bindRecords() : Keybindings.parseRecords(BIND_RECORDS)
+    var hotkeys = Keybindings.appHotkeys(records, APPS, BIND_DEFAULTS)
     var next = APPS.map(function (app) {
       var c = RootSearch.appCandidate({ id: app.id, name: app.name, genericName: app.generic, keywords: app.keywords })
       c.glyph = app.glyph
-      if (hotkeys[app.id]) c.hotkey = Keybindings.formatChord(hotkeys[app.id])
+      if (hotkeys[app.id]) { c.hotkey = Keybindings.formatChord(hotkeys[app.id]); c.hotkeyBind = Keybindings.bindString(hotkeys[app.id]) }
       return c
     })
     next = next.concat(RootSearch.menuCandidates(this.data.tree, this.data.guards, this.data.providerItems, deps))
@@ -309,6 +310,42 @@
       if (data.enabled !== undefined) { if (data.enabled === false) s.enabled = false; else delete s.enabled }
       return s
     })
+    if (data.hotkey !== undefined && data.hotkey !== null) this.setHotkey(id, String(data.hotkey))
+  }
+
+  // Command hotkeys (Backend.qml setHotkey / getCommandHotkeyConflict). The
+  // demo stores them; on a desktop HotkeyBinder puts them in Hyprland. A
+  // removed default bind leaves the pretend machine's binds.
+  Backend.prototype.bindRecords = function () {
+    var removed = []
+    var commands = this.stores.settings.doc.commands
+    for (var id in commands) (commands[id].removedBinds || []).forEach(function (b) { removed.push(b) })
+    // A command hotkey replaces a bind on the same keys while it's set.
+    for (var c in commands) if (commands[c].hotkey) removed.push(commands[c].hotkey)
+    return Keybindings.parseRecords(BIND_RECORDS).filter(function (r) {
+      return !removed.some(function (b) { return Keybindings.sameChord(b, r.chord) })
+    })
+  }
+
+  Backend.prototype.hotkeyConflict = function (id, bind) {
+    var titles = {}
+    for (var k in this.byId) titles[k] = this.byId[k].title
+    return Keybindings.hotkeyConflict(bind, id, this.stores.settings.doc.commands, this.bindRecords(), titles)
+  }
+
+  Backend.prototype.getCommandHotkeyConflict = function (data) {
+    var bind = Keybindings.bindString(String(data && data.hotkey || ""))
+    if (!bind) throw new Error("Not a hotkey")
+    return { hotkey: bind, display: Keybindings.formatChord(bind), conflict: this.hotkeyConflict(String(data.commandId || ""), bind) }
+  }
+
+  Backend.prototype.setHotkey = function (id, value) {
+    var bind = value ? Keybindings.bindString(value) : ""
+    if (value && !Keybindings.formatChord(bind)) throw new Error("Not a hotkey: " + value)
+    var conflict = bind ? this.hotkeyConflict(id, bind) : null
+    if (conflict && conflict.kind === "omacast") this.updateCommand(conflict.commandId, function (s) { delete s.hotkey; return s })
+    this.updateCommand(id, function (s) { if (bind) s.hotkey = bind; else delete s.hotkey; return s })
+    this.rebuildCandidates()
   }
 
   // rootSearch.search
@@ -559,6 +596,21 @@
         })
         return { toast: { style: "success", title: { "favorite-add": "Added to Favorites", "favorite-remove": "Removed from Favorites", "favorite-up": "Moved Up", "favorite-down": "Moved Down" }[action] } }
       case "set-alias": return { push: { kind: "alias", commandId: id, title: "Alias for " + candidate.title, value: candidate.alias } }
+      case "set-hotkey": return { push: { kind: "hotkey", commandId: id, title: "Hotkey for " + candidate.title, value: candidate.ownHotkey } }
+      case "remove-hotkey":
+        if (candidate.ownHotkey) this.setHotkey(id, "")
+        else if (candidate.hotkeyBind) this.updateCommand(id, function (s) {
+          var removed = (s.removedBinds || []).slice()
+          if (removed.indexOf(candidate.hotkeyBind) < 0) removed.push(candidate.hotkeyBind)
+          s.removedBinds = removed
+          return s
+        })
+        this.rebuildCandidates()
+        return { toast: { style: "success", title: "Hotkey removed" } }
+      case "restore-hotkey":
+        this.updateCommand(id, function (s) { delete s.removedBinds; return s })
+        this.rebuildCandidates()
+        return { toast: { style: "success", title: "Default hotkey restored" } }
       case "remove-alias":
         this.updateCommand(id, function (s) { delete s.alias; return s })
         return { toast: { style: "success", title: "Alias removed" } }
@@ -658,6 +710,7 @@
   Launcher.prototype.placeholder = function () {
     var v = this.view
     return v.kind === "alias" ? "Type an alias, then press ↵"
+      : v.kind === "hotkey" ? "Press a key combination…"
       : v.kind === "menu" ? "Search " + v.title + "…"
       : v.kind === "calculator-history" ? "Search calculations…"
       : this.clipboardView ? "Type to filter entries…"
@@ -683,6 +736,7 @@
     this.stack = saved.concat([next])
     if (next.kind === "clipboard") this.clipboardFilter = "all"
     this.query = next.kind === "alias" ? (next.value || "") : ""
+    this.recorded = null
     this.setInput(this.query)
     this.rebuild(true)
   }
@@ -701,7 +755,7 @@
   Launcher.prototype.rebuild = function (resetSelection, restoreIndex) {
     var keepId = !resetSelection && this.selectedRow ? this.selectedRow.itemId : ""
     this.pointer = ""
-    if (this.view.kind === "alias") { this.rows = []; this.renderRows(); this.select(-1); return }
+    if (this.editorView) { this.rows = []; this.renderRows(); this.select(-1); return }
     var sections
     try {
       sections = this.backend.search({ query: this.query, view: this.view, filter: this.activeFilter })
@@ -895,9 +949,17 @@
     this.root.classList.toggle("oc-grid", this.grid)
     this.renderDetail()
 
-    var empty = v.kind === "alias" || this.rows.length === 0
+    var empty = this.editorView || this.rows.length === 0
     el.empty.hidden = !empty
-    if (empty) {
+    if (empty && v.kind === "hotkey") {
+      var shown = this.hotkeyShown(), r = this.recorded
+      var flag = !r ? "" : r.error ? r.error : !r.conflict ? ""
+        : r.conflict.kind === "omacast" ? "Moves the hotkey from “" + r.conflict.title + "”." : "Replaces the Hyprland bind “" + r.conflict.title + "” while it's set."
+      el.empty.innerHTML = '<span class="oc-glyph oc-empty-icon">' + GLYPH.keyboard + "</span><b>" + esc(v.title) + "</b>" +
+        (shown ? '<span class="oc-recorded">' + shown.split(" ").map(function (k) { return "<kbd>" + esc(k) + "</kbd>" }).join("") + "</span>" : '<span>No hotkey</span>') +
+        (flag ? '<span class="oc-flag' + (r.error ? " oc-fail" : "") + '">' + esc(flag) + "</span>" : "") +
+        "<span>Hold Ctrl or Alt and press a key (Super is your desktop's). ↵ saves, ⌫ clears, Esc cancels.</span>"
+    } else if (empty) {
       var title = v.kind === "alias" ? v.title
         : v.kind === "calculator-history" && !this.query ? "No Calculations Yet"
         : this.clipboardView && !this.query && this.clipboardFilter === "all" ? "No Clipboard Entries" : "No results"
@@ -914,10 +976,11 @@
     el.statusText.textContent = this.toast ? this.toast.title : this.grid && this.selectedRow ? this.selectedRow.title : v.title
     el.status.classList.toggle("oc-toast", !!this.toast)
     el.status.classList.toggle("oc-has-actions", !!(this.toast && this.toast.actions.length))
-    el.primary.hidden = !actions.length && v.kind !== "alias"
-    el.primary.innerHTML = esc(v.kind === "alias" ? "Save Alias" : actions.length ? actions[0].title : "") + " <kbd>↵</kbd>"
-    el.more.hidden = v.kind === "alias"
-    el.hints.classList.toggle("oc-solo", v.kind === "alias")
+    el.primary.hidden = !actions.length && !this.editorView
+    el.primary.innerHTML = esc(v.kind === "alias" ? "Save Alias" : v.kind === "hotkey" ? (this.recorded && this.recorded.hotkey === "" ? "Remove Hotkey" : "Save Hotkey")
+      : actions.length ? actions[0].title : "") + " <kbd>↵</kbd>"
+    el.more.hidden = this.editorView
+    el.hints.classList.toggle("oc-solo", this.editorView)
   }
 
   Launcher.prototype.renderDetail = function () {
@@ -1100,6 +1163,60 @@
     return false
   }
 
+  // The hotkey recorder: null until a key is pressed, then { hotkey, display, conflict, error }.
+  Object.defineProperty(Launcher.prototype, "editorView", { get: function () { return this.view.kind === "alias" || this.view.kind === "hotkey" } })
+
+  Launcher.prototype.hotkeyShown = function () {
+    if (this.recorded) return this.recorded.display
+    return this.view.value ? Keybindings.formatChord(this.view.value) : ""
+  }
+
+  // A browser KeyboardEvent as the Qt key, modifiers and keycode the
+  // launcher's recorder gets; Cmd and the Windows key read as Super.
+  var DOM_CODES = { Minus: 20, Equal: 21, BracketLeft: 34, BracketRight: 35, Semicolon: 47, Quote: 48, Backquote: 49, Backslash: 51, Comma: 59, Period: 60, Slash: 61, IntlBackslash: 94 }
+  var DOM_NAMED = { Enter: "Key_Return", NumpadEnter: "Key_Return", Space: "Key_Space", Tab: "Key_Tab", Escape: "Key_Escape", Backspace: "Key_Backspace",
+    Delete: "Key_Delete", Insert: "Key_Insert", Home: "Key_Home", End: "Key_End", PageUp: "Key_PageUp", PageDown: "Key_PageDown",
+    ArrowLeft: "Key_Left", ArrowUp: "Key_Up", ArrowRight: "Key_Right", ArrowDown: "Key_Down", PrintScreen: "Key_Print" }
+  function hotkeyFromEvent(e) {
+    var Q = Keybindings.QT, code = e.code || ""
+    var mods = (e.shiftKey ? Q.ShiftModifier : 0) | (e.ctrlKey ? Q.ControlModifier : 0) | (e.altKey ? Q.AltModifier : 0) | (e.metaKey ? Q.MetaModifier : 0)
+    var m
+    if (/^(Shift|Control|Alt|Meta|OS|CapsLock)/.test(code) || /^(Shift|Control|Alt|Meta|OS)$/.test(e.key)) return { pending: true }
+    if ((m = /^Key([A-Z])$/.exec(code))) return Keybindings.hotkeyFromKey(m[1].charCodeAt(0), mods, 0)
+    if ((m = /^Digit(\d)$/.exec(code))) return Keybindings.hotkeyFromKey(0, mods, m[1] === "0" ? 19 : 9 + Number(m[1]))
+    if ((m = /^F(\d+)$/.exec(code))) return Keybindings.hotkeyFromKey(Q.Key_F1 + Number(m[1]) - 1, mods, 0)
+    if (DOM_NAMED[code]) return Keybindings.hotkeyFromKey(Q[DOM_NAMED[code]], mods, 0)
+    return Keybindings.hotkeyFromKey(0, mods, DOM_CODES[code] || 0)
+  }
+
+  Launcher.prototype.handleHotkeyKey = function (e) {
+    var bare = !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey
+    if (bare && e.key === "Escape") { this.pop(); return true }
+    if (bare && e.key === "Enter") { this.saveHotkey(); return true }
+    if (bare && (e.key === "Backspace" || e.key === "Delete")) { this.recorded = { hotkey: "", display: "", conflict: null, error: "" }; this.renderChrome(); return true }
+    var r = hotkeyFromEvent(e)
+    if (r.pending) return true
+    if (r.error) {
+      var kept = this.recorded || { hotkey: this.view.value || "", display: this.hotkeyShown(), conflict: null }
+      this.recorded = { hotkey: kept.hotkey, display: kept.display, conflict: kept.conflict, error: r.error }
+    } else {
+      var c = this.backend.getCommandHotkeyConflict({ commandId: this.view.commandId, hotkey: r.bind })
+      this.recorded = { hotkey: c.hotkey, display: c.display, conflict: c.conflict, error: "" }
+    }
+    this.renderChrome()
+    return true
+  }
+
+  Launcher.prototype.saveHotkey = function () {
+    var r = this.recorded
+    if (!r) { this.pop(); return }
+    if (r.error) return
+    try { this.backend.updateCommandSettings({ commandId: this.view.commandId, hotkey: r.hotkey }) } catch (e) { this.showToast("failure", e.message || String(e)); return }
+    this.pop()
+    this.showToast("success", r.hotkey ? "Hotkey saved" : "Hotkey removed")
+    this.rebuild(false)
+  }
+
   Launcher.prototype.saveAlias = function () {
     try { this.backend.updateCommandSettings({ commandId: this.view.commandId, alias: this.query }) } catch (e) { this.showToast("failure", e.message || String(e)); return }
     var saved = this.query.trim()
@@ -1135,7 +1252,7 @@
     if (this.popup) { this.closePopups(); return }
     if (this.argFocus >= 0 && !shift) { this.argFocus = -1; this.refocus(); return }
     if (shift) { this.popToRoot(); return }
-    if (this.query && this.view.kind !== "alias") this.setQuery("")
+    if (this.query && !this.editorView) this.setQuery("")
     else if (!this.atRoot) this.pop()
     else this.onDismiss()
   }
@@ -1154,6 +1271,7 @@
       else if (enter) this.confirmAlert()
       return true
     }
+    if (this.view.kind === "hotkey" && !this.popup) return this.handleHotkeyKey(e)
     if (key === "Escape") { this.handleEscape(shift); return true }
     if (ctrl && k === "[") { this.closePopups(); this.pop(); return true }
     if (this.aboutRows) {
@@ -1283,7 +1401,7 @@
       if (t.closest(".oc-filter")) { self.toggleDropdown(); return }
       if (self.popup || self.aboutRows) { self.closePopups(); return }
       if (t.closest(".oc-lead")) { if (!self.atRoot) self.pop(); self.refocus(); return }
-      if (t.closest(".oc-primary")) { if (self.view.kind === "alias") self.saveAlias(); else self.performNth(0); self.refocus(); return }
+      if (t.closest(".oc-primary")) { if (self.view.kind === "alias") self.saveAlias(); else if (self.view.kind === "hotkey") self.saveHotkey(); else self.performNth(0); self.refocus(); return }
       if (t.closest(".oc-status")) { self.toggleToastPanel(); self.refocus(); return }
       if (t.classList.contains("oc-pill")) return
       var row = t.closest("[data-i]")

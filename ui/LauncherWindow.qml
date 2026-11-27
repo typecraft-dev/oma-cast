@@ -11,6 +11,7 @@ import "../core/Rows.js" as Rows
 import "../core/Emoji.js" as Emoji
 import "../core/ClipboardHistory.js" as ClipboardHistory
 import "../core/ScriptCommands.js" as ScriptCommands
+import "../core/Keybindings.js" as Keybindings
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
 // overlay layer the shell's own emoji picker uses.
@@ -155,7 +156,10 @@ PanelWindow {
 
   readonly property bool atRoot: window.stack.length === 1
   readonly property bool compact: window.general.windowMode === "compact" && window.atRoot && !window.query
+  // The alias and hotkey editors: no list, no action panel.
+  readonly property bool editorView: window.view.kind === "alias" || window.view.kind === "hotkey"
   readonly property string placeholder: window.view.kind === "alias" ? "Type an alias, then press ↵"
+    : window.view.kind === "hotkey" ? "Press a key combination…"
     : window.view.kind === "menu" ? "Search " + window.view.title + "…"
     : window.view.kind === "calculator-history" ? "Search calculations…"
     : window.clipboardView ? "Type to filter entries…"
@@ -238,6 +242,14 @@ PanelWindow {
 
   // A reload or disable while shown would otherwise leave Hyprland in the submap.
   Component.onDestruction: if (window.shown) Hyprland.dispatch('hl.dsp.submap("reset")')
+  // A config reload (removing a command hotkey runs one) can drop the submap
+  // while the launcher is up; the hotkey recorder needs it back.
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (window.shown && event && String(event.name) === "configreloaded") Hyprland.dispatch('hl.dsp.submap("omacast")')
+    }
+  }
   onShownChanged: {
     // The "omacast" submap (omacast.lua) lets Super+J/K past Hyprland's binds.
     Hyprland.dispatch('hl.dsp.submap("' + (window.shown ? "omacast" : "reset") + '")')
@@ -295,6 +307,7 @@ PanelWindow {
     window.stack = saved.concat([next])
     if (next.kind === "clipboard") window.clipboardFilter = "all"
     window.query = next.kind === "alias" ? (next.value || "") : ""
+    window.recorded = null
     window.rebuild(true)
   }
 
@@ -323,7 +336,7 @@ PanelWindow {
     pointerGate.reset()
     var keepId = !resetSelection && window.selectedRow ? window.selectedRow.itemId : ""
     window.searchPending = false
-    if (window.view.kind === "alias") { Rows.update(rows, []); window.select(-1); return }
+    if (window.editorView) { Rows.update(rows, []); window.select(-1); return }
     window.searchPending = true
     var revision = window.backend.candidatesRevision
     window.backend.searchAsync({ query: window.query, view: window.view, filter: window.activeFilter }, function(result) {
@@ -627,6 +640,54 @@ PanelWindow {
     return false
   }
 
+  // The hotkey recorder (Raycast's command-hotkey-input): null until a key
+  // is pressed, then { hotkey, display, conflict, error }; hotkey "" clears.
+  property var recorded: null
+  readonly property string hotkeyShown: window.recorded ? window.recorded.display
+    : (window.view.kind === "hotkey" && window.view.value ? Keybindings.formatChord(window.view.value) : "")
+  readonly property string hotkeyNote: {
+    var r = window.recorded
+    if (!r) return ""
+    if (r.error) return r.error
+    if (!r.conflict) return ""
+    return r.conflict.kind === "omacast" ? "Moves the hotkey from “" + r.conflict.title + "”."
+      : "Replaces the Hyprland bind “" + r.conflict.title + "” while it's set."
+  }
+
+  function handleHotkeyKey(event) {
+    var key = event.key
+    var mods = event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)
+    if (!mods && key === Qt.Key_Escape) { window.pop(); return true }
+    if (!mods && (key === Qt.Key_Return || key === Qt.Key_Enter)) { window.saveHotkey(); return true }
+    if (!mods && (key === Qt.Key_Backspace || key === Qt.Key_Delete)) {
+      window.recorded = { hotkey: "", display: "", conflict: null, error: "" }
+      return true
+    }
+    var r = Keybindings.hotkeyFromKey(key, event.modifiers, event.nativeScanCode)
+    if (r.pending) return true
+    if (r.error) {
+      var kept = window.recorded || { hotkey: window.view.value || "", display: window.hotkeyShown, conflict: null }
+      window.recorded = { hotkey: kept.hotkey, display: kept.display, conflict: kept.conflict, error: r.error }
+      return true
+    }
+    var c = window.backend.callSync("settings.getCommandHotkeyConflict", { commandId: window.view.commandId, hotkey: r.bind })
+    if (!c.ok) { window.recorded = { hotkey: "", display: "", conflict: null, error: c.error }; return true }
+    window.recorded = { hotkey: c.data.hotkey, display: c.data.display, conflict: c.data.conflict, error: "" }
+    return true
+  }
+
+  // ↵ with nothing pressed yet leaves the hotkey as it was.
+  function saveHotkey() {
+    var r = window.recorded
+    if (!r) { window.pop(); return }
+    if (r.error) return
+    var saved = window.backend.callSync("settings.updateCommandSettings", { commandId: window.view.commandId, hotkey: r.hotkey })
+    if (!saved.ok) { window.showToast("failure", saved.error); return }
+    window.pop()
+    window.showToast("success", r.hotkey ? "Hotkey saved" : "Hotkey removed")
+    window.rebuild(false)
+  }
+
   function saveAlias() {
     var r = window.backend.callSync("settings.updateCommandSettings", { commandId: window.view.commandId, alias: window.query })
     if (!r.ok) { window.showToast("failure", r.error); return }
@@ -686,6 +747,7 @@ PanelWindow {
       values[name] = (values[name] || "") + text
       window.argValues = values
     } else {
+      if (window.view.kind === "hotkey") return
       if (window.view.kind === "alias") text = text.replace(/\s/g, "")
       window.setQuery(window.query + text)
     }
@@ -727,7 +789,7 @@ PanelWindow {
       window.popToRoot()
       return
     }
-    if (window.query && window.view.kind !== "alias") window.setQuery("")
+    if (window.query && !window.editorView) window.setQuery("")
     else if (!window.atRoot) window.pop()
     else window.dismissRequested()
   }
@@ -776,6 +838,9 @@ PanelWindow {
       else if (enter) window.confirmAlert()
       return true
     }
+    // Every other key, Super ones included, is the hotkey being recorded;
+    // the "omacast" submap keeps Hyprland's own binds from taking them.
+    if (window.view.kind === "hotkey") return window.handleHotkeyKey(event)
     if (key === Qt.Key_Escape) { window.handleEscape(shift); return true }
     if (ctrl && (key === Qt.Key_Plus || key === Qt.Key_Equal)) { window.setZoom(window.zoom + 0.1); return true }
     if (ctrl && key === Qt.Key_Minus) { window.setZoom(window.zoom - 0.1); return true }
@@ -992,7 +1057,7 @@ PanelWindow {
 
       Row {
         id: pills
-        visible: window.argDefs.length > 0 && window.view.kind !== "alias"
+        visible: window.argDefs.length > 0 && !window.editorView
         x: queryText.x + (window.query ? queryText.width : 0) + window.px(10)
         anchors.verticalCenter: parent.verticalCenter
         spacing: window.px(6)
@@ -1133,7 +1198,7 @@ PanelWindow {
         width: window.splitView ? Math.round(parent.width * 0.4) : parent.width
         anchors.topMargin: window.px(4)
         anchors.bottomMargin: window.px(4)
-        visible: window.view.kind !== "alias"
+        visible: !window.editorView
         clip: true
         model: rows
         reuseItems: true
@@ -1170,18 +1235,18 @@ PanelWindow {
       Column {
         anchors.centerIn: parent
         spacing: window.px(8)
-        visible: window.view.kind === "alias" || rows.count === 0
+        visible: window.editorView || rows.count === 0
 
         Logo {
           anchors.horizontalCenter: parent.horizontalCenter
-          visible: window.view.kind !== "alias"
+          visible: !window.editorView
           size: window.crispLogoSize(window.px(30))
         }
         Text {
           anchors.horizontalCenter: parent.horizontalCenter
-          visible: window.view.kind === "alias"
+          visible: window.editorView
           textFormat: Text.PlainText
-          text: ""
+          text: window.view.kind === "hotkey" ? "\uf11c" : ""
           color: window.look.accent
           font.family: window.look.fontFamily
           font.pixelSize: window.px(28)
@@ -1189,7 +1254,7 @@ PanelWindow {
         Text {
           anchors.horizontalCenter: parent.horizontalCenter
           textFormat: Text.PlainText
-          text: window.view.kind === "alias" ? window.view.title
+          text: window.editorView ? window.view.title
             : window.view.kind === "calculator-history" && !window.query ? "No Calculations Yet"
             : window.clipboardView && !window.query && window.clipboardFilter === "all" ? "No Clipboard Entries"
             : (window.backend.ready ? "No results" : "Loading…")
@@ -1197,10 +1262,48 @@ PanelWindow {
           font.family: window.look.fontFamily
           font.pixelSize: Math.round(Style.font.title * window.zoom)
         }
+        // The recorded (or current) hotkey as keycaps; "No hotkey" when clear.
+        Item {
+          visible: window.view.kind === "hotkey"
+          anchors.horizontalCenter: parent.horizontalCenter
+          width: Math.max(recordedKeys.implicitWidth, noHotkey.implicitWidth)
+          height: window.px(36)
+          KeyHint {
+            id: recordedKeys
+            anchors.centerIn: parent
+            visible: window.hotkeyShown.length > 0
+            keys: window.hotkeyShown
+            color: window.look.accent
+            fontFamily: window.look.fontFamily
+            pixelSize: Math.round(Style.font.title * window.zoom)
+            zoom: window.zoom * 1.4
+          }
+          Text {
+            id: noHotkey
+            anchors.centerIn: parent
+            visible: window.hotkeyShown.length === 0
+            textFormat: Text.PlainText
+            text: "No hotkey"
+            color: window.look.foreground
+            opacity: 0.4
+            font.family: window.look.fontFamily
+            font.pixelSize: Math.round(Style.font.body * window.zoom)
+          }
+        }
+        Text {
+          visible: window.view.kind === "hotkey" && window.hotkeyNote.length > 0
+          anchors.horizontalCenter: parent.horizontalCenter
+          textFormat: Text.PlainText
+          text: window.hotkeyNote
+          color: window.recorded && window.recorded.error ? "#e06c75" : window.look.accent
+          font.family: window.look.fontFamily
+          font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
+        }
         Text {
           anchors.horizontalCenter: parent.horizontalCenter
           textFormat: Text.PlainText
           text: window.view.kind === "alias" ? "Typing the alias exactly in the root search puts this command on top. Leave it empty to remove it."
+            : window.view.kind === "hotkey" ? "Hold Super, Ctrl or Alt and press a key. ↵ saves, ⌫ clears, Esc cancels."
             : window.view.kind === "calculator-history" && !window.query ? "Type a calculation in the root search, then copy or paste the answer."
             : window.clipboardView && !window.query && window.clipboardFilter === "all"
               ? (window.backend.config.clipboardHistory ? "Copy something and it shows up here." : "Recording is off: clipboardHistory is false in config.json.") : ""
@@ -1286,6 +1389,7 @@ PanelWindow {
           window.selectedRow
           window.backend.storeRevision
           if (window.view.kind === "alias") return { title: "Save Alias", shortcut: "↵" }
+          if (window.view.kind === "hotkey") return { title: window.recorded && window.recorded.hotkey === "" ? "Remove Hotkey" : "Save Hotkey", shortcut: "↵" }
           var list = window.actionsForSelected()
           return list.length ? list[0] : null
         }
@@ -1312,14 +1416,14 @@ PanelWindow {
           zoom: window.zoom
         }
         Rectangle {
-          visible: window.view.kind !== "alias"
+          visible: !window.editorView
           anchors.verticalCenter: parent.verticalCenter
           width: 1
           height: window.px(14)
           color: Util.alpha(window.look.foreground, 0.2)
         }
         Text {
-          visible: window.view.kind !== "alias"
+          visible: !window.editorView
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
           text: "Actions"
@@ -1329,7 +1433,7 @@ PanelWindow {
           font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
         }
         KeyHint {
-          visible: window.view.kind !== "alias"
+          visible: !window.editorView
           anchors.verticalCenter: parent.verticalCenter
           keys: window.actionPanelKeys
           color: window.look.foreground

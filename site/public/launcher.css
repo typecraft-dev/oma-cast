@@ -103,6 +103,10 @@ span.oc-pill:empty::before { content: attr(data-placeholder); opacity: 0.5; }
 .oc-empty span { opacity: 0.55; font-size: 0.86em; max-width: 30em; }
 .oc-empty-logo svg { width: 2em; height: 2em; display: block; }
 .oc-empty .oc-empty-icon { font-size: 1.8em; opacity: 1; }
+.oc-empty .oc-recorded { display: inline-flex; gap: 0.3em; opacity: 1; font-size: 1.25em; max-width: none; }
+.oc-empty .oc-recorded kbd { margin-left: 0; min-width: 1.8em; text-align: center; color: var(--m-accent); }
+.oc-empty .oc-flag { opacity: 1; color: var(--m-accent); }
+.oc-empty .oc-flag.oc-fail { color: #e06c75; }
 
 /* ---------- list + detail (Clipboard History, Switch Theme) ---------- */
 .oc-detail { display: none; }

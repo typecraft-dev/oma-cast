@@ -70,7 +70,8 @@ Item {
     if (outcome.push) {
       root.show()
       launcher.popToRoot()
-      launcher.push(outcome.push)
+      // sourceId lets the command's hotkey close the view it opened.
+      launcher.push(Object.assign({}, outcome.push, { sourceId: commandId }))
     } else if (outcome.close) {
       root.hide()
       if (outcome.hud) launcher.hud(outcome.hud)
@@ -132,6 +133,29 @@ Item {
     name: "emoji"
     description: "Open omacast Emoji & Symbols"
     onPressed: root.run("builtin:emoji-picker")
+  }
+
+  // One global shortcut per command hotkey; HotkeyBinder binds its keys in
+  // Hyprland to hl.dsp.global("omacast:hk-…").
+  Variants {
+    model: backend.hotkeyPlan.binds
+    delegate: Component {
+      GlobalShortcut {
+        required property var modelData
+        appid: "omacast"
+        name: modelData.name
+        description: "omacast hotkey for " + modelData.commandId
+        onPressed: root.runHotkey(modelData.commandId)
+      }
+    }
+  }
+
+  // A command's hotkey runs it; pressed again while the view it opened is on
+  // screen, it closes the launcher, like the launcher hotkey. [D]
+  function runHotkey(commandId) {
+    if (root.opened && launcher.view.sourceId === commandId) { root.hide(); return }
+    var r = root.run(commandId)
+    if (r && r.ok === false) launcher.hud(r.error || "Hotkey failed")
   }
 
   IpcHandler {
