@@ -28,6 +28,9 @@ Item {
 
   property var appLibrary: null
   property var summon: null
+  // Whether the launcher window holds the keyboard; AppFocuser waits for it
+  // to let go before focusing an app's window.
+  property bool launcherHasKeyboard: false
 
   property var config: Schema.withConfigDefaults(null)
   property bool directoriesReady: false
@@ -909,6 +912,7 @@ Item {
 
   AppFocuser {
     id: appFocuser
+    launcherHasKeyboard: backend.launcherHasKeyboard
     onLaunchRequested: function(candidate) { backend.launchApp(candidate) }
   }
 

@@ -56,6 +56,14 @@ PanelWindow {
   }
   mask: window.shown ? null : noInput
   Region { id: noInput }
+  // The window is active while Hyprland gives it the keyboard. Hiding drops
+  // the keyboard request, and this turns false once Hyprland has moved the
+  // keyboard elsewhere: the earliest moment another window can take focus.
+  readonly property bool hasKeyboard: keyboardProbe.active
+  Item {
+    id: keyboardProbe
+    readonly property bool active: Window.active
+  }
   anchors { top: true; bottom: true; left: true; right: true }
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
