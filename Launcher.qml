@@ -82,6 +82,7 @@ Item {
     id: backend
     appLibrary: root.shell ? root.shell.appLibrary : null
     summon: function(id, payload) { return root.shell ? root.shell.summon(id, payload) : false }
+    launcherHasKeyboard: launcher.hasKeyboard
   }
 
   // A script command's last line of output: a toast if the launcher is still
